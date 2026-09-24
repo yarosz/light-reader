@@ -3,6 +3,19 @@
 STATUS: N1 done; next is N2 (reading data store)
 LAST SESSION: 2026-09-24
 
+## v1 user flow
+
+1. **Shelf** (the first screen): the Books on this phone, in progress first. Tap one to read it at its
+   Place. "Edit" removes a Book (its Place is kept).
+2. **Add** → the list of Catalogues: Project Gutenberg, "Standard Ebooks: new releases", your own, and
+   "Add a Catalogue".
+3. **Catalogue** → search and browse as text → a Book's detail page → **Add to Shelf** (downloads it).
+4. **Reading**: tap the right side or press volume down to turn the page. A centre tap shows the
+   controls: back to the Shelf, the Chapter title, time left, A− A+, Light/Dark, **Contents**.
+5. **Contents** lists the Chapters; tap one to jump there.
+
+Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
+
 ## Done
 
 | # | What | Evidence |
