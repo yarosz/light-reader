@@ -32,6 +32,28 @@ untrimmed line boxes (`LineHeightStyle`).
 
 Ordered. Each item ends on its _done-when_.
 
+- **R · Release path (advisor round 6), in this order:**
+  1. ~~Minified-release smoke test~~ **done 2026-09-24**: `assembleRelease` (R8 + resource shrinking)
+     dev-signed, on the emulator: fonts survive (paths shortened to `res/<xx>.ttf`, sizes match), paging
+     works, font round trip 5/41 → 7/62 → 9/87 → 5/41. Screenshot shows a Page ending "waist-" (a
+     Paginator v2 test case).
+  2. `mise run light-build`: Light's `lightbuilder prepare` on a fresh clone of a public commit, then
+     unsigned `assembleRelease` against a named SDK ref (simulated once by hand: passes).
+  3. CI (GitHub Actions, time-boxed to half a day): unit tests + builder simulation against the pinned
+     tag on every push/tag (blocking); SDK `main` on a schedule (non-blocking). If the simulation fights
+     the runner, ship unit tests only and keep the mise task.
+  4. `RELEASING.md` last: versioning (`versionName` semver, `versionCode` +1, tag `vX.Y.Z`, notes-only
+     GitHub Release; bump the SDK pin to the newest tag each release), no self-published APKs (the dev
+     key is public), rollback = new release with higher `versionCode` carrying old code, pre-release
+     checklist (unit tests, emulator loop, LP3 loop, builder simulation, minified release runs,
+     upgrade-path test, history scan), sentinel check of Light's first signed artifact on the LP3
+     (package/version via aapt, hardware loop) before telling testers, the one-time data wipe when
+     moving from dev-signed to Light-signed builds.
+  Also: hardware screenshots into the repo while the LP3 is on adb; `SECURITY.md`, `CONTRIBUTING.md`
+  (platform rules; DRM-circumvention PRs declined per ADR 0005), issue template (LightOS version, book
+  source, title, steps). `REVIEW.md` for Light's reviewers before v1. Ask in #204: which SDK commit the
+  builder uses, and whether Tool Manager transfer is live on retail. **Tool id decided:
+  `com.yarosz.reader`**, permanent from first publish.
 - **P · Paginator v2 (ADR 0007, `DESIGN.md`).** Pure core first: block-boundary windows (prefer
   Chapter starts, split > ~20 K chars); pack outward from the Place; a Page = up to two bands; page-end
   rules (whitespace/paragraph end only, never after a heading, 70% guard, cascade test); page-boundary
@@ -45,6 +67,8 @@ Ordered. Each item ends on its _done-when_.
   + per-Tool settings (font step, polarity, pace). Atomic writes (temp + rename, debounced),
   `schemaVersion`, `.bak` of the last good write used on parse failure, finished state (Progress 100%).
   Merge: newer Place wins, keep entries for Books not on the Shelf, ignore unknown fields, never clobber.
+  Never crash on a higher `schemaVersion` than the code knows (rollback safety); test one downgrade.
+  Upgrade-path test: install release N over N−1 with a populated store; Shelf and Places survive.
   _Done when:_ kill the Tool on a Page, relaunch, lands on the same Page (emulator), and merge rules
   have tests.
 - **N3 · Shelf + Catalogues (ADR 0001, 0005).** One Atom parser (OPDS acquisition links and EPUB
