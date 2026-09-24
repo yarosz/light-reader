@@ -46,9 +46,16 @@ fail_ctx() {  # context, step description
 # Font round trip: page forward, cycle A+ A+ A- A-, require the identical Page and first words.
 state() { ANDROID_SERIAL="$1" mise run ui 2>/dev/null \
   | awk '/^   ~/{top=substr($0,5,40)} /p [0-9]+\//{gsub(/^ +| +\(.*$/,""); foot=$0} END{print foot " | " top}'; }
+dismiss_anr() {  # serial: heavy builds can starve the emulator into a "System UI isn't responding" dialog
+  if ANDROID_SERIAL="$1" mise run ui 2>/dev/null | grep -q '#aerr_wait'; then
+    ANDROID_SERIAL="$1" mise run ui tap aerr_wait >/dev/null 2>&1
+  fi
+}
 roundtrip() {  # serial -> prints "before => after" line, returns 1 if not identical
   local s=$1 before after trail=""
-  ANDROID_SERIAL=$s mise run ui wait "p 1/" >/dev/null 2>&1 || return 1
+  dismiss_anr "$s"
+  ANDROID_SERIAL=$s mise run ui wait "p 1/" >/dev/null 2>&1 || { dismiss_anr "$s"; ANDROID_SERIAL=$s mise run ui wait "p 1/" >/dev/null 2>&1; } \
+    || { echo "reader never showed page 1"; return 1; }
   for _ in 1 2 3 4; do "$adb" -s "$s" shell input keyevent KEYCODE_VOLUME_DOWN; done; sleep 1
   before=$(state "$s")
   for key in "A+" "A+" "A−" "A−"; do
