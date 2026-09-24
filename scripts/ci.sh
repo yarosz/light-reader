@@ -14,8 +14,12 @@
 # round-trip lines, device model and LightOS version. Never serials, hostnames, or local paths.
 set -uo pipefail
 
-post=1; [ "${1:-}" = "--dry-run" ] && post=0
-repo=$(git rev-parse --show-toplevel); cd "$repo"
+case "${1:-}" in
+  "") post=1 ;;
+  --dry-run) post=0 ;;
+  *) echo "usage: scripts/ci.sh [--dry-run]" >&2; exit 2 ;;
+esac
+repo=$(git rev-parse --show-toplevel) && cd "$repo" || exit 1
 adb="${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb"
 pkg=com.yarosz.reader
 started=$(date +%s)
@@ -24,28 +28,43 @@ note() { evidence+=("$1"); echo "ci: $1"; }
 die() { echo "ci: FAIL $1" >&2; exit 1; }
 
 # --- Preflight: the statuses attest to one exact, pushed commit.
-[ -z "$(git status --porcelain --untracked-files=no)" ] || die "tracked files are modified; commit first"
+# Untracked files count: the tests and APKs build from the live tree, so it must equal the commit.
+[ -z "$(git status --porcelain)" ] || die "working tree differs from HEAD (modified or untracked files); commit or remove them"
 head=$(git rev-parse HEAD)
 git fetch --quiet origin
 if [ "$post" = 1 ] && [ -z "$(git branch -r --contains "$head")" ]; then die "HEAD is not pushed"; fi
 base=$(git merge-base origin/main HEAD)
 changed=$(git diff --name-only "$base" HEAD)
+# Docs-only = a non-empty diff touching nothing that ships or builds. Anything under tool/ ships
+# (Light's extractor takes .md assets too), and an empty diff (e.g. main itself) is not docs-only.
 docs_only=1
+[ -z "$changed" ] && docs_only=0
 while IFS= read -r f; do
   [ -z "$f" ] && continue
-  case "$f" in *.md|docs/*|.github/PULL_REQUEST_TEMPLATE*|.github/ISSUE_TEMPLATE/*) ;; *) docs_only=0 ;; esac
+  case "$f" in
+    tool/*|light-sdk*|scripts/*|*.gradle.kts|gradle*|mise.toml|.github/workflows/*) docs_only=0 ;;
+    *.md|docs/*|.github/PULL_REQUEST_TEMPLATE*|.github/ISSUE_TEMPLATE/*) ;;
+    *) docs_only=0 ;;
+  esac
 done <<<"$changed"
 note "commit \`${head:0:12}\`; files changed vs main: $(grep -c . <<<"$changed")"
 
 fail_ctx() {  # context, step description
   echo "ci: FAIL [$1] $2" >&2
-  [ "$post" = 1 ] && gh signoff fail "$1" --description "local ci: $2" >/dev/null
+  [ "$post" = 1 ] && gh signoff fail "$1" --commit "$head" --description "local ci: $2" >/dev/null
   exit 1
 }
 
 # Font round trip: page forward, cycle A+ A+ A- A-, require the identical Page and first words.
-state() { ANDROID_SERIAL="$1" mise run ui 2>/dev/null \
-  | awk '/^   ~/{top=substr($0,5,40)} /p [0-9]+\//{gsub(/^ +| +\(.*$/,""); foot=$0} END{print foot " | " top}'; }
+# Every read must succeed and show a real footer ("p N/M"), and the first A+ must change the layout,
+# so an unresponsive screen or a lost device can never pass as "unchanged".
+state() {
+  local out
+  out=$(ANDROID_SERIAL="$1" mise run ui 2>/dev/null \
+    | awk '/^   ~/{top=substr($0,5,40)} /p [0-9]+\//{gsub(/^ +| +\(.*$/,""); foot=$0} END{print foot " | " top}')
+  grep -qE 'p [0-9]+/[0-9]+' <<<"$out" || return 1
+  echo "$out"
+}
 dismiss_anr() {  # serial: heavy builds can starve the emulator into a "System UI isn't responding" dialog
   if ANDROID_SERIAL="$1" mise run ui 2>/dev/null | grep -q '#aerr_wait'; then
     ANDROID_SERIAL="$1" mise run ui tap aerr_wait >/dev/null 2>&1
@@ -56,14 +75,19 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
   dismiss_anr "$s"
   ANDROID_SERIAL=$s mise run ui wait "p 1/" >/dev/null 2>&1 || { dismiss_anr "$s"; ANDROID_SERIAL=$s mise run ui wait "p 1/" >/dev/null 2>&1; } \
     || { echo "reader never showed page 1"; return 1; }
-  for _ in 1 2 3 4; do "$adb" -s "$s" shell input keyevent KEYCODE_VOLUME_DOWN; done; sleep 1
-  before=$(state "$s")
+  for _ in 1 2 3 4; do "$adb" -s "$s" shell input keyevent KEYCODE_VOLUME_DOWN || { echo "page turn failed"; return 1; }; done
+  sleep 1
+  before=$(state "$s") || { echo "could not read the page before the font cycle"; return 1; }
+  local first="" now
   for key in "A+" "A+" "A−" "A−"; do
-    ANDROID_SERIAL=$s mise run ui tap "$key" >/dev/null 2>&1
-    trail="$trail → $(state "$s" | cut -d'|' -f1 | tr -d ' "')"
+    ANDROID_SERIAL=$s mise run ui tap "$key" >/dev/null 2>&1 || { echo "tap $key failed"; return 1; }
+    now=$(state "$s") || { echo "could not read the page after $key"; return 1; }
+    [ -z "$first" ] && first=$now
+    trail="$trail → $(cut -d'|' -f1 <<<"$now" | tr -d ' "')"
   done
-  after=$(state "$s")
+  after=$now
   echo "$(cut -d'|' -f1 <<<"$before" | tr -d ' "')$trail"
+  [ "$first" != "$before" ] || { echo " (A+ did not change the layout)"; return 1; }
   [ "$before" = "$after" ]
 }
 wake() {  # serial: the LP3 drops off USB while asleep; wake it and wait up to 30 s for adb
@@ -86,7 +110,12 @@ else
   tests=$(cat tool/build/test-results/testDebugUnitTest/*.xml | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc)
   note "unit + property tests: $tests passed"
 
-  lb=$(scripts/light-build.sh 2>&1 | grep '^light-build:') || fail_ctx emulator "Light-builder simulation"
+  lblog=$(mktemp)
+  if ! scripts/light-build.sh >"$lblog" 2>&1; then
+    tail -25 "$lblog" >&2
+    fail_ctx emulator "Light-builder simulation"
+  fi
+  lb=$(grep '^light-build:' "$lblog"); rm -f "$lblog"
   note "Light-builder simulation (lightbuilder prepare + unsigned minified release): ${lb#light-build: }"
 
   emu=$("$adb" devices | awk '/^emulator-[0-9]+\tdevice/{print $1; exit}')
@@ -124,10 +153,15 @@ note "run: $(( $(date +%s) - started ))s by \`scripts/ci.sh\` (local CI, agent s
 body=$(printf '**Local CI** for `%s`\n\n' "${head:0:12}"; printf -- '- %s\n' "${evidence[@]}")
 if [ "$post" = 0 ]; then printf '\n%s\n' "$body"; exit 0; fi
 
+# Attest to exactly what was tested: the tree must still be clean and HEAD unchanged, and statuses are
+# pinned to the tested commit (--commit), not to whatever HEAD is at post time.
+[ -z "$(git status --porcelain)" ] || die "working tree changed during the run; not posting"
+[ "$(git rev-parse HEAD)" = "$head" ] || die "HEAD moved during the run; not posting"
+
 url=""
 if pr=$(gh pr view --json number -q .number 2>/dev/null); then
   url=$(gh pr comment "$pr" --body "$body" 2>/dev/null | grep -oE 'https://github.com/[^ ]+' | tail -1)
 fi
-gh signoff emulator ${url:+--url "$url"} >/dev/null || die "posting signoff/emulator"
-[ "$lp3_ran" = 1 ] && { gh signoff lp3 ${url:+--url "$url"} >/dev/null || die "posting signoff/lp3"; }
+gh signoff emulator --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/emulator"
+[ "$lp3_ran" = 1 ] && { gh signoff lp3 --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/lp3"; }
 echo "ci: posted signoff/emulator$([ "$lp3_ran" = 1 ] && echo ' + signoff/lp3') on ${head:0:12}${url:+ ($url)}"
