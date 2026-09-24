@@ -59,6 +59,13 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
   echo "$(cut -d'|' -f1 <<<"$before" | tr -d ' "')$trail"
   [ "$before" = "$after" ]
 }
+wake() {  # serial: the LP3 drops off USB while asleep; wake it and wait up to 30 s for adb
+  for _ in $(seq 1 15); do
+    "$adb" -s "$1" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 && return 0
+    sleep 2
+  done
+  return 1
+}
 install_and_launch() {  # serial apk
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
@@ -95,8 +102,9 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   sed -i.bak 's/^serverPackage = .*/serverPackage = "com.lightos"/' tool/lighttool.toml && rm -f tool/lighttool.toml.bak
   ./gradlew -q --console=plain :tool:assembleDebug || fail_ctx lp3 "assembleDebug (device)"
   git checkout --quiet -- tool/lighttool.toml
-  "$adb" -s "$lp3" shell input keyevent KEYCODE_WAKEUP
+  wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   install_and_launch "$lp3" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx lp3 "install"
+  wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
   lp3_ran=1
