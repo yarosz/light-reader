@@ -15,6 +15,19 @@ Found while doing N1: Literata's descenders crossed line boundaries, leaking a s
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
 untrimmed line boxes (`LineHeightStyle`).
 
+## Hardware (2026-09-24, LP3 TLP301, Android 14, LightOS 582)
+
+- The loop works on a real phone over adb (`ANDROID_SERIAL=<serial> mise run ui …`); a device build
+  needs `serverPackage = "com.lightos"` in `tool/lighttool.toml`. Font round trip 4/57 → 4/85 → 6/122
+  → 4/57: identical Page.
+- **Density is 480 dpi** (panel ~419 ppi). The emulator AVD was 420: set it to 480 to match.
+- Akkurat ships true italics on retail phones (`/system/fonts/AkkuratLLTT-*Italic.ttf`).
+- **N6 bar missed.** Styling + layout + pagination of Pride and Prejudice Spine items of 112–165 K
+  characters: 475–650 ms warm, up to 1,356 ms cold; ~3–4 ms per 1,000 characters. Hyphenation costs
+  15–25% (165 K item: 820 ms with, 690 ms without, 640 ms without + simple line breaking). Windowed
+  layout proposed as ADR 0007; awaiting the advisor (with: hyphen at page end, type scale for 480 dpi,
+  ADR 0006 given Akkurat's italic).
+
 ## Next
 
 Ordered. Each item ends on its _done-when_.
