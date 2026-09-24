@@ -1,0 +1,35 @@
+[tools]
+java = "temurin-17"
+android-sdk = "23.0"
+
+[env]
+ANDROID_HOME = "{{env.HOME}}/Library/Android/sdk"
+ANDROID_SDK_ROOT = "{{env.HOME}}/Library/Android/sdk"
+_.path = [
+  "{{env.HOME}}/Library/Android/sdk/emulator",
+  "{{env.HOME}}/Library/Android/sdk/platform-tools",
+]
+
+[tasks.emu]
+description = "Boot the LightPhone3 AVD (writable system, required every boot)"
+run = "emulator -avd LightPhone3 -writable-system -no-snapshot -no-boot-anim"
+
+[tasks.tool]
+description = "Build, install, and launch the :tool module on the running emulator/device"
+run = [
+  "./gradlew :tool:assembleDebug",
+  "adb install -r tool/build/outputs/apk/debug/tool-debug.apk",
+  "adb shell monkey -p com.yarosz.reader 1",
+]
+
+[tasks.lightos]
+description = "Rebuild + reinstall the LightOS emulator system app (keeps uid 1000)"
+run = [
+  "./gradlew :sdk:emulator:assembleDebug",
+  "adb install -r sdk/emulator/build/outputs/apk/debug/emulator-debug.apk",
+]
+
+[settings]
+# Only install what this repo pins; do not auto-install tools from parent directories
+task.run_auto_install = false
+exec_auto_install = false

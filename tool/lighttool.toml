@@ -1,0 +1,9 @@
+[tool]
+id = "com.yarosz.reader"
+label = "Reader"
+versionCode = 1
+versionName = "0.1.0"
+permissions = ["android.permission.INTERNET"]
+capabilities = []
+# The emulator's LightOS app. On a real LP3 this is "com.lightos".
+serverPackage = "com.thelightphone.sdk.emulator"

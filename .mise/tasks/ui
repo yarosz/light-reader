@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+#MISE quiet=true
+#MISE description="Inspect/drive the emulator UI: compact tree, tap by label, type, keys, screenshots"
+"""Compact adb UI driver for agents and humans.
+
+  mise run ui                      print compact UI tree (every element w/ text, label, center)
+  mise run ui tap settings         tap first element whose text/label/id contains "settings"
+  mise run ui tap 124 244          tap coordinates
+  mise run ui type "hello"         type text into the focused field
+  mise run ui key back|home|enter  press a key (any KEYCODE_* suffix works)
+  mise run ui swipe up|down        scroll the screen
+  mise run ui shot [path]          save a screenshot (default: $TMPDIR/ui.png) and print its path
+  mise run ui wait "Loading done"  poll until an element matching the text appears (10s)
+
+Actions print the resulting tree afterwards. Chain actions with "then":
+  mise run ui tap settings then key back then shot
+Env: ANDROID_SERIAL selects the device (defaults to the only one attached).
+"""
+import os, re, subprocess, sys, tempfile, time
+import xml.etree.ElementTree as ET
+
+ADB = os.path.join(os.environ.get("ANDROID_HOME", os.path.expanduser("~/Library/Android/sdk")), "platform-tools", "adb")
+SETTLE = 0.6  # LightOS runs with animations off, so this is enough for recomposition
+
+
+def adb(*args, binary=False):
+    out = subprocess.run([ADB, *args], capture_output=True, check=False)
+    if out.returncode != 0:
+        sys.exit(f"adb {' '.join(args)} failed: {out.stderr.decode().strip()}")
+    return out.stdout if binary else out.stdout.decode()
+
+
+def nodes():
+    for attempt in range(3):
+        xml = adb("exec-out", "uiautomator", "dump", "/dev/tty").split("UI hierchary dumped")[0]
+        if xml.lstrip().startswith("<?xml"):
+            break
+        time.sleep(0.5)  # "could not get idle state" while the screen is mid-update
+    else:
+        sys.exit(f"uiautomator dump failed: {xml.strip()[:200]}")
+    for n in ET.fromstring(xml).iter("node"):
+        x1, y1, x2, y2 = map(int, re.findall(r"\d+", n.get("bounds")))
+        yield {
+            "text": n.get("text", ""),
+            "desc": n.get("content-desc", ""),
+            "id": n.get("resource-id", "").split("/")[-1],
+            "click": n.get("clickable") == "true" or n.get("long-clickable") == "true",
+            "focused": n.get("focused") == "true",
+            "checked": n.get("checked") == "true",
+            "edit": "EditText" in n.get("class", ""),
+            "center": ((x1 + x2) // 2, (y1 + y2) // 2),
+        }
+
+
+def top_activity():
+    m = re.search(r"topResumedActivity=\S+ \S+ (\S+)", adb("shell", "dumpsys", "activity", "activities"))
+    return m.group(1) if m else "?"
+
+
+def show():
+    print(f"@ {top_activity()}")
+    for n in nodes():
+        if not (n["text"] or n["desc"] or n["id"] or n["click"]):
+            continue
+        flags = "".join(f for f, on in (("*", n["click"]), ("F", n["focused"]), ("✓", n["checked"]), ("E", n["edit"])) if on)
+        parts = [f'"{n["text"]}"' if n["text"] else "", f"~{n['desc']}" if n["desc"] else "", f"#{n['id']}" if n["id"] else ""]
+        print(f"{flags:>2} {' '.join(p for p in parts if p)}  ({n['center'][0]},{n['center'][1]})")
+    print("(* tappable  F focused  ✓ checked  E editable  ~label  #id)")
+
+
+def find(query):
+    q = query.lower()
+    hits = [n for n in nodes() if q in n["text"].lower() or q in n["desc"].lower() or q in n["id"].lower()]
+    # Compose often puts the click handler on a parent; prefer tappable matches, then exact ones.
+    hits.sort(key=lambda n: (not n["click"], q not in (n["text"].lower(), n["desc"].lower(), n["id"].lower())))
+    if not hits:
+        sys.exit(f'no element matches "{query}"')
+    return hits[0]["center"]
+
+
+def run(cmd, args):
+    if cmd == "tap":
+        x, y = (args[0], args[1]) if len(args) == 2 and all(a.isdigit() for a in args) else find(" ".join(args))
+        adb("shell", "input", "tap", str(x), str(y))
+    elif cmd == "type":
+        # LightOS draws its own keyboard (no EditText), so check the outcome, not the focus.
+        text = " ".join(args)
+        adb("shell", "input", "text", text.replace(" ", "%s"))
+        time.sleep(SETTLE)
+        if not any(text in n["text"] for n in nodes()):
+            print(f'warning: "{text}" is not visible after typing; open a text field first', file=sys.stderr)
+    elif cmd == "key":
+        adb("shell", "input", "keyevent", "KEYCODE_" + args[0].upper())
+    elif cmd == "swipe":
+        a, b = (1000, 300) if args[0] == "up" else (300, 1000)  # "up" = content moves up = scroll down
+        adb("shell", "input", "swipe", "540", str(a), "540", str(b), "200")
+    elif cmd == "shot":
+        path = args[0] if args else os.path.join(tempfile.gettempdir(), "ui.png")
+        with open(path, "wb") as f:
+            f.write(adb("exec-out", "screencap", "-p", binary=True))
+        print(path)
+        return False
+    elif cmd == "wait":
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            try:
+                find(" ".join(args))
+                return True
+            except SystemExit:
+                time.sleep(0.5)
+        sys.exit(f'timed out waiting for "{" ".join(args)}"')
+    else:
+        sys.exit(__doc__)
+    return True
+
+
+def main(argv):
+    if not argv:
+        return show()
+    if argv[0] in ("-h", "--help", "help"):
+        return print(__doc__)
+    steps, cur = [], []
+    for a in argv:
+        if a == "then":
+            steps.append(cur)
+            cur = []
+        else:
+            cur.append(a)
+    steps.append(cur)
+    changed = False
+    for cmd, *args in steps:
+        changed = run(cmd, args) or changed
+        time.sleep(SETTLE if changed else 0)
+    if changed and steps[-1][0] != "shot":
+        show()
+
+
+main(sys.argv[1:])
