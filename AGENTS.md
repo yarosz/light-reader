@@ -26,6 +26,16 @@ phone to read more deliberately. One clear capability, nothing else.
 - The plugin generates the manifest from `tool/lighttool.toml`; cleartext HTTP is therefore off.
 - Font and other Android resources under `tool/src/main/res/` are accepted.
 
+## How changes land
+
+Every change arrives as a pull request. Required to merge: the GitHub Actions `build` check (unit tests
++ the Light-builder simulation on a clean Linux machine) and `signoff/emulator`. Only `mise run ci`
+posts `signoff/*` statuses; never run `gh signoff` by hand. It posts `signoff/lp3` too when a Light
+Phone III is attached, and releases require a green `signoff/lp3`. Code PRs get a review from a fresh
+reviewer agent before merge; docs-only PRs merge on green. Squash merges; the PR title is the commit
+subject. Public evidence (PR comments, statuses) carries generic facts only: no serials, hostnames, or
+local paths.
+
 ## Verification loop
 
 A change is done when all three are _green_:
