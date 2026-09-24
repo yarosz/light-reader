@@ -24,14 +24,23 @@ untrimmed line boxes (`LineHeightStyle`).
 - Akkurat ships true italics on retail phones (`/system/fonts/AkkuratLLTT-*Italic.ttf`).
 - **N6 bar missed.** Styling + layout + pagination of Pride and Prejudice Spine items of 112–165 K
   characters: 475–650 ms warm, up to 1,356 ms cold; ~3–4 ms per 1,000 characters. Hyphenation costs
-  15–25% (165 K item: 820 ms with, 690 ms without, 640 ms without + simple line breaking). Windowed
-  layout proposed as ADR 0007; awaiting the advisor (with: hyphen at page end, type scale for 480 dpi,
-  ADR 0006 given Akkurat's italic).
+  15–25% (165 K item: 820 ms with, 690 ms without, 640 ms without + simple line breaking). Resolved
+  with the advisor (round 5): ADR 0007 (windowed layout packed from the Place), ADR 0006 amended,
+  `DESIGN.md` (type scale for 480 dpi, page-break rules).
 
 ## Next
 
 Ordered. Each item ends on its _done-when_.
 
+- **P · Paginator v2 (ADR 0007, `DESIGN.md`).** Pure core first: block-boundary windows (prefer
+  Chapter starts, split > ~20 K chars); pack outward from the Place; a Page = up to two bands; page-end
+  rules (whitespace/paragraph end only, never after a heading, 70% guard, cascade test); page-boundary
+  cache per layout pass. Then the Compose side: sync current window, background neighbours (verify
+  `TextMeasurer` off the main thread under the plugin), two-band drawing, measurer warm-up, the 480-dpi
+  type scale in one constants file (default 20 sp, 17–36), top/bottom margins 12–16 dp, try line height
+  1.35 on hardware. Set the emulator AVD to 480 dpi. _Done when:_ property tests cover every rule; on the
+  LP3, first Page at any Place and font change ≤ 300 ms P90 warm on Pride and Prejudice; font round trip
+  still lands on the identical Page; no Page ends mid-word or on a heading (spot-check screenshots).
 - **N2 · Reading data store.** One `reading-data.json` in `filesDir`: Shelf + per-Book Place (ADR 0002)
   + per-Tool settings (font step, polarity, pace). Atomic writes (temp + rename, debounced),
   `schemaVersion`, `.bak` of the last good write used on parse failure, finished state (Progress 100%).
@@ -59,9 +68,8 @@ Ordered. Each item ends on its _done-when_.
   min without a turn); Page text in semantics; About screen (version, licenses incl. Literata OFL,
   copy-protected explainer + DRM-free sources, repo URL as text, the ADR 0003 no-network sentence).
   _Done when:_ verified with `mise run ui`.
-- **N6 · Performance bar.** Open, Chapter jump, and font change ≤ 300 ms P90 on LP3 hardware for a
-  190 KB Spine item at 44 sp with hyphenation; page turns do zero layout. Emulator = smoke test only.
-  If missed: windowed layout, new ADR.
+- **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
+  font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
 - **N7 · Tool Manager node** (v1.x): upload your own EPUBs, download/upload `reading-data.json`; the
   change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
 - **CI:** a job that builds from a fresh `git clone --recursive`, proving the public commit builds.

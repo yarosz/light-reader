@@ -7,6 +7,8 @@ phone to read more deliberately. One clear capability, nothing else.
   item, Place, Page, Progress) in code, UI copy, and docs; update it when a term is settled.
 - **Architecture decisions:** `docs/adr/`. Read the relevant ADR before changing Catalogues, how a Place
   is stored, network behaviour, layout vs navigation units, DRM handling, or typography.
+- **Tunable values and typesetting rules:** `DESIGN.md` (type scale for the LP3's 480 dpi, page-break
+  rules).
 - **State and next work:** `LEDGER.md`. Read it before starting; update it before ending a session.
 
 ## Layout
