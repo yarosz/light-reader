@@ -115,6 +115,8 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
   lp3_ran=1
+elif [ "$docs_only" = 0 ]; then
+  note "LP3: no Light Phone III attached (signoff/lp3 not posted)"
 fi
 
 note "run: $(( $(date +%s) - started ))s by \`scripts/ci.sh\` (local CI, agent session)"
