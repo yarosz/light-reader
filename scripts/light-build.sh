@@ -14,6 +14,12 @@ set -euo pipefail
 
 repo=$(git rev-parse --show-toplevel)
 sdk=$(cd "${1:-$repo/light-sdk}" && pwd)
+if [ -z "${1:-}" ]; then
+  # Default SDK = the pinned submodule: it must be checked out at the commit this Reader commit pins.
+  pinned=$(git -C "$repo" ls-tree HEAD light-sdk | awk '{print $3}')
+  [ "$(git -C "$sdk" rev-parse HEAD)" = "$pinned" ] \
+    || { echo "light-build: FAIL light-sdk is not at the pinned commit (git submodule update)" >&2; exit 1; }
+fi
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 gradle=(./gradlew --no-daemon --no-build-cache --console=plain -q)
@@ -24,9 +30,15 @@ git -C "$sdk" archive --format=tar HEAD | tar -x -C "$work/ws"
 if [ -n "${ANDROID_HOME:-}" ]; then echo "sdk.dir=$ANDROID_HOME" > "$work/ws/local.properties"; fi
 ref=$(git -C "$sdk" describe --tags --always --dirty 2>/dev/null || echo unknown)
 
-# 2. Warm the dependency cache with the SDK's template tool (network allowed only here).
-(cd "$work/ws" && "${gradle[@]}" :tool:assembleRelease -DlightSdk.unsigned=true)
-rm -rf "$work/ws/tool/build" "$work/ws/build"
+# 2. A dedicated Gradle home that only the SDK's template tool ever fills, like the image's
+#    /opt/gradle-cache. Never the shared ~/.gradle: other builds (e.g. unit tests) would pre-fill it
+#    and the offline check below would prove nothing. Kept per SDK commit so warm-ups are cheap.
+sdk_sha=$(git -C "$sdk" rev-parse HEAD)
+GRADLE_USER_HOME="${LIGHT_BUILD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/light-build}/$sdk_sha"
+export GRADLE_USER_HOME
+mkdir -p "$GRADLE_USER_HOME"
+(cd "$work/ws" && "${gradle[@]}" :tool:assembleRelease)          # same warm-up as builder/Dockerfile
+find "$work/ws" -path '*/build' -type d -prune -exec rm -rf {} +
 
 # 3. Our committed files only: untracked local files must not make the build pass.
 git clone --quiet --no-hardlinks "$repo" "$work/dev"
