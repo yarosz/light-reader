@@ -58,6 +58,9 @@ fail_ctx() {  # context, step description
 # Font round trip: page forward, cycle A+ A+ A- A-, require the identical Page and first words.
 # Every read must succeed and show a real footer ("p N/M"), and the first A+ must change the layout,
 # so an unresponsive screen or a lost device can never pass as "unchanged".
+# COUPLING: state() reads the reading view's footer ("p N/M") and the Page's text semantics. ADR 0007
+# replaces the "p N/M" label with Progress; the PR that removes it must update state() in the same change,
+# or signoff/emulator can never go green again.
 state() {
   local out
   out=$(ANDROID_SERIAL="$1" mise run ui 2>/dev/null \
@@ -124,7 +127,8 @@ else
 
   emu=$("$adb" devices | awk '/^emulator-[0-9]+\tdevice/{print $1; exit}')
   [ -n "$emu" ] || fail_ctx emulator "no emulator running (mise run emu)"
-  ./gradlew -q --console=plain :tool:assembleDebug || fail_ctx emulator "assembleDebug"
+  # The emulator talks to the LightOS emulator app, not LightOS: swap the server package for this build.
+  scripts/emulator-build.sh ./gradlew -q --console=plain :tool:assembleDebug || fail_ctx emulator "assembleDebug"
   install_and_launch "$emu" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx emulator "install"
   line=$(roundtrip "$emu") || fail_ctx emulator "font round trip: $line"
   note "emulator font round trip (identical Page): $line"
@@ -137,11 +141,8 @@ lp3_ran=0
 if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   lightos=$("$adb" -s "$lp3" shell dumpsys package com.lightos | grep -m1 -oE 'versionName=[^ ]+' | cut -d= -f2)
   android=$("$adb" -s "$lp3" shell getprop ro.build.version.release | tr -d '\r')
-  # A device build talks to LightOS itself; restore the emulator setting whatever happens.
-  trap 'git checkout --quiet -- tool/lighttool.toml' EXIT
-  sed -i.bak 's/^serverPackage = .*/serverPackage = "com.lightos"/' tool/lighttool.toml && rm -f tool/lighttool.toml.bak
+  # The committed lighttool.toml already targets LightOS on the phone.
   ./gradlew -q --console=plain :tool:assembleDebug || fail_ctx lp3 "assembleDebug (device)"
-  git checkout --quiet -- tool/lighttool.toml
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   install_and_launch "$lp3" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx lp3 "install"
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"

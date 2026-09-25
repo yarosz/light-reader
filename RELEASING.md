@@ -40,8 +40,8 @@ Release PR (version bump + notes summarising every PR since the last tag):
 - [ ] `signoff/lp3` green on the release commit: `mise run ci` with a Light Phone III attached
 - [ ] Upgrade path: install this build over the previous release with a populated Shelf; Shelf and Places
       survive
-- [ ] Minified release runs: `./gradlew :tool:assembleRelease`, install it (dev-signed, emulator only),
-      read a few pages and change the font
+- [ ] Minified release runs: `scripts/emulator-build.sh ./gradlew :tool:assembleRelease`, install it
+      (dev-signed, emulator only), read a few pages and change the font
 - [ ] `mise run light-build` against Light's newest SDK passes (the weekly `sdk-main` job, or run it by
       hand)
 - [ ] Public-content check: nothing personal in the diff, notes, or comments
