@@ -3,6 +3,7 @@ package com.yarosz.reader
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /** Guards the committed tool metadata that Light builds releases from. */
 class ToolMetadataTest {
@@ -17,7 +18,8 @@ class ToolMetadataTest {
     fun `committed server package is LightOS on the phone, not the emulator`() {
         // Light's builder uses this value as-is. Emulator builds swap it at build time instead
         // (scripts/emulator-build.sh), so the committed file must never point at the emulator.
-        assertEquals("com.lightos", value("serverPackage"))
+        // Exact line: the wrapper's sed and light-build.sh's grep match this form verbatim.
+        assertTrue("serverPackage = \"com.lightos\"" in File("lighttool.toml").readLines())
     }
 
     @Test

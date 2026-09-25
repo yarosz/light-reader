@@ -48,6 +48,10 @@ You need JDK 17 and the Android SDK (API 36). With [mise](https://mise.jdx.dev),
 both, and `mise tasks` lists the emulator and install commands. To run it, follow Light's
 [emulator setup](https://github.com/lightphone/light-sdk/tree/main/docs/system_app).
 
+A plain `assembleDebug` builds for LightOS on a real Light Phone III. For the emulator, build with
+`mise run tool` (builds, installs, and launches) or wrap the Gradle command yourself:
+`scripts/emulator-build.sh ./gradlew :tool:assembleDebug`.
+
 ## Design
 
 - `CONTEXT.md`: the vocabulary (Book, Shelf, Catalogue, Chapter, Place, Progress).
