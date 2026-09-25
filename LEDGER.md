@@ -1,6 +1,6 @@
 # Ledger
 
-STATUS: N1 done; next is N2 (reading data store)
+STATUS: N1 and the release path done; next is P (Paginator v2), then N2
 LAST SESSION: 2026-09-24
 
 ## v1 user flow
@@ -23,6 +23,11 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | 1 | Pagination spike | property tests (6 × 3,000 cases) + EPUB parser tests (7); font round trip lands on the identical Page |
 | 2 | Design settled | `CONTEXT.md`, ADRs 0001–0006 (4 grilling rounds with a product/UX advisor) |
 | N1 | This repo | SDK submodule pinned to `v0.1.2`; 13/13 tests; Light's plugin accepts `res/font` (Literata ships in the APK); emulator: Literata renders with true italics; font round trip 3/41 → 4/62 → 5/87 → 3/41 |
+| R1 | Minified release runs | `assembleRelease` (R8 + resource shrinking), dev-signed, on the emulator: fonts survive (paths shortened to `res/<xx>.ttf`), paging works, font round trip 5/41 → 7/62 → 9/87 → 5/41 |
+| R2 | Light-builder simulation | `mise run light-build`: `lightbuilder prepare` on a clone of the committed HEAD, then an offline, unsigned `assembleRelease` against the pinned SDK in a dedicated Gradle home |
+| R3 | CI gate (#1) | Actions `build` (unit tests + builder simulation on a fresh runner) required on every PR; weekly `sdk-main` job; `mise run ci` posts `signoff/emulator` and `signoff/lp3` from a font round trip on each device |
+| R4 | Release docs (#2) | `RELEASING.md`, `SECURITY.md`, `CONTRIBUTING.md`, issue template, LP3 screenshots in `docs/screenshots/` |
+| #3 | Phone builds bind to LightOS (#4) | `serverPackage = "com.lightos"` committed (Light builds releases from it); `scripts/emulator-build.sh` swaps in the emulator's package for emulator builds only; a unit test and `light-build.sh` guard the committed line; `signoff/lp3` green on the fix |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
@@ -30,8 +35,8 @@ untrimmed line boxes (`LineHeightStyle`).
 
 ## Hardware (2026-09-24, LP3 TLP301, Android 14, LightOS 582)
 
-- The loop works on a real phone over adb (`ANDROID_SERIAL=<serial> mise run ui …`); a device build
-  needs `serverPackage = "com.lightos"` in `tool/lighttool.toml`. Font round trip 4/57 → 4/85 → 6/122
+- The loop works on a real phone over adb (`ANDROID_SERIAL=<serial> mise run ui …`; `mise run tool-lp3`
+  installs); a plain build already targets the phone (see #3 above). Font round trip 4/57 → 4/85 → 6/122
   → 4/57: identical Page.
 - **Density is 480 dpi** (panel ~419 ppi). The emulator AVD was 420: set it to 480 to match.
 - Akkurat ships true italics on retail phones (`/system/fonts/AkkuratLLTT-*Italic.ttf`).
@@ -45,27 +50,9 @@ untrimmed line boxes (`LineHeightStyle`).
 
 Ordered. Each item ends on its _done-when_.
 
-- **R · Release path (advisor round 6), in this order:**
-  1. ~~Minified-release smoke test~~ **done 2026-09-24**: `assembleRelease` (R8 + resource shrinking)
-     dev-signed, on the emulator: fonts survive (paths shortened to `res/<xx>.ttf`, sizes match), paging
-     works, font round trip 5/41 → 7/62 → 9/87 → 5/41. Screenshot shows a Page ending "waist-" (a
-     Paginator v2 test case).
-  2. `mise run light-build`: Light's `lightbuilder prepare` on a fresh clone of a public commit, then
-     unsigned `assembleRelease` against a named SDK ref (simulated once by hand: passes).
-  3. CI (GitHub Actions, time-boxed to half a day): unit tests + builder simulation against the pinned
-     tag on every push/tag (blocking); SDK `main` on a schedule (non-blocking). If the simulation fights
-     the runner, ship unit tests only and keep the mise task.
-  4. `RELEASING.md` last: versioning (`versionName` semver, `versionCode` +1, tag `vX.Y.Z`, notes-only
-     GitHub Release; bump the SDK pin to the newest tag each release), no self-published APKs (the dev
-     key is public), rollback = new release with higher `versionCode` carrying old code, pre-release
-     checklist (unit tests, emulator loop, LP3 loop, builder simulation, minified release runs,
-     upgrade-path test, history scan), sentinel check of Light's first signed artifact on the LP3
-     (package/version via aapt, hardware loop) before telling testers, the one-time data wipe when
-     moving from dev-signed to Light-signed builds.
-  Also: hardware screenshots into the repo while the LP3 is on adb; `SECURITY.md`, `CONTRIBUTING.md`
-  (platform rules; DRM-circumvention PRs declined per ADR 0005), issue template (LightOS version, book
-  source, title, steps). `REVIEW.md` for Light's reviewers before v1. Ask in #204: which SDK commit the
-  builder uses, and whether Tool Manager transfer is live on retail. **Tool id decided:
+- **R · Release path, remaining.** R1–R4 and #3 are done (above). Left: `REVIEW.md` for Light's
+  reviewers before v1; ask in #204 which SDK commit the builder uses and whether Tool Manager transfer is
+  live on retail; at the first Light-signed build, the sentinel check in `RELEASING.md`. **Tool id:
   `com.yarosz.reader`**, permanent from first publish.
 - **P · Paginator v2 (ADR 0007, `DESIGN.md`).** Pure core first: block-boundary windows (prefer
   Chapter starts, split > ~20 K chars); pack outward from the Place; a Page = up to two bands; page-end
@@ -100,16 +87,16 @@ Ordered. Each item ends on its _done-when_.
   finished. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
-  tap zones (back 30% / chrome 25% / forward 45%); five font steps 20/24.5/30/36/44 sp; margins 20 dp
-  (one constants file); one-line first-run hint; keep the screen on while reading (release after 10
-  min without a turn); Page text in semantics; About screen (version, licenses incl. Literata OFL,
-  copy-protected explainer + DRM-free sources, repo URL as text, the ADR 0003 no-network sentence).
+  tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`
+  (17/20/24.5/30/36 sp, default 20; one constants file); one-line first-run hint; keep the screen on
+  while reading (release after 10 min without a turn); Page text in semantics; About screen (version,
+  licenses incl. Literata OFL, copy-protected explainer + DRM-free sources, repo URL as text, the
+  ADR 0003 no-network sentence).
   _Done when:_ verified with `mise run ui`.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
 - **N7 · Tool Manager node** (v1.x): upload your own EPUBs, download/upload `reading-data.json`; the
   change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
-- **CI:** a job that builds from a fresh `git clone --recursive`, proving the public commit builds.
 
 **v1** = N1–N6. **v1.x:** N7, images (inverted line art), the Standard Ebooks full catalogue if granted,
 a Light SDK discussion asking for opt-in cleartext on user-entered LAN Catalogues. **v2:** offline
