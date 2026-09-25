@@ -68,9 +68,6 @@ import kotlinx.coroutines.withContext
 private const val BOOK_URL = "https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/" +
     "john-tenniel/downloads/lewis-carroll_alices-adventures-in-wonderland_john-tenniel.epub?source=download"
 
-/** Reading sizes in sp. Light's own paragraph style is 24.5sp. */
-private val FONT_SIZES = listOf(20f, 24.5f, 30f, 36f)
-
 /** Book text face (ADR 0006); chrome keeps Light's typeface. */
 private val Literata = FontFamily(
     Font(R.font.literata_regular, FontWeight.Normal, FontStyle.Normal),
@@ -88,7 +85,7 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
 
     /** The top of the page being read. Relayouts never rewrite it, so font changes can't drift. */
     val position = MutableStateFlow(Position(0, 0))
-    val fontStep = MutableStateFlow(1)
+    val fontStep = MutableStateFlow(DEFAULT_FONT_STEP)
 
     /** Pages of the current chapter at the current size, published by the UI after layout. */
     var pages: List<Page> = emptyList()
@@ -165,7 +162,7 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
                 Modifier
                     .fillMaxSize()
                     .background(LightThemeTokens.colors.background)
-                    .padding(horizontal = 28.dp, vertical = 20.dp)
+                    .padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)
             ) {
                 book?.let { Reader(it) } ?: LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
             }
@@ -183,7 +180,7 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
             fontFamily = Literata,
             color = colors.content,
             fontSize = fontSize.sp,
-            lineHeight = (fontSize * 1.4f).sp,
+            lineHeight = (fontSize * LINE_HEIGHT).sp,
             // Centre each glyph in its line box, untrimmed, so ink never crosses a line boundary:
             // pages are clipped bands on line boundaries, and Literata's descenders otherwise
             // leak a sliver of the previous page's last line onto the next.
@@ -204,7 +201,17 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
                 measurer.measure(text, style, constraints = Constraints(maxWidth = widthPx))
             }
             val pages = remember(layout, pageHeightPx) {
-                val lines = List(layout.lineCount) { LineMetrics(layout.getLineStart(it), layout.getLineTop(it), layout.getLineBottom(it)) }
+                val lines = List(layout.lineCount) { i ->
+                    val start = layout.getLineStart(i)
+                    val next = if (i < layout.lineCount - 1) layout.getLineStart(i + 1) else chapter.text.length
+                    LineMetrics(
+                        start = start,
+                        top = layout.getLineTop(i),
+                        bottom = layout.getLineBottom(i),
+                        endsAtBreak = endsAtBreak(chapter.text, next),
+                        heading = chapter.kindAt(start) == BlockKind.Heading,
+                    )
+                }
                 paginate(lines, text.length, pageHeightPx)
             }
             SideEffect { viewModel.pages = pages }

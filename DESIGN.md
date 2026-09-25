@@ -18,9 +18,14 @@ about half an em per character. Sizes stay in **sp** so the system large-text se
 
 At 20 sp a Page holds about 13 lines (40–60 words of dialogue-heavy text, a turn every 10–15 s at
 230 wpm), so vertical space is precious: side margins 20 dp, top and bottom margins 12–16 dp, no footer
-while reading. Line height: 1.4 today; **try 1.35 on hardware** with `LineHeightStyle(Center,
-Trim.None)` (the trim setting is what stops descenders leaking across Pages) and keep 1.4 only if 1.35
-leaks. All of these live in one constants file.
+while reading. Line height 1.35 with `LineHeightStyle(Center, Trim.None)` (the trim setting is what
+stops descenders leaking across Pages); verified leak-free on the LP3, where 1.4 was the fallback. All
+of these live in `Typesetting.kt`.
+
+Rotation follows the system auto-rotate setting (no orientation lock). Landscape is 1240×1008 px:
+longer lines, fewer per Page. Rotating is a relayout at the new width and keeps the Place, like a font
+change. Revisit if readers report the Page flipping mid-read when lying on their side: `orientation =
+"portrait"` in `tool/lighttool.toml` is the fix, deliberately not set today.
 
 ## Page-break rules (pure, property-tested)
 
