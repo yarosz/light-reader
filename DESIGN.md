@@ -22,12 +22,15 @@ while reading. Line height 1.35 with `LineHeightStyle(Center, Trim.None)` (the t
 stops descenders leaking across Pages); verified leak-free on the LP3, where 1.4 was the fallback. All
 of these live in `Typesetting.kt`.
 
-Reader sets no orientation lock; the system auto-rotate toggle is the lock. A portrait lock
-(`orientation = "portrait"` in `tool/lighttool.toml`) makes Android letterbox Reader whenever the app
-area is shorter than it is wide, and the LP3 has 5 dp of margin (365 × 360 dp), so any new inset would
-pillarbox every reader. Rotating keeps the Place and relays out like a font change; landscape
-(1240×1008 px) gives longer but fewer lines. Revisit if Light allows `orientation = "nosensor"` (natural
-orientation without the fixed-orientation letterbox) or a runtime orientation API.
+Reader sets no orientation lock, so it follows the system auto-rotate setting, which LightOS doesn't
+let users change (no rotation control in LightOS, and quick settings aren't reachable from its
+launcher). Reading lying on one side can therefore flip the Page, and the reader can't turn that off.
+We accept that over the alternative: a portrait lock (`orientation = "portrait"` in
+`tool/lighttool.toml`) makes Android letterbox Reader whenever the app area is shorter than it is
+wide, and the LP3 has 5 dp of margin (365 × 360 dp), so any new inset would pillarbox every reader.
+Rotating keeps the Place and relays out like a font change; landscape (1240×1008 px) gives longer but
+fewer lines. Revisit if Light allows `orientation = "nosensor"` (natural orientation without the
+fixed-orientation letterbox) or a runtime orientation API, or if readers report flips.
 
 ## Page-break rules (pure, property-tested)
 
