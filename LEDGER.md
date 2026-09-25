@@ -99,7 +99,8 @@ Ordered. Each item ends on its _done-when_.
   change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
 
 **v1** = N1–N6. **v1.x:** N7, images (inverted line art), the Standard Ebooks full catalogue if granted,
-a Light SDK discussion asking for opt-in cleartext on user-entered LAN Catalogues. **v2:** offline
+SDK asks to Light: opt-in cleartext on user-entered LAN Catalogues, and `orientation = "nosensor"` (pin
+the natural orientation without the portrait lock's letterbox; DESIGN.md). **v2:** offline
 tap-a-word dictionary. **Deferred:** full TalkBack audit (first check whether LightOS ships it),
 Gutenberg language filtering. **Not planned unless asked:** sync, bookmarks, highlights, covers on
 lists, Shelf search/sort options, per-Book font, reading statistics.

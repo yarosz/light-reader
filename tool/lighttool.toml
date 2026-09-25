@@ -5,7 +5,6 @@ versionCode = 1
 versionName = "0.1.0"
 permissions = ["android.permission.INTERNET"]
 capabilities = []
-orientation = "portrait"
 # LightOS on a real Light Phone III. Light builds releases from this committed value, so it must stay
 # "com.lightos". Emulator builds substitute the emulator's package at build time (scripts/emulator-build.sh).
 serverPackage = "com.lightos"
