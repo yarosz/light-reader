@@ -15,9 +15,9 @@ description = "Boot the LightPhone3 AVD (writable system, required every boot)"
 run = "emulator -avd LightPhone3 -writable-system -no-snapshot -no-boot-anim"
 
 [tasks.tool]
-description = "Build, install, and launch the :tool module on the running emulator/device"
+description = "Build (for the emulator's LightOS app), install, and launch on the running emulator"
 run = [
-  "./gradlew :tool:assembleDebug",
+  "scripts/emulator-build.sh ./gradlew :tool:assembleDebug",
   "adb install -r tool/build/outputs/apk/debug/tool-debug.apk",
   "adb shell monkey -p com.yarosz.reader 1",
 ]

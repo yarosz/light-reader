@@ -24,6 +24,9 @@ phone to read more deliberately. One clear capability, nothing else.
   (`LightSdkPlugin.kt`, `LightToolMetadata.kt`). Reach files through the screen's `filesDir`.
 - Reflection is blocked, including `.javaClass`. Native code (NDK/JNI) is disallowed by Light policy.
 - The plugin generates the manifest from `tool/lighttool.toml`; cleartext HTTP is therefore off.
+- `serverPackage` in `tool/lighttool.toml` stays `"com.lightos"` (LightOS on the phone): Light builds
+  releases from the committed file. Emulator builds swap it at build time via `scripts/emulator-build.sh`
+  (`mise run tool` and `mise run ci` already do). A unit test and `light-build.sh` enforce this.
 - Font and other Android resources under `tool/src/main/res/` are accepted.
 
 ## How changes land
@@ -31,12 +34,15 @@ phone to read more deliberately. One clear capability, nothing else.
 Every change arrives as a pull request. Required to merge: the GitHub Actions `build` check (unit tests
 + the Light-builder simulation on a clean Linux machine) and `signoff/emulator`. Only `mise run ci`
 posts `signoff/*` statuses; never run `gh signoff` by hand. It posts `signoff/lp3` too when a Light
-Phone III is attached, and releases require a green `signoff/lp3`. Every PR also needs
-review before merge: a product review for changes to user-facing behaviour, copy, or docs, and a code
-review for code changes (a PR can need both). Merge only once each required review approves on the PR.
-PRs touching the reading view, Shelf, or copy attach one or two `mise run ui shot` screenshots.
-Re-request review after changes. Squash merges; the PR title is the commit subject. Public evidence (PR comments, statuses) carries generic facts only: no serials, hostnames, or
-local paths.
+Phone III is attached, and releases require a green `signoff/lp3`.
+
+Every PR also needs review before merge: a product review for changes to user-facing behaviour, copy,
+or docs, and a code review for code changes (a PR can need both). Merge only once each required review
+approves on the PR. PRs touching the reading view, Shelf, or copy attach one or two `mise run ui shot`
+screenshots. Re-request review after changes. Squash merges; the PR title is the commit subject.
+
+Public evidence (PR comments, statuses) carries generic facts only: no serials, hostnames, or local
+paths.
 
 ## Verification loop
 

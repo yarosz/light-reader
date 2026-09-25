@@ -43,6 +43,9 @@ find "$work/ws" -path '*/build' -type d -prune -exec rm -rf {} +
 # 3. Our committed files only: untracked local files must not make the build pass.
 git clone --quiet --no-hardlinks "$repo" "$work/dev"
 git -C "$work/dev" checkout --quiet "$(git -C "$repo" rev-parse HEAD)"
+# Light builds releases from this exact file: it must bind to LightOS on the phone, never the emulator.
+grep -qx 'serverPackage = "com.lightos"' "$work/dev/tool/lighttool.toml" \
+  || { echo "light-build: FAIL tool/lighttool.toml serverPackage must be \"com.lightos\"" >&2; exit 1; }
 mkdir -p "$work/out"
 if ! (cd "$sdk/builder" && python3 -m lightbuilder prepare --dev-repo "$work/dev" \
       --workspace-tool "$work/ws/tool" --tool-path tool --output-dir "$work/out"); then
