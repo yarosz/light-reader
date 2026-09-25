@@ -15,7 +15,7 @@ labels: bug
 **Details**
 - LightOS version (Settings → About):
 - Reader version:
-- Where the Book came from (Gutenberg, Standard Ebooks, your own catalogue, file transfer):
+- Where the Book came from (Gutenberg, Standard Ebooks, your own catalogue):
 - The Book's title (and edition, if you know it):
 - Text size step, Light or Dark:
 

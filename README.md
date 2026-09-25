@@ -6,11 +6,14 @@ Books from Project Gutenberg and Standard Ebooks are built in, or add your own c
 Tap or press a volume key to turn the page. Your place is kept, at any text size.
 Works offline, with no account and nothing tracked. Copy-protected books from Kindle, Apple Books or Libby won't open.
 
-> **Status:** early development. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk). Not yet signed or listed by Light.
+> **Status: early development (0.1.0).** Today's build opens one bundled test book (Alice's Adventures in
+> Wonderland from Standard Ebooks), turns pages by tap or volume key, and keeps your place across text
+> sizes. The Shelf, Catalogues, table of contents and saved reading position are being built next. Not yet
+> signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>
   <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: the heading 'I: Down the Rabbit-Hole' above the first paragraph, white serif text on black">
-  <img src="docs/screenshots/italics.png" width="30%" alt="A page with an italic word, 'very', set in Literata's true italic">
+  <img src="docs/screenshots/italics.png" width="30%" alt="A page beginning 'Down, down, down.' with the word 'never' set in Literata's true italic">
   <img src="docs/screenshots/caption.png" width="30%" alt="An illustration's description shown as a grey italic caption, followed by the story text">
 </p>
 
@@ -22,9 +25,10 @@ descriptions for now.</sub>
 [Standard Ebooks](https://standardebooks.org), [Project Gutenberg](https://www.gutenberg.org),
 Tor Publishing, Kobo's DRM-free titles, Humble Bundle, Smashwords, and most independent presses.
 
-## Add your own catalogue
+## Add your own catalogue (planned)
 
-Any OPDS catalogue works (Calibre's content server, calibre-web, Kavita). It must be served over
+Catalogues arrive with the Shelf; this is how they are designed to work. Any OPDS catalogue will work
+(Calibre's content server, calibre-web, Kavita). It must be served over
 **https** with a certificate your phone already trusts, which means a public one. Routes that work:
 Tailscale Funnel, Cloudflare Tunnel, or a reverse proxy with a real domain (such as Caddy). All three put
 your server on the internet, so use a strong password and prefer calibre-web's own login.

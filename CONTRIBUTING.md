@@ -27,7 +27,8 @@ Light's build plugin enforces these, and Light builds every release from source:
 
 - Keep them small and focused; the title becomes the commit subject.
 - `build` (GitHub Actions) must be green. Maintainers run the local checks (`mise run ci`: emulator, and
-  a real Light Phone III for layout changes) before merging.
+  a real Light Phone III for layout changes) before merging. For a pull request from a fork, a maintainer
+  pushes your branch to this repository to run them, since the checks attest to commits on this repo.
 - New or changed terms go in `CONTEXT.md`; hard-to-reverse decisions get an ADR.
 
 By contributing, you agree your work is released under the MIT license.

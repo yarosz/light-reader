@@ -22,9 +22,9 @@ tagged commit on `main`, not an APK we build.
 Local builds are signed with the SDK's shared development key, which is public. Anyone could sign an
 "update" with it that Android would accept over ours. Only Light-signed builds are distributed.
 
-A consequence for testers: a Light-signed build has a different signature from any dev-signed build, so
-moving from one to the other needs an uninstall first, which deletes the Shelf and every Place. Tell
-testers before their first Light-signed build.
+Testers only ever get Light-signed builds. Anyone who has run a dev-signed build (maintainers, or people
+who built from source) needs to uninstall it before installing a Light-signed one, because the signatures
+differ; uninstalling deletes the Shelf and every Place.
 
 ## Rollback
 
@@ -46,7 +46,9 @@ Release PR (version bump + notes summarising every PR since the last tag):
       hand)
 - [ ] Public-content check: nothing personal in the diff, notes, or comments
 
-After merge and tag:
+After merge and tag (these follow the plan Light announced in
+[discussion #204](https://github.com/orgs/lightphone/discussions/204); the portal isn't live yet and the
+steps may change):
 
 - [ ] Submit the tagged commit hash in Light's developer portal
 - [ ] When Light's signed build is ready: download it, confirm package id, `versionName` and
