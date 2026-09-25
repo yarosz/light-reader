@@ -26,8 +26,16 @@ run = [
 description = "Rebuild + reinstall the LightOS emulator system app (keeps uid 1000)"
 run = [
   "./gradlew :sdk:emulator:assembleDebug",
-  "adb install -r sdk/emulator/build/outputs/apk/debug/emulator-debug.apk",
+  "adb install -r light-sdk/sdk/emulator/build/outputs/apk/debug/emulator-debug.apk",
 ]
+
+[tasks.ci]
+description = "Local CI: tests, Light-builder simulation, emulator (+ LP3 if attached) round trip; posts signoff statuses"
+run = "scripts/ci.sh"
+
+[tasks.light-build]
+description = "Build the committed HEAD the way Light's release builder does (optional arg: SDK dir)"
+run = "scripts/light-build.sh"
 
 [settings]
 # Only install what this repo pins; do not auto-install tools from parent directories
