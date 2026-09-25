@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Measure layout latency on a device against ADR 0007's bar (first Page and font change <= 300 ms P90,
-# warm). Opens the EPUB's largest Chapter, then times N warm opens (force-stop + start) and N font
-# changes from the app's "ReaderPerf" logcat lines.
+# Measure layout (measure + paginate) ms on a device: text measure, line metrics and pagination only,
+# not the AnnotatedString build, EPUB parse or first frame. ADR 0007's bar (first Page and font change
+# <= 300 ms P90) is end-to-end; this is the layout part of it. Opens the EPUB's largest Chapter, then
+# times N opens (fresh process each: force-stop + start) and N font changes from the app's "ReaderPerf"
+# logcat lines.
 #
 #   scripts/perf.sh [-s serial] [-n runs] <epub path or URL>
 #
 # The serial defaults to the attached non-emulator device. Debuggable builds only: the EPUB and the
 # start Chapter go into the app's files through `run-as`. The app's own book and the device's stay-awake
-# setting are restored on exit.
+# setting are restored on exit. If that restore fails (say the device drops off), files/dev-start and the
+# perf book can stay behind, with the real book kept in files/alice.epub.perf; the next successful run
+# cleans both.
 set -euo pipefail
 
 serial=""
@@ -22,11 +26,16 @@ done
 shift $((OPTIND - 1))
 [ $# -eq 1 ] || { echo "usage: scripts/perf.sh [-s serial] [-n runs] <epub path or URL>" >&2; exit 2; }
 src=$1
+die() { echo "perf: $1" >&2; exit 1; }
+[[ $runs =~ ^[1-9][0-9]*$ ]] || die "-n wants a positive integer, got '$runs'"
+case "$src" in
+  http://*|https://*|/*) ;;
+  *) src=$PWD/$src ;;
+esac
 
 cd "$(git rev-parse --show-toplevel)"
 adb="${ANDROID_HOME:-$HOME/Library/Android/sdk}/platform-tools/adb"
 pkg=com.yarosz.reader
-die() { echo "perf: $1" >&2; exit 1; }
 
 if [ -z "$serial" ]; then
   serial=$("$adb" devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/{print $1; exit}')
@@ -36,6 +45,7 @@ export ANDROID_SERIAL=$serial
 a() { "$adb" -s "$serial" "$@"; }
 
 work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
 epub=$work/book.epub
 case "$src" in
   http://*|https://*) curl -fsSL -o "$epub" "$src" || die "download failed" ;;
@@ -57,12 +67,18 @@ a install -r tool/build/outputs/apk/debug/tool-debug.apk >/dev/null
 activity=$(a shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $pkg | tail -1 | tr -d '\r')
 
 stay_on=$(a shell settings get global stay_on_while_plugged_in | tr -d '\r')
-a shell run-as $pkg sh -c "'[ -f files/alice.epub ] && cp files/alice.epub files/alice.epub.perf || true'"
+a shell run-as $pkg sh -c "'[ -f files/alice.epub.perf ] || [ ! -f files/alice.epub ] || cp files/alice.epub files/alice.epub.perf'"
 restore() {
-  a shell run-as $pkg sh -c "'rm -f files/dev-start; [ -f files/alice.epub.perf ] && mv files/alice.epub.perf files/alice.epub || rm -f files/alice.epub'" || true
-  a shell settings put global stay_on_while_plugged_in "$stay_on" || true
-  a shell am force-stop $pkg || true
-  a shell am start -n "$activity" >/dev/null || true
+  {
+    a shell run-as $pkg sh -c "'rm -f files/dev-start; [ -f files/alice.epub.perf ] && mv files/alice.epub.perf files/alice.epub || rm -f files/alice.epub'" || true
+    if [ "$stay_on" = null ]; then
+      a shell settings delete global stay_on_while_plugged_in >/dev/null || true
+    else
+      a shell settings put global stay_on_while_plugged_in "$stay_on" || true
+    fi
+    a shell am force-stop $pkg || true
+    a shell am start -n "$activity" >/dev/null || true
+  } 2>/dev/null
   rm -rf "$work"
 }
 trap restore EXIT
@@ -85,7 +101,13 @@ await() {  # pattern -> prints the first ReaderPerf line matching it, within 60 
   die "no ReaderPerf line matching '$1' within 60 s"
 }
 field() { grep -oE "$1=[^ ]+" | head -1 | cut -d= -f2; }
-reader_on_top() { a shell dumpsys activity activities | grep topResumedActivity | grep -q "$pkg"; }
+# The focused window, not the top activity: an ANR dialog ("Application Not Responding: <pkg>") or the
+# notification shade takes focus while Reader stays the top resumed activity.
+reader_on_top() {
+  local focus
+  focus=$(a shell dumpsys window | grep -m1 mCurrentFocus) || true
+  [[ $focus == *"$pkg/"* ]]
+}
 
 open_reader
 book=$(await ' book ')
@@ -123,7 +145,7 @@ while [ "$i" -lt "$runs" ]; do
 done
 
 stats() {  # reason -> one row; P90 is nearest-rank
-  grep "reason=$1 " "$samples" | awk -v r="$1" '
+  grep "reason=$1 " "$samples" | LC_ALL=C awk -v r="$1" '
     function f(k,   i, s) { i = index($0, k "="); s = substr($0, i + length(k) + 1); sub(/ .*/, "", s); return s }
     { n++; m[n] = f("measureMs") + 0; p[n] = f("paginateMs") + 0; t[n] = m[n] + p[n]; c[f("chars")] = 1 }
     function sort(x,   i, j, v) { for (i = 2; i <= n; i++) { v = x[i]; for (j = i - 1; j > 0 && x[j] > v; j--) x[j + 1] = x[j]; x[j + 1] = v } }
@@ -136,7 +158,7 @@ stats() {  # reason -> one row; P90 is nearest-rank
 }
 model=$(a shell getprop ro.product.model | tr -d '\r')
 echo
-echo "Layout latency on $model, ms (bar: 300 P90)"
+echo "Layout (measure + paginate) ms on $model; ADR 0007 bar 300 P90 is end-to-end, this is the layout part"
 printf "%-6s %3s %9s  %23s  %23s  %23s\n" "" "n" "chars" "total P50/P90/max" "measure P50/P90/max" "paginate P50/P90/max"
 stats open
 stats font
