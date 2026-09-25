@@ -9,8 +9,11 @@ data class LineMetrics(val start: Int, val top: Float, val bottom: Float, val en
 /** A page is the half-open text range [start, end) plus the pixel band it occupies in the layout. */
 data class Page(val start: Int, val end: Int, val top: Float, val bottom: Float)
 
+/** Below this fill a Page ignores the page-break rules and breaks greedily (DESIGN.md). */
+const val MIN_PAGE_FILL = 0.7f
+
 /**
- * Whether a line followed by one starting at [nextLineStart] ends at whitespace or a paragraph end.
+ * Whether a line followed by one starting at [nextLineStart] (> 0) ends at whitespace or a paragraph end.
  * Judged on the source text, so soft-hyphen ("trou-/ble") and compound ("well-/known") breaks don't count.
  */
 fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =

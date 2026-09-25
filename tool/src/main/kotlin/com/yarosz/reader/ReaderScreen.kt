@@ -212,7 +212,7 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
                         heading = chapter.kindAt(start) == BlockKind.Heading,
                     )
                 }
-                paginate(lines, text.length, pageHeightPx)
+                paginate(lines, chapter.text.length, pageHeightPx)
             }
             SideEffect { viewModel.pages = pages }
             val index = pageIndexFor(pages, position.offset)
