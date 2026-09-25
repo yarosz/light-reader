@@ -8,6 +8,15 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
 
 > **Status:** early development. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk). Not yet signed or listed by Light.
 
+<p>
+  <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: the heading 'I: Down the Rabbit-Hole' above the first paragraph, white serif text on black">
+  <img src="docs/screenshots/italics.png" width="30%" alt="A page with an italic word, 'very', set in Literata's true italic">
+  <img src="docs/screenshots/caption.png" width="30%" alt="An illustration's description shown as a grey italic caption, followed by the story text">
+</p>
+
+<sub>On a Light Phone III, from an early build. Book text is set in Literata; illustrations appear as their
+descriptions for now.</sub>
+
 ## Where to find DRM-free books
 
 [Standard Ebooks](https://standardebooks.org), [Project Gutenberg](https://www.gutenberg.org),
