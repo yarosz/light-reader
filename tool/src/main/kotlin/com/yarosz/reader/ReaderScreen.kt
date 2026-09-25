@@ -103,9 +103,11 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
         viewModelScope.launch {
             runCatching { withContext(Dispatchers.IO) { parseEpub(downloadIfMissing()) to devStartChapter() } }
                 .onSuccess { (opened, start) ->
-                    val largest = opened.chapters.indices.maxBy { opened.chapters[it].text.length }
-                    Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
-                        "largestChars=${opened.chapters[largest].text.length}")
+                    val largest = opened.chapters.indices.maxByOrNull { opened.chapters[it].text.length }
+                    if (largest != null) {
+                        Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
+                            "largestChars=${opened.chapters[largest].text.length}")
+                    }
                     start?.let { position.value = Position(it.coerceIn(opened.chapters.indices), 0) }
                     book.value = opened
                 }
@@ -126,10 +128,12 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
 
     /**
      * Dev hook for `scripts/perf.sh`: a chapter index in filesDir/dev-start opens the book there. Only
-     * `adb shell run-as` can write that file, and run-as works on debuggable builds only.
+     * `adb shell run-as` can write that file, and run-as works on debuggable builds only. A read error
+     * opens the book normally.
      */
-    private fun devStartChapter(): Int? =
+    private fun devStartChapter(): Int? = runCatching {
         File(filesDir, "dev-start").takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull()
+    }.getOrNull()
 
     /** One logcat line per layout pass: what it laid out, why, and how long measure and paginate took. */
     fun logLayoutPass(chapter: Int, fontStep: Int, chars: Int, measureNs: Long, paginateNs: Long) {
