@@ -31,9 +31,11 @@ phone to read more deliberately. One clear capability, nothing else.
 Every change arrives as a pull request. Required to merge: the GitHub Actions `build` check (unit tests
 + the Light-builder simulation on a clean Linux machine) and `signoff/emulator`. Only `mise run ci`
 posts `signoff/*` statuses; never run `gh signoff` by hand. It posts `signoff/lp3` too when a Light
-Phone III is attached, and releases require a green `signoff/lp3`. Code PRs get a review from a fresh
-reviewer agent before merge; docs-only PRs merge on green. Squash merges; the PR title is the commit
-subject. Public evidence (PR comments, statuses) carries generic facts only: no serials, hostnames, or
+Phone III is attached, and releases require a green `signoff/lp3`. Every PR also needs
+review before merge: a product review for changes to user-facing behaviour, copy, or docs, and a code
+review for code changes (a PR can need both). Merge only once each required review approves on the PR.
+PRs touching the reading view, Shelf, or copy attach one or two `mise run ui shot` screenshots.
+Re-request review after changes. Squash merges; the PR title is the commit subject. Public evidence (PR comments, statuses) carries generic facts only: no serials, hostnames, or
 local paths.
 
 ## Verification loop
