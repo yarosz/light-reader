@@ -22,10 +22,10 @@ while reading. Line height 1.35 with `LineHeightStyle(Center, Trim.None)` (the t
 stops descenders leaking across Pages); verified leak-free on the LP3, where 1.4 was the fallback. All
 of these live in `Typesetting.kt`.
 
-Rotation follows the system auto-rotate setting (no orientation lock). Landscape is 1240×1008 px:
-longer lines, fewer per Page. Rotating is a relayout at the new width and keeps the Place, like a font
-change. Revisit if readers report the Page flipping mid-read when lying on their side: `orientation =
-"portrait"` in `tool/lighttool.toml` is the fix, deliberately not set today.
+Reader is locked to portrait (`orientation = "portrait"` in `tool/lighttool.toml`), so reading lying on
+one side never flips the Page mid-read. Landscape (1240×1008 px) would give longer but fewer lines, about
+the same words per Page. Revisit if Light adds a runtime orientation setting or readers ask for
+landscape.
 
 ## Page-break rules (pure, property-tested)
 
