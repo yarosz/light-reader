@@ -248,7 +248,9 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
                         heading = chapter.kindAt(start) == BlockKind.Heading,
                     )
                 }
-                val pages = paginate(lines, chapter.text.length, pageHeightPx)
+                // Until the windowed layout lands, the whole chapter is one window packed from its start.
+                val whole = windows(chapter, Int.MAX_VALUE).single()
+                val pages = pack(listOf(whole), listOf(lines), anchor = 0, pageHeightPx).pages
                 val end = System.nanoTime()
                 viewModel.logLayoutPass(
                     position.chapter, fontStep, chapter.text.length, paginateStart - measureStart, end - paginateStart,
@@ -258,6 +260,7 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
             SideEffect { viewModel.pages = pages }
             val index = pageIndexFor(pages, position.offset)
             val page = pages[index]
+            val band = page.bands.single()
 
             Column(Modifier.fillMaxSize()) {
                 Canvas(
@@ -271,8 +274,8 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
                             }
                         }
                 ) {
-                    clipRect(bottom = page.bottom - page.top) {
-                        translate(top = -page.top) { drawText(layout) }
+                    clipRect(bottom = band.bottom - band.top) {
+                        translate(top = -band.top) { drawText(layout) }
                     }
                 }
                 Row(

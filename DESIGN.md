@@ -39,3 +39,6 @@ to match (a three-button bar leaves 341 × 360 dp and pillarboxes Reader).
   cascade) are an explicit test case.
 - No widow or orphan rules in v1. At 26–38 characters per line most paragraphs are one to three lines,
   so the rules would fire constantly and cost a line each time.
+
+These rules govern Pages packed forward from the Place; Pages packed backward (reached by turning back
+past the Place of the current pass) follow only the fit rule (ADR 0007).
