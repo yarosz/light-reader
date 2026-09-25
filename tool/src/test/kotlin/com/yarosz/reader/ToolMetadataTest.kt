@@ -23,9 +23,8 @@ class ToolMetadataTest {
     }
 
     @Test
-    fun `reader sets no orientation lock`() {
-        // A portrait lock letterboxes Reader when the app area is shorter than it is wide (DESIGN.md).
-        assertEquals(null, value("orientation"))
+    fun `reader is locked to portrait like LightOS`() {
+        assertEquals("portrait", value("orientation"))
     }
 
     @Test

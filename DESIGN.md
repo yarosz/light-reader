@@ -22,15 +22,12 @@ while reading. Line height 1.35 with `LineHeightStyle(Center, Trim.None)` (the t
 stops descenders leaking across Pages); verified leak-free on the LP3, where 1.4 was the fallback. All
 of these live in `Typesetting.kt`.
 
-Reader sets no orientation lock, so it follows the system auto-rotate setting, which LightOS doesn't
-let users change (no rotation control in LightOS, and quick settings aren't reachable from its
-launcher). Reading lying on one side can therefore flip the Page, and the reader can't turn that off.
-We accept that over the alternative: a portrait lock (`orientation = "portrait"` in
-`tool/lighttool.toml`) makes Android letterbox Reader whenever the app area is shorter than it is
-wide, and the LP3 has 5 dp of margin (365 × 360 dp), so any new inset would pillarbox every reader.
-Rotating keeps the Place and relays out like a font change; landscape (1240×1008 px) gives longer but
-fewer lines. Revisit if Light allows `orientation = "nosensor"` (natural orientation without the
-fixed-orientation letterbox) or a runtime orientation API, or if readers report flips.
+Reader is locked to portrait (`orientation = "portrait"` in `tool/lighttool.toml`), like LightOS
+itself: its main activity declares the same portrait `screenOrientation`, so its tools never rotate
+mid-use, and LightOS gives users no rotation control to stop a flip. Android letterboxes a
+portrait-locked app whenever its area is shorter than it is wide; the LP3 has 5 dp of margin
+(365 × 360 dp), the same limit LightOS's own UI lives within. The emulator must use gesture navigation
+to match (a three-button bar leaves 341 × 360 dp and pillarboxes Reader).
 
 ## Page-break rules (pure, property-tested)
 
