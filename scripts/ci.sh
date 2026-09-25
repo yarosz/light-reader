@@ -90,9 +90,13 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
   [ "$first" != "$before" ] || { echo " (A+ did not change the layout)"; return 1; }
   [ "$before" = "$after" ]
 }
-wake() {  # serial: the LP3 drops off USB while asleep; wake it and wait up to 30 s for adb
+wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s for adb, and clear
+          # the lock screen (a phone with no PIN only; with a PIN the round trip fails and says so)
   for _ in $(seq 1 15); do
-    "$adb" -s "$1" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 && return 0
+    if "$adb" -s "$1" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1; then
+      "$adb" -s "$1" shell wm dismiss-keyguard >/dev/null 2>&1
+      return 0
+    fi
     sleep 2
   done
   return 1
