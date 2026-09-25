@@ -87,10 +87,11 @@ Ordered. Each item ends on its _done-when_.
   finished. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
-  tap zones (back 30% / chrome 25% / forward 45%); five font steps 20/24.5/30/36/44 sp; margins 20 dp
-  (one constants file); one-line first-run hint; keep the screen on while reading (release after 10
-  min without a turn); Page text in semantics; About screen (version, licenses incl. Literata OFL,
-  copy-protected explainer + DRM-free sources, repo URL as text, the ADR 0003 no-network sentence).
+  tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`
+  (17/20/24.5/30/36 sp, default 20; one constants file); one-line first-run hint; keep the screen on
+  while reading (release after 10 min without a turn); Page text in semantics; About screen (version,
+  licenses incl. Literata OFL, copy-protected explainer + DRM-free sources, repo URL as text, the
+  ADR 0003 no-network sentence).
   _Done when:_ verified with `mise run ui`.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
