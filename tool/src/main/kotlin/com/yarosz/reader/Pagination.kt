@@ -20,8 +20,9 @@ data class Page(val start: Int, val end: Int, val bands: List<Band>)
 
 /**
  * Pages packed outward from an anchor. [before] ends where [fromAnchor] begins, and [fromAnchor]'s
- * first page starts on the line holding the anchor. [needBefore] and [needAfter] are the index of the
- * next unmeasured window whose measurement could add pages on that side, or null when none can.
+ * first page starts on the line holding the anchor. [needBefore] and [needAfter] are null when no
+ * unmeasured window can add pages on that side; otherwise the index of the next one that could, or the
+ * anchor's own window, which must be measured first.
  *
  * [fromAnchor] is empty, and [anchorPage] null, in two cases: the anchor is at the chapter's end, or
  * the anchor's page is withheld because window [needAfter] might still add lines to it (see [pack]).
@@ -64,9 +65,9 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  * end (the chapter's first line always is), or, if no such start leaves the page at least
  * [MIN_PAGE_FILL] full, the earliest start that fits. So every page end is legal unless the guard fired,
  * in both directions; what remains asymmetric is that a backward pass may tile a stretch differently,
- * but as legally, from a forward one. Only the chapter's first page may be short. A single line taller
- * than the page gets a page to itself. Heights add across a window seam, and a page spanning windows
- * gets a band per window.
+ * but as legally, from a forward one. Backward, only the chapter's first page may be short. A single
+ * line taller than the page gets a page to itself. Heights add across a window seam, and a page spanning
+ * windows gets a band per window.
  *
  * A page is emitted only once no further window can change it: the next line on its side doesn't fit,
  * or the chapter ends there. So when the anchor lies within about a page of its measured run's end and

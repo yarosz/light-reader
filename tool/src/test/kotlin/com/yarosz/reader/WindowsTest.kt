@@ -35,7 +35,7 @@ class WindowsTest {
         val maxChars = randomMaxChars(rnd)
         val windows = windows(chapter, maxChars)
         fun isHeading(block: Int) = chapter.blocks[block].kind == BlockKind.Heading
-        fun blockLength(block: Int) = chapter.blocks[block].text.length + 1
+        fun blockLength(block: Int) = (chapter.blockStarts.getOrNull(block + 1) ?: chapter.text.length) - chapter.blockStarts[block]
         windows.forEach {
             assertTrue(it.end - it.start <= maxChars || it.firstBlock == it.lastBlock, "$it exceeds $maxChars")
         }

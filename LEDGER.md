@@ -55,7 +55,7 @@ Ordered. Each item ends on its _done-when_.
   live on retail; at the first Light-signed build, the sentinel check in `RELEASING.md`. **Tool id:
   `com.yarosz.reader`**, permanent from first publish.
 - **P · Paginator v2 (ADR 0007, `DESIGN.md`).** Pure core first: block-boundary windows (prefer
-  Chapter starts, split > ~20 K chars); pack outward from the Place; a Page = up to two bands; page-end
+  Chapter starts, split > ~10 K chars); pack outward from the Place; a Page = up to two bands; page-end
   rules (whitespace/paragraph end only, never after a heading, 70% guard, cascade test); page-boundary
   cache per layout pass. Then the Compose side: sync current window, background neighbours (verify
   `TextMeasurer` off the main thread under the plugin), two-band drawing, measurer warm-up, the 480-dpi

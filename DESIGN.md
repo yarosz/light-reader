@@ -45,3 +45,9 @@ the current pass) ends where the Page below it starts, so its start is chosen so
 it is a legal end, with the same 70% guard: every Page end is legal unless the guard fired. What
 remains asymmetric: a backward pass may tile a stretch differently (but as legally) from a forward
 one, and a cold backward crossing may leave a short first Page in the Chapter (ADR 0007).
+
+## Paragraph indent
+
+A paragraph gets a first-line indent only when it follows another paragraph (Standard Ebooks' p + p
+convention); the first paragraph after a heading, caption or verse, or a chapter's first block, starts
+flush, judged on block kinds, never on window boundaries.

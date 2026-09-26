@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
  */
 class PaginationTest {
 
-    /** Ten 10px lines fit a 100px page; lines past [count] keep the chapter going so no page is final. */
+    /** Ten 10px lines fit a 100px page; lines past the tenth continue the chapter, so the first page is never its last. */
     private fun lines(count: Int = 15, midWord: Set<Int> = emptySet(), headings: Set<Int> = emptySet()) =
         List(count) { LineMetrics(it * 10, it * 10f, it * 10f + 10f, endsAtBreak = it !in midWord, heading = it in headings) }
 

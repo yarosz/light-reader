@@ -58,7 +58,7 @@ class EpubTest {
     @Test
     fun `text is clean of invisible characters and doubled whitespace`() {
         book.chapters.flatMap { it.blocks }.forEach { block ->
-            assertFalse('﻿' in block.text, "zero-width space in ${block.text.take(40)}")
+            assertFalse('\uFEFF' in block.text, "zero-width space in ${block.text.take(40)}")
             assertFalse("  " in block.text, "double space in ${block.text.take(40)}")
             assertEquals(block.text.trim(), block.text)
         }
