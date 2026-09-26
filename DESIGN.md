@@ -42,3 +42,9 @@ to match (a three-button bar leaves 341 × 360 dp and pillarboxes Reader).
 
 These rules govern Pages packed forward from the Place; Pages packed backward (reached by turning back
 past the Place of the current pass) follow only the fit rule (ADR 0007).
+
+## Paragraph indent
+
+A paragraph gets a first-line indent only when it follows another paragraph (Standard Ebooks' p + p
+convention); the first paragraph after a heading, caption or verse, or a chapter's first block, starts
+flush, judged on block kinds, never on window boundaries.

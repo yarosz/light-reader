@@ -55,18 +55,35 @@ fail_ctx() {  # context, step description
   exit 1
 }
 
-# Font round trip: page forward, cycle A+ A+ A- A-, require the identical Page and first words.
-# Every read must succeed and show a real footer ("p N/M"), and the first A+ must change the layout,
-# so an unresponsive screen or a lost device can never pass as "unchanged".
-# COUPLING: state() reads the reading view's footer ("p N/M") and the Page's text semantics. ADR 0007
-# replaces the "p N/M" label with Progress; the PR that removes it must update state() in the same change,
-# or signoff/emulator can never go green again.
-state() {
-  local out
-  out=$(ANDROID_SERIAL="$1" mise run ui 2>/dev/null \
-    | awk '/^   ~/{top=substr($0,5,40)} /p [0-9]+\//{gsub(/^ +| +\(.*$/,""); foot=$0} END{print foot " | " top}')
-  grep -qE 'p [0-9]+/[0-9]+' <<<"$out" || return 1
-  echo "$out"
+# Font round trip: page forward, cycle A+ A+ A- A-, require the identical Page.
+# A Page is its chapter indicator ("1/12") plus its text from the Canvas's semantics: the first 40
+# characters and the length. A bigger font keeps the Page's start (the Place) but moves its end, so the
+# length is what makes the first A+ change the state. Every read must find both the indicator and the
+# Page, so an unresponsive screen or a lost device can never pass as "unchanged".
+state() {  # serial -> "c/C|first 40 chars|length", or return 1
+  # The Page's text holds newlines, so its "   ~" node spans lines up to the one ending in "(x,y)";
+  # it is by far the longest label on screen. C locale: the counts only have to agree between reads.
+  ANDROID_SERIAL="$1" mise run ui 2>/dev/null | LC_ALL=C awk '
+    inb { blk = blk "\n" $0 }
+    !inb && /^   ~/ { inb = 1; blk = substr($0, 5) }
+    inb && /  \([0-9]+,[0-9]+\)$/ {
+      inb = 0; sub(/  \([0-9]+,[0-9]+\)$/, "", blk)
+      if (length(blk) > length(page)) page = blk
+      next
+    }
+    !inb && match($0, /^[^"]* "[0-9]+\/[0-9]+"  \(/) { chap = substr($0, RSTART, RLENGTH); gsub(/[^0-9\/]/, "", chap) }
+    END {
+      if (chap == "" || page == "") exit 1
+      top = substr(page, 1, 40); gsub(/\n/, " ", top)
+      printf "%s|%s|%d\n", chap, top, length(page)
+    }'
+}
+brief() {  # state -> 'c/C "first words" Nch' for the evidence, cut at a space so no glyph is split
+  local chap=${1%%|*} count=${1##*|} top=${1#*|}
+  top=$(T=${top%|*} LC_ALL=C awk 'BEGIN { t = ENVIRON["T"]; s = substr(t, 1, 24)
+    if (length(t) > 24 && substr(t, 25, 1) != " ") { if (index(s, " ")) sub(/ [^ ]*$/, "", s); else s = "" }
+    print s }')
+  echo "$chap \"$top\" ${count}ch"
 }
 dismiss_anr() {  # serial: heavy builds can starve the emulator into a "System UI isn't responding" dialog
   if ANDROID_SERIAL="$1" mise run ui 2>/dev/null | grep -q '#aerr_wait'; then
@@ -76,8 +93,8 @@ dismiss_anr() {  # serial: heavy builds can starve the emulator into a "System U
 roundtrip() {  # serial -> prints "before => after" line, returns 1 if not identical
   local s=$1 before after trail=""
   dismiss_anr "$s"
-  ANDROID_SERIAL=$s mise run ui wait "p 1/" >/dev/null 2>&1 || { dismiss_anr "$s"; ANDROID_SERIAL=$s mise run ui wait "p 1/" >/dev/null 2>&1; } \
-    || { echo "reader never showed page 1"; return 1; }
+  ANDROID_SERIAL=$s mise run ui wait "A+" >/dev/null 2>&1 || { dismiss_anr "$s"; ANDROID_SERIAL=$s mise run ui wait "A+" >/dev/null 2>&1; } \
+    || { echo "reader never showed a Page"; return 1; }
   for _ in 1 2 3 4; do "$adb" -s "$s" shell input keyevent KEYCODE_VOLUME_DOWN || { echo "page turn failed"; return 1; }; done
   sleep 1
   before=$(state "$s") || { echo "could not read the page before the font cycle"; return 1; }
@@ -86,10 +103,10 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
     ANDROID_SERIAL=$s mise run ui tap "$key" >/dev/null 2>&1 || { echo "tap $key failed"; return 1; }
     now=$(state "$s") || { echo "could not read the page after $key"; return 1; }
     [ -z "$first" ] && first=$now
-    trail="$trail → $(cut -d'|' -f1 <<<"$now" | tr -d ' "')"
+    trail="$trail → $(brief "$now")"
   done
   after=$now
-  echo "$(cut -d'|' -f1 <<<"$before" | tr -d ' "')$trail"
+  echo "$(brief "$before")$trail"
   [ "$first" != "$before" ] || { echo " (A+ did not change the layout)"; return 1; }
   [ "$before" = "$after" ]
 }
@@ -127,6 +144,16 @@ else
 
   emu=$("$adb" devices | awk '/^emulator-[0-9]+\tdevice/{print $1; exit}')
   [ -n "$emu" ] || fail_ctx emulator "no emulator running (mise run emu)"
+  # Android letterboxes a portrait-locked app whose area is shorter than wide (DESIGN.md); the LP3
+  # gives 1080x1168, so an emulator that differs lays out Pages no phone shows.
+  disp=$("$adb" -s "$emu" shell dumpsys window displays | grep -m1 ' app=' | tr -d '\r')
+  app=$(grep -oE 'app=[0-9]+x[0-9]+' <<<"$disp")
+  dpi=$(grep -oE 'base=[0-9]+x[0-9]+ [0-9]+dpi' <<<"$disp" | grep -oE '[0-9]+dpi$')
+  if [ "$app" != app=1080x1168 ] || [ "$dpi" != 480dpi ]; then
+    echo "ci: emulator shows ${app:-app=?} at ${dpi:-?dpi}; the LP3 is app=1080x1168 at 480dpi" >&2
+    echo "ci: fix: adb shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural (three-button nav bar), or adb shell wm density 480 (wrong density)" >&2
+    fail_ctx emulator "emulator app area is not the LP3's (need 1080x1168 at 480 dpi)"
+  fi
   # The emulator talks to the LightOS emulator app, not LightOS: swap the server package for this build.
   scripts/emulator-build.sh ./gradlew -q --console=plain :tool:assembleDebug || fail_ctx emulator "assembleDebug"
   install_and_launch "$emu" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx emulator "install"
@@ -167,6 +194,7 @@ url=""
 if pr=$(gh pr view --json number -q .number 2>/dev/null); then
   url=$(gh pr comment "$pr" --body "$body" 2>/dev/null | grep -oE 'https://github.com/[^ ]+' | tail -1)
 fi
-gh signoff emulator --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/emulator"
-[ "$lp3_ran" = 1 ] && { gh signoff lp3 --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/lp3"; }
+desc="local ci via scripts/ci.sh (agent session)"
+gh signoff emulator --commit "$head" --description "$desc" ${url:+--url "$url"} >/dev/null || die "posting signoff/emulator"
+[ "$lp3_ran" = 1 ] && { gh signoff lp3 --commit "$head" --description "$desc" ${url:+--url "$url"} >/dev/null || die "posting signoff/lp3"; }
 echo "ci: posted signoff/emulator$([ "$lp3_ran" = 1 ] && echo ' + signoff/lp3') on ${head:0:12}${url:+ ($url)}"
