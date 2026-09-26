@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Local CI for checks that only run on this machine, posted as GitHub commit statuses via gh-signoff.
-# The ONLY supported way to post signoff/* statuses: never run `gh signoff` by hand.
+# Local CI for checks that only run on this machine, posted as GitHub commit statuses (signoff/*).
+# The ONLY supported way to post signoff/* statuses: never post them by hand.
 #
 #   scripts/ci.sh              run everything that applies, post evidence + statuses
 #   scripts/ci.sh --dry-run    run the checks, print the evidence, post nothing
@@ -49,9 +49,20 @@ while IFS= read -r f; do
 done <<<"$changed"
 note "commit \`${head:0:12}\`; files changed vs main: $(grep -c . <<<"$changed")"
 
+provenance="local ci via scripts/ci.sh (agent session)"
+
+post_status() {  # state, context, description [, url]; GitHub rejects descriptions over 140 characters
+  local desc=$3
+  [ "${#desc}" -le 140 ] || desc="${desc:0:139}…"
+  gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state="$1" -f context="signoff/$2" \
+    -f description="$desc" ${4:+-f target_url="$4"} >/dev/null
+}
+
 fail_ctx() {  # context, step description
   echo "ci: FAIL [$1] $2" >&2
-  [ "$post" = 1 ] && gh signoff fail "$1" --commit "$head" --description "local ci: $2" >/dev/null
+  if [ "$post" = 1 ]; then
+    post_status failure "$1" "local ci: $2" || echo "ci: could not post the failure status for signoff/$1" >&2
+  fi
   exit 1
 }
 
@@ -194,8 +205,6 @@ url=""
 if pr=$(gh pr view --json number -q .number 2>/dev/null); then
   url=$(gh pr comment "$pr" --body "$body" 2>/dev/null | grep -oE 'https://github.com/[^ ]+' | tail -1)
 fi
-# gh-signoff's create takes only --commit and --url (--description is for `gh signoff fail`), so the
-# provenance lives in the evidence comment that --url links.
-gh signoff emulator --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/emulator"
-[ "$lp3_ran" = 1 ] && { gh signoff lp3 --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/lp3"; }
+post_status success emulator "$provenance" "$url" || die "posting signoff/emulator"
+[ "$lp3_ran" = 1 ] && { post_status success lp3 "$provenance" "$url" || die "posting signoff/lp3"; }
 echo "ci: posted signoff/emulator$([ "$lp3_ran" = 1 ] && echo ' + signoff/lp3') on ${head:0:12}${url:+ ($url)}"
