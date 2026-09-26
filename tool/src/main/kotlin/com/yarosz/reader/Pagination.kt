@@ -65,9 +65,9 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  * end (the chapter's first line always is), or, if no such start leaves the page at least
  * [MIN_PAGE_FILL] full, the earliest start that fits. So every page end is legal unless the guard fired,
  * in both directions; what remains asymmetric is that a backward pass may tile a stretch differently,
- * but as legally, from a forward one. Backward, only the chapter's first page may be short. A single line taller
- * than the page gets a page to itself. Heights add across a window seam, and a page spanning windows
- * gets a band per window.
+ * but as legally, from a forward one. Backward, only the chapter's first page may be short. A single
+ * line taller than the page gets a page to itself. Heights add across a window seam, and a page spanning
+ * windows gets a band per window.
  *
  * A page is emitted only once no further window can change it: the next line on its side doesn't fit,
  * or the chapter ends there. So when the anchor lies within about a page of its measured run's end and

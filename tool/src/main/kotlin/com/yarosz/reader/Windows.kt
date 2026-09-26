@@ -6,8 +6,12 @@ package com.yarosz.reader
  */
 data class Window(val firstBlock: Int, val lastBlock: Int, val start: Int, val end: Int)
 
-/** Characters per window (ADR 0007): ~60–80 ms to lay out on the LP3, inside the 300 ms first-Page bar. */
-const val WINDOW_CHARS = 20_000
+/**
+ * Characters per window (ADR 0007). Layout costs roughly 10 ms per 1,000 characters on the LP3, and 10 K
+ * keeps the slowest open, a Place within a Page of a window's end (two windows laid out), about 100 ms
+ * under the 300 ms first-Page bar.
+ */
+const val WINDOW_CHARS = 10_000
 
 /**
  * Cuts [chapter] into windows of at most [maxChars] characters that tile its text. Blocks are packed
