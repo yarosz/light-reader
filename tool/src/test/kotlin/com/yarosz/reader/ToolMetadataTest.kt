@@ -23,6 +23,11 @@ class ToolMetadataTest {
     }
 
     @Test
+    fun `reader is locked to portrait like LightOS`() {
+        assertEquals("portrait", value("orientation"))
+    }
+
+    @Test
     fun `tool id never changes once published`() {
         assertEquals("com.yarosz.reader", value("id"))
     }

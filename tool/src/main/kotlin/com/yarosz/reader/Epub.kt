@@ -23,6 +23,12 @@ data class Chapter(val title: String, val blocks: List<Block>) {
 
     /** Offset of each block's first character within [text]. */
     val blockStarts: List<Int> = blocks.runningFold(0) { acc, b -> acc + b.text.length + 1 }.dropLast(1)
+
+    /** Kind of the block holding [offset]; a separating '\n' belongs to the block before it. */
+    fun kindAt(offset: Int): BlockKind? {
+        val found = blockStarts.binarySearch(offset)
+        return blocks.getOrNull(if (found >= 0) found else -found - 2)?.kind
+    }
 }
 
 data class Book(val title: String, val chapters: List<Chapter>)
