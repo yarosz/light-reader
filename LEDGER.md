@@ -1,6 +1,6 @@
 # Ledger
 
-STATUS: N1 and the release path done; next is P (Paginator v2), then N2
+STATUS: N1, the release path and P (Paginator v2) done; next is N2 (reading data store)
 LAST SESSION: 2026-09-24
 
 ## v1 user flow
@@ -28,6 +28,7 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | R3 | CI gate (#1) | Actions `build` (unit tests + builder simulation on a fresh runner) required on every PR; weekly `sdk-main` job; `mise run ci` posts `signoff/emulator` and `signoff/lp3` from a font round trip on each device |
 | R4 | Release docs (#2) | `RELEASING.md`, `SECURITY.md`, `CONTRIBUTING.md`, issue template, LP3 screenshots in `docs/screenshots/` |
 | #3 | Phone builds bind to LightOS (#4) | `serverPackage = "com.lightos"` committed (Light builds releases from it); `scripts/emulator-build.sh` swaps in the emulator's package for emulator builds only; a unit test and `light-build.sh` guard the committed line; `signoff/lp3` green on the fix |
+| P | Paginator v2 (#6–#9) | Page-end rules in both directions, 480 dpi type scale, portrait lock; 10 K windows packed from the Place (ADR 0007). LP3, Pride and Prejudice 165 K-character chapter, P90: open 111 ms, font change 122 ms (was 1,940 / 870); seam-adjacent open 194 ms. `mise run perf` reproduces it. Parser follow-ups #10, #11 |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
@@ -54,15 +55,6 @@ Ordered. Each item ends on its _done-when_.
   reviewers before v1; ask in #204 which SDK commit the builder uses and whether Tool Manager transfer is
   live on retail; at the first Light-signed build, the sentinel check in `RELEASING.md`. **Tool id:
   `com.yarosz.reader`**, permanent from first publish.
-- **P · Paginator v2 (ADR 0007, `DESIGN.md`).** Pure core first: block-boundary windows (prefer
-  Chapter starts, split > ~10 K chars); pack outward from the Place; a Page = up to two bands; page-end
-  rules (whitespace/paragraph end only, never after a heading, 70% guard, cascade test); page-boundary
-  cache per layout pass. Then the Compose side: sync current window, background neighbours (verify
-  `TextMeasurer` off the main thread under the plugin), two-band drawing, measurer warm-up, the 480-dpi
-  type scale in one constants file (default 20 sp, 17–36), top/bottom margins 12–16 dp, try line height
-  1.35 on hardware. Set the emulator AVD to 480 dpi. _Done when:_ property tests cover every rule; on the
-  LP3, first Page at any Place and font change ≤ 300 ms P90 warm on Pride and Prejudice; font round trip
-  still lands on the identical Page; no Page ends mid-word or on a heading (spot-check screenshots).
 - **N2 · Reading data store.** One `reading-data.json` in `filesDir`: Shelf + per-Book Place (ADR 0002)
   + per-Tool settings (font step, polarity, pace). Atomic writes (temp + rename, debounced),
   `schemaVersion`, `.bak` of the last good write used on parse failure, finished state (Progress 100%).

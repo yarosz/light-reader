@@ -8,16 +8,18 @@ into later windows and backward into earlier ones as they finish measuring, and 
 windows (drawn as up to two clipped bands). Line breaking restarts at every paragraph, so block-boundary
 seams are exact and spanning costs no reflow.
 
-Measured on LP3 hardware (SM4450, Pride and Prejudice): laying out a whole 112–165 K-character Spine item
-takes 475–650 ms warm and up to 1,356 ms cold (~3–4 ms per 1,000 characters in that prototype; re-measured with the shipped styles, measuring the
-164,870-character item alone takes 1,762 ms, ~11 ms per 1,000, in line with the per-window cost below), and dropping hyphenation
-saves only 15–25%. That misses the bar ADR 0004 set. This supersedes that bar, restated here: **the first
-Page at any Place, and any font change, in at most 300 ms P90 on the SM4450, warm; page turns do no
-layout work.** The bar covers building the styled text, measuring the window(s) and packing the Page,
-which the app logs as `firstPageMs`. It doesn't cover the EPUB parse, composition or the first frame.
+Measured on LP3 hardware (SM4450, Pride and Prejudice): laying out a whole 112–165 K-character Spine
+item takes 475–650 ms warm and up to 1,356 ms cold (~3–4 ms per 1,000 characters in that prototype;
+re-measured with the shipped styles, measuring the 164,870-character item alone takes 1,762 ms, ~11 ms
+per 1,000, in line with the per-window cost below), and dropping hyphenation saves only 15–25%. That
+misses the bar ADR 0004 set. This supersedes that bar, restated here: **the first Page at any Place, and
+any font change, in at most 300 ms P90 on the SM4450, warm; page turns do no layout work.** The bar
+covers building the styled text, measuring the window(s) and packing the Page, which the app logs as
+`firstPageMs`. It doesn't cover the EPUB parse, composition or the first frame.
 
 The worst case is a Place within a Page of a window's end: both windows are laid out before the Page
-shows. That's roughly 2% of Places, but the bar holds at any Place, so this case sets the window size.
+shows. At 10 K windows that's roughly 4–6% of Places (a Page holds ~400–600 characters of a ~9.5 K
+window), and the bar holds at any Place, so this case sets the window size.
 Measured on the LP3 (TLP301) in Pride and Prejudice's largest Spine item (164,870 characters), with the
 Place 150 characters before the first window's end, P90 of 20 runs unless noted:
 
@@ -32,15 +34,15 @@ Place 150 characters before the first window's end, P90 of 20 runs unless noted:
 Measuring one window takes ~139 ms at ~12.5 K, ~117 ms at ~11.8 K, ~89 ms at ~9.1 K and ~63 ms at ~5.5 K
 (P50), so cost scales with size, roughly 10 ms per 1,000 characters. Windows are 10 K: the largest
 measured size whose two-window open keeps a real margin under the bar (12 K's worst font change reached
-294 ms). With the Place inside one window, open and font change are 111 / 122 ms P90 (max 120 / 156) (195 / 204 ms at
-20 K).
+294 ms). With the Place inside one window, open and font change are 111 / 122 ms P90 (max 120 / 156;
+195 / 204 ms at 20 K).
 
 Rules that keep it stable:
 
 - Page boundaries are cached within a layout pass, so going back shows the Page just read. Backward
   packing only creates Pages not yet visited in this pass.
 - The first Page of a Spine item may be short when it's reached by backward packing (at most once per
-  opening, at a heading).
+  chapter per session, at a heading: a chapter already read this session reuses its forward Pages).
 - The measurer is warmed up (a short hyphenated string in every face the book uses) while the book
   opens. It takes ~16–57 ms on the LP3, so the first open pays only for its window(s).
 - Hyphenation stays on; the times above include it.

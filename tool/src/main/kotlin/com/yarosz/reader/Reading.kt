@@ -83,10 +83,10 @@ sealed interface Landing {
 }
 
 /**
- * Provisional, pending the product advisor: turning back past a chapter's first Page shows the last
- * Page the reader already saw in the chapter before, when that chapter's pass is [cached] at the same
- * [key] and reached the chapter's end ([length]); otherwise the last Page of a fresh pass packed
- * backward from the end.
+ * Turning back past a chapter's first Page shows the last Page the reader already saw in the chapter
+ * before, when that chapter's pass is [cached] at the same [key] and reached the chapter's end
+ * ([length]); otherwise the last Page of a fresh pass packed backward from the end under the mirrored
+ * page-break rules (ADR 0007, DESIGN.md).
  */
 fun backwardLanding(cached: Pass<*>?, key: LayoutKey, length: Int): Landing {
     val last = cached?.takeIf { it.key == key }?.pages?.lastOrNull()
