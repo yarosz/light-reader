@@ -41,6 +41,10 @@ run = [
 description = "Local CI: tests, Light-builder simulation, emulator (+ LP3 if attached) round trip; posts signoff statuses"
 run = "scripts/ci.sh"
 
+[tasks.perf]
+description = "Measure layout latency on a device (args: [-s serial] [-n runs] <epub path or URL>)"
+run = "scripts/perf.sh"
+
 [tasks.light-build]
 description = "Build the committed HEAD the way Light's release builder does (optional arg: SDK dir)"
 run = "scripts/light-build.sh"

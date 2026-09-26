@@ -1,5 +1,6 @@
 package com.yarosz.reader
 
+import android.util.Log
 import android.view.KeyEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -60,6 +61,7 @@ import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
 import java.net.URL
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -76,6 +78,9 @@ private val Literata = FontFamily(
     Font(R.font.literata_bolditalic, FontWeight.Bold, FontStyle.Italic),
 )
 
+/** Logcat tag for layout timings; `scripts/perf.sh` parses these lines. */
+private const val PERF_TAG = "ReaderPerf"
+
 /** Where the reader is: a chapter and a character offset into [Chapter.text]. */
 data class Position(val chapter: Int, val offset: Int)
 
@@ -90,11 +95,22 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     /** Pages of the current chapter at the current size, published by the UI after layout. */
     var pages: List<Page> = emptyList()
 
+    /** Chapter and font step of the last layout pass, so the next pass can log why it ran. */
+    private var lastPass: Pair<Int, Int>? = null
+
     override fun onScreenShow(screen: SimpleLightScreen<Unit>) {
         if (book.value != null) return
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { parseEpub(downloadIfMissing()) } }
-                .onSuccess { book.value = it }
+            runCatching { withContext(Dispatchers.IO) { parseEpub(downloadIfMissing()) to devStartChapter() } }
+                .onSuccess { (opened, start) ->
+                    val largest = opened.chapters.indices.maxByOrNull { opened.chapters[it].text.length }
+                    if (largest != null) {
+                        Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
+                            "largestChars=${opened.chapters[largest].text.length}")
+                    }
+                    start?.let { position.value = Position(it.coerceIn(opened.chapters.indices), 0) }
+                    book.value = opened
+                }
                 .onFailure { status.value = "Couldn't open the book: ${it.message}" }
         }
     }
@@ -108,6 +124,30 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
             partial.renameTo(file)
         }
         return file
+    }
+
+    /**
+     * Dev hook for `scripts/perf.sh`: a chapter index in filesDir/dev-start opens the book there. Only
+     * `adb shell run-as` can write that file, and run-as works on debuggable builds only. A read error
+     * opens the book normally.
+     */
+    private fun devStartChapter(): Int? = runCatching {
+        File(filesDir, "dev-start").takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull()
+    }.getOrNull()
+
+    /** One logcat line per layout pass: what it laid out, why, and how long measure and paginate took. */
+    fun logLayoutPass(chapter: Int, fontStep: Int, chars: Int, measureNs: Long, paginateNs: Long) {
+        val last = lastPass
+        val reason = when {
+            last == null -> "open"
+            last.first != chapter -> "chapter"
+            last.second != fontStep -> "font"
+            else -> "relayout"
+        }
+        lastPass = chapter to fontStep
+        fun ms(ns: Long) = "%.1f".format(Locale.ROOT, ns / 1e6)
+        Log.i(PERF_TAG, "layout reason=$reason chapter=$chapter chars=$chars font=${FONT_SIZES[fontStep]} " +
+            "measureMs=${ms(measureNs)} paginateMs=${ms(paginateNs)}")
     }
 
     fun nextPage() {
@@ -197,10 +237,10 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val widthPx = constraints.maxWidth
             val pageHeightPx = constraints.maxHeight - footerPx
-            val layout = remember(text, style, widthPx) {
-                measurer.measure(text, style, constraints = Constraints(maxWidth = widthPx))
-            }
-            val pages = remember(layout, pageHeightPx) {
+            val (layout, pages) = remember(text, style, widthPx, pageHeightPx) {
+                val measureStart = System.nanoTime()
+                val layout = measurer.measure(text, style, constraints = Constraints(maxWidth = widthPx))
+                val paginateStart = System.nanoTime()
                 val lines = List(layout.lineCount) { i ->
                     val start = layout.getLineStart(i)
                     val next = if (i < layout.lineCount - 1) layout.getLineStart(i + 1) else chapter.text.length
@@ -212,7 +252,12 @@ class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Read
                         heading = chapter.kindAt(start) == BlockKind.Heading,
                     )
                 }
-                paginate(lines, chapter.text.length, pageHeightPx)
+                val pages = paginate(lines, chapter.text.length, pageHeightPx)
+                val end = System.nanoTime()
+                viewModel.logLayoutPass(
+                    position.chapter, fontStep, chapter.text.length, paginateStart - measureStart, end - paginateStart,
+                )
+                layout to pages
             }
             SideEffect { viewModel.pages = pages }
             val index = pageIndexFor(pages, position.offset)
