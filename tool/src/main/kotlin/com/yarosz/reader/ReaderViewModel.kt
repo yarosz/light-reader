@@ -39,18 +39,25 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     private var reading: Reading<WindowLayout>? = null
     private var prefetching: Job? = null
     private var syncWindows = 0
+    private var windowChars = WINDOW_CHARS
 
     override fun onScreenShow(screen: SimpleLightScreen<Unit>) {
         if (book.value != null) return
         viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { parseEpub(downloadIfMissing()) to devStartChapter() } }
+            runCatching { withContext(Dispatchers.IO) { parseEpub(downloadIfMissing()) to devStart() } }
                 .onSuccess { (opened, start) ->
                     val largest = opened.chapters.indices.maxByOrNull { opened.chapters[it].text.length }
                     if (largest != null) {
                         Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
                             "largestChars=${opened.chapters[largest].text.length}")
                     }
-                    start?.takeIf { opened.chapters.isNotEmpty() }?.let { position.value = Position(it.coerceIn(opened.chapters.indices), 0) }
+                    if (start != null && opened.chapters.isNotEmpty()) {
+                        val chapter = start.chapter.coerceIn(opened.chapters.indices)
+                        windowChars = start.windowChars ?: WINDOW_CHARS
+                        position.value = Position(chapter, start.offset.coerceIn(0, opened.chapters[chapter].text.length))
+                        val ends = windows(opened.chapters[chapter], windowChars).joinToString(",") { it.end.toString() }
+                        Log.i(PERF_TAG, "windows chapter=$chapter windowChars=$windowChars ends=$ends")
+                    }
                     book.value = opened
                 }
                 .onFailure { status.value = "Couldn't open the book: ${it.message}" }
@@ -69,12 +76,12 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     }
 
     /**
-     * Dev hook for `scripts/perf.sh`: a chapter index in filesDir/dev-start opens the book there. Only
-     * `adb shell run-as` can write that file, and run-as works on debuggable builds only. A read error
-     * opens the book normally.
+     * Dev hook for `scripts/perf.sh`: filesDir/dev-start opens the book at a chapter and offset, with an
+     * optional window size (see [parseDevStart]). Only `adb shell run-as` can write that file, and run-as
+     * works on debuggable builds only. A read error or garbage opens the book normally.
      */
-    private fun devStartChapter(): Int? = runCatching {
-        File(filesDir, "dev-start").takeIf { it.exists() }?.readText()?.trim()?.toIntOrNull()
+    private fun devStart(): DevStart? = runCatching {
+        File(filesDir, "dev-start").takeIf { it.exists() }?.readText()?.let(::parseDevStart)
     }.getOrNull()
 
     /** Loads the typefaces and hyphenator off the main thread while the book is still opening (ADR 0007). */
@@ -91,7 +98,7 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
         val chapters = book.value?.chapters ?: return
         this.typesetter = typesetter
         prefetching?.cancel()
-        reading = Reading(chapters, measure = { pass, window -> measure(typesetter, pass, window, sync = true) }, linesOf = { it.lines })
+        reading = Reading(chapters, measure = { pass, window -> measure(typesetter, pass, window, sync = true) }, linesOf = { it.lines }, windowChars = windowChars)
         open(if (frame.value == null) "open" else "relayout")
     }
 

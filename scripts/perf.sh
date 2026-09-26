@@ -6,10 +6,15 @@
 # Chapter, then times N opens (fresh process each: force-stop + start) and N font changes from the
 # app's "ReaderPerf" logcat lines, and reports each window measure alongside.
 #
-#   scripts/perf.sh [-s serial] [-n runs] <epub path or URL>
+#   scripts/perf.sh [-s serial] [-n runs] [-w] [-c chars] <epub path or URL>
+#
+# -w puts the Place near a window seam: 150 characters before the Chapter's first window end, as the app
+# cuts it, so the anchor Page straddles two windows and both are measured before it shows. The report
+# then adds how many passes measured 0, 1, 2… windows synchronously. -c sets the window size for the
+# run in place of WINDOW_CHARS, to see whether firstPageMs scales with it.
 #
 # The serial defaults to the attached non-emulator device. Debuggable builds only: the EPUB and the
-# start Chapter go into the app's files through `run-as`. The app's own book and the device's stay-awake
+# start Place go into the app's files through `run-as`. The app's own book and the device's stay-awake
 # setting are restored on exit. If that restore fails (say the device drops off), files/dev-start and the
 # perf book can stay behind, with the real book kept in files/alice.epub.perf; the next successful run
 # cleans both, except that a perf book left on a device that had no alice.epub stays as its book.
@@ -17,18 +22,24 @@ set -euo pipefail
 
 serial=""
 runs=10
-while getopts "s:n:" opt; do
+seam=false
+chars=""
+usage="usage: scripts/perf.sh [-s serial] [-n runs] [-w] [-c chars] <epub path or URL>"
+while getopts "s:n:wc:" opt; do
   case "$opt" in
     s) serial=$OPTARG ;;
     n) runs=$OPTARG ;;
-    *) echo "usage: scripts/perf.sh [-s serial] [-n runs] <epub path or URL>" >&2; exit 2 ;;
+    w) seam=true ;;
+    c) chars=$OPTARG ;;
+    *) echo "$usage" >&2; exit 2 ;;
   esac
 done
 shift $((OPTIND - 1))
-[ $# -eq 1 ] || { echo "usage: scripts/perf.sh [-s serial] [-n runs] <epub path or URL>" >&2; exit 2; }
+[ $# -eq 1 ] || { echo "$usage" >&2; exit 2; }
 src=$1
 die() { echo "perf: $1" >&2; exit 1; }
 [[ $runs =~ ^[1-9][0-9]*$ ]] || die "-n wants a positive integer, got '$runs'"
+[ -z "$chars" ] || [[ $chars =~ ^[1-9][0-9]{0,8}$ ]] || die "-c wants a positive integer, got '$chars'"
 case "$src" in
   http://*|https://*|/*) ;;
   *) src=$PWD/$src ;;
@@ -114,7 +125,19 @@ open_reader
 book=$(await ' book ')
 largest=$(field largest <<<"$book")
 echo "perf: $(field chapters <<<"$book") chapters; largest is index $largest, $(field largestChars <<<"$book") chars"
-a shell run-as $pkg sh -c "'echo $largest > files/dev-start'"
+dev_start() { a shell run-as $pkg sh -c "'echo $* > files/dev-start'"; }
+offset=0
+if $seam; then
+  dev_start "$largest" 0 ${chars:+"$chars"}
+  open_reader
+  cut=$(await ' windows ')
+  ends=$(field ends <<<"$cut")
+  [[ $ends == *,* ]] || die "chapter $largest is one window at $(field windowChars <<<"$cut") chars; no seam to measure"
+  first_end=${ends%%,*}
+  offset=$((first_end > 150 ? first_end - 150 : 0))
+  echo "perf: windows of $(field windowChars <<<"$cut") chars end at $ends; Place at offset $offset"
+fi
+dev_start "$largest" "$offset" ${chars:+"$chars"}
 
 samples=$work/samples
 windows=$work/windows
@@ -153,10 +176,10 @@ while [ "$i" -lt "$runs" ]; do
 done
 
 stats() {  # reason (open, font) or "window" -> one row; P90 is nearest-rank
-  if [ "$1" = window ]; then cat "$windows"; else grep "reason=$1 " "$samples"; fi | LC_ALL=C awk -v r="$1" '
+  if [ "$1" = window ]; then cat "$windows"; else grep "reason=$1 " "$samples"; fi | LC_ALL=C awk -v r="$1" -v seam="$seam" '
     function f(k,   i, s) { i = index($0, k "="); s = substr($0, i + length(k) + 1); sub(/ .*/, "", s); return s }
     r == "window" { n++; ch[n] = f("chars") + 0; ms[n] = f("measureMs") + 0; if (f("sync") == "true") sync++; next }
-    { n++; t[n] = f("firstPageMs") + 0; c[f("chars")] = 1; w = f("syncWindows") + 0; if (w > sw) sw = w }
+    { n++; t[n] = f("firstPageMs") + 0; c[f("chars")] = 1; w = f("syncWindows") + 0; d[w]++; if (w > sw) sw = w }
     function sort(x,   i, j, v) { for (i = 2; i <= n; i++) { v = x[i]; for (j = i - 1; j > 0 && x[j] > v; j--) x[j + 1] = x[j]; x[j + 1] = v } }
     function pct(x, q,   k) { k = int(q * n + 0.9999); return x[k < 1 ? 1 : k] }
     function row(x, fmt) { sort(x); return sprintf(fmt " " fmt " " fmt, pct(x, 0.5), pct(x, 0.9), x[n]) }
@@ -168,6 +191,9 @@ stats() {  # reason (open, font) or "window" -> one row; P90 is nearest-rank
       }
       chars = ""; for (k in c) chars = chars (chars == "" ? "" : ",") k
       printf "%-6s %3d %9s  %s  %11d\n", r, n, chars, row(t, "%7.1f"), sw
+      if (seam == "true") {
+        printf "%-6s syncWindows:passes", ""; for (w = 0; w <= sw; w++) if (w in d) printf "  %d:%d", w, d[w]; printf "\n"
+      }
     }'
 }
 model=$(a shell getprop ro.product.model | tr -d '\r')
@@ -175,6 +201,7 @@ echo
 echo "First Page ms on $model; ADR 0007 bar: 300 P90, warm"
 echo "firstPageMs: pass start to anchor Page ready (AnnotatedString build, measure, packing); not EPUB parse, composition or first frame"
 echo "window n and sync are lower bounds: window lines are read 1 s after each pass line, so later background measures are missed"
+echo "Place: chapter $largest offset $offset$($seam && echo " (150 chars before the first window end)"); window size ${chars:-WINDOW_CHARS}"
 printf "%-6s %3s %9s  %23s  %11s\n" "" "n" "chars" "firstPageMs P50/P90/max" "syncWin max"
 stats open
 stats font
