@@ -39,3 +39,9 @@ to match (a three-button bar leaves 341 × 360 dp and pillarboxes Reader).
   cascade) are an explicit test case.
 - No widow or orphan rules in v1. At 26–38 characters per line most paragraphs are one to three lines,
   so the rules would fire constantly and cost a line each time.
+
+The rules hold in both directions. A Page packed backward (reached by turning back past the Place of
+the current pass) ends where the Page below it starts, so its start is chosen so that the line above
+it is a legal end, with the same 70% guard: every Page end is legal unless the guard fired. What
+remains asymmetric: a backward pass may tile a stretch differently (but as legally) from a forward
+one, and a cold backward crossing may leave a short first Page in the Chapter (ADR 0007).
