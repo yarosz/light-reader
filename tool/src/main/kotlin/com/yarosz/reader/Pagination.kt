@@ -59,11 +59,14 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  *
  * The line holding the anchor starts a page. Forward from it, each page ends on the last fitting line
  * that ends at a legal break and isn't a heading, or, if no such line leaves the page at least
- * [MIN_PAGE_FILL] full, on the last line that fits. Backward from it, each page takes the earliest start
- * that fits, for determinism and simplicity. Only the page directly above the anchor has an end fixed by
- * the anchor; every earlier backward page's end falls wherever packing lands, so it may end mid-word or
- * on a heading. Only the chapter's first page may be short. A single line taller than the page gets a
- * page to itself. Heights add across a window seam, and a page spanning windows gets a band per window.
+ * [MIN_PAGE_FILL] full, on the last line that fits. Backward from it the rules mirror: each page ends
+ * where the page below starts, and takes the earliest fitting start whose preceding line is such a legal
+ * end (the chapter's first line always is), or, if no such start leaves the page at least
+ * [MIN_PAGE_FILL] full, the earliest start that fits. So every page end is legal unless the guard fired,
+ * in both directions; what remains asymmetric is that a backward pass may tile a stretch differently,
+ * but as legally, from a forward one. Only the chapter's first page may be short. A single line taller
+ * than the page gets a page to itself. Heights add across a window seam, and a page spanning windows
+ * gets a band per window.
  *
  * A page is emitted only once no further window can change it: the next line on its side doesn't fit,
  * or the chapter ends there. So when the anchor lies within about a page of its measured run's end and
@@ -115,8 +118,12 @@ fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pa
         var start = last
         while (start > 0 && yEnd - stacked[start - 1].y <= pageHeight) start--
         if (start == 0 && lo > 0) break // the window above may hold more fitting lines
-        before.addFirst(page(start, last))
-        last = start - 1
+        val begin = (start..last).firstOrNull {
+            val above = if (it == 0) null else stacked[it - 1].line
+            (above == null || above.endsAtBreak && !above.heading) && yEnd - stacked[it].y >= MIN_PAGE_FILL * pageHeight
+        } ?: start
+        before.addFirst(page(begin, last))
+        last = begin - 1
     }
     return PackedPages(
         before.toList(),

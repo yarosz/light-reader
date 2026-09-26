@@ -6,8 +6,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Examples of the page-break rules (DESIGN.md) on a whole chapter packed from its start. [PackTest] holds
- * the property tests.
+ * Examples of the page-break rules (DESIGN.md) on a whole chapter, packed from its start and packed
+ * backward from an anchor. [PackTest] holds the property tests.
  */
 class PaginationTest {
 
@@ -34,6 +34,24 @@ class PaginationTest {
         val lines = lines(headings = setOf(9))
         assertEquals(0..8, firstPageLines(lines))
         assertEquals(9, lineRanges(lines, pagesFromStart(lines))[1].first)
+    }
+
+    /** The Pages above an anchor on line 12, so the Page directly above it ends on line 11. */
+    private fun pagesBefore(lines: List<LineMetrics>) = lineRanges(lines, pack(listOf(wholeWindow(150)), listOf(lines), 120, 100f).before)
+
+    @Test
+    fun `a backward cascade above 70 percent starts the page below the legal line`() {
+        assertEquals(listOf(0..4, 5..11), pagesBefore(lines(midWord = setOf(1, 2, 3))))
+    }
+
+    @Test
+    fun `a backward cascade reaching below 70 percent starts the page greedily mid-word`() {
+        assertEquals(listOf(0..1, 2..11), pagesBefore(lines(midWord = setOf(1, 2, 3, 4, 5, 6, 7))))
+    }
+
+    @Test
+    fun `a heading directly above a would-be start moves the start down, keeping the heading with its text`() {
+        assertEquals(listOf(0..2, 3..11), pagesBefore(lines(headings = setOf(1))))
     }
 
     @Test
