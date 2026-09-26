@@ -148,7 +148,7 @@ else
   # gives 1080x1168, so an emulator that differs lays out Pages no phone shows.
   disp=$("$adb" -s "$emu" shell dumpsys window displays | grep -m1 ' app=' | tr -d '\r')
   app=$(grep -oE 'app=[0-9]+x[0-9]+' <<<"$disp")
-  dpi=$(grep -oE 'base=[0-9]+x[0-9]+ [0-9]+dpi' <<<"$disp" | grep -oE '[0-9]+dpi$')
+  dpi=$("$adb" -s "$emu" shell wm density | tr -d '\r' | tail -1 | grep -oE '[0-9]+$')dpi
   if [ "$app" != app=1080x1168 ] || [ "$dpi" != 480dpi ]; then
     echo "ci: emulator shows ${app:-app=?} at ${dpi:-?dpi}; the LP3 is app=1080x1168 at 480dpi" >&2
     echo "ci: fix: adb shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural (three-button nav bar), or adb shell wm density 480 (wrong density)" >&2
