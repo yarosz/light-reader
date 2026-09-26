@@ -51,14 +51,18 @@ note "commit \`${head:0:12}\`; files changed vs main: $(grep -c . <<<"$changed")
 
 provenance="local ci via scripts/ci.sh (agent session)"
 
-post_status() {  # state, context, description [, url]
+post_status() {  # state, context, description [, url]; GitHub rejects descriptions over 140 characters
+  local desc=$3
+  [ "${#desc}" -le 140 ] || desc="${desc:0:139}…"
   gh api -X POST "repos/{owner}/{repo}/statuses/$head" -f state="$1" -f context="signoff/$2" \
-    -f description="$3" ${4:+-f target_url="$4"} >/dev/null
+    -f description="$desc" ${4:+-f target_url="$4"} >/dev/null
 }
 
 fail_ctx() {  # context, step description
   echo "ci: FAIL [$1] $2" >&2
-  [ "$post" = 1 ] && post_status failure "$1" "local ci: $2"
+  if [ "$post" = 1 ]; then
+    post_status failure "$1" "local ci: $2" || echo "ci: could not post the failure status for signoff/$1" >&2
+  fi
   exit 1
 }
 
