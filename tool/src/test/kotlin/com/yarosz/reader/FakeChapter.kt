@@ -87,6 +87,16 @@ internal fun greedyLast(lines: List<LineMetrics>, first: Int, height: Float): In
     return last
 }
 
+/** The earliest line that, together with everything down to [last], still fits [height]; [last] always counts as fitting. */
+internal fun greedyFirst(lines: List<LineMetrics>, last: Int, height: Float): Int {
+    var first = last
+    while (first > 0 && lines[last].bottom - lines[first - 1].top <= height) first--
+    return first
+}
+
 internal fun LineMetrics.legal() = endsAtBreak && !heading
+
+/** A Page may start at line [s] when the line above it may end a Page; the chapter's first line always may. */
+internal fun List<LineMetrics>.legalStart(s: Int) = s == 0 || this[s - 1].legal()
 
 internal fun LineMetrics.filled(top: Float, height: Float) = bottom - top >= MIN_PAGE_FILL * height

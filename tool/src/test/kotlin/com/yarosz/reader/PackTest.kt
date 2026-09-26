@@ -150,8 +150,15 @@ class PackTest {
         }
     }
 
+    /**
+     * Per Page: a forward Page ends on a legal line and a backward Page starts below one, unless the guard
+     * fired. That is also the boundary form: between consecutive forward Pages (a, b) the break is legal
+     * unless the guard fired for a, and between consecutive backward Pages unless it fired for b. Exempt
+     * are the last forward Page, which ends where the chapter does, and the break at the anchor, which
+     * the anchor fixes.
+     */
     @Test
-    fun `forward pages obey the page-break rules and backward pages take the earliest start that fits`() = forAll { rnd ->
+    fun `pages obey the page-break rules in both directions, ending or starting as late or early as the rules allow`() = forAll { rnd ->
         val case = randomCase(rnd)
         val lines = case.lines
         val height = case.height
@@ -166,8 +173,12 @@ class PackTest {
         }
         lineRanges(lines, packed.before).forEach { range ->
             val bottom = lines[range.last].bottom
+            val greedy = greedyFirst(lines, range.last, height)
             assertTrue(bottom - lines[range.first].top <= height || range.first == range.last, "page $range overflows")
-            assertTrue(range.first == 0 || bottom - lines[range.first - 1].top > height, "page $range could have started earlier")
+            val guardFired = (greedy..range.last).none { lines.legalStart(it) && lines[range.last].filled(lines[it].top, height) }
+            assertTrue(lines.legalStart(range.first) || guardFired, "page $range starts below an illegal end")
+            if (guardFired) assertEquals(greedy, range.first)
+            else assertTrue((greedy until range.first).none { lines.legalStart(it) }, "page $range could have started earlier")
         }
     }
 
