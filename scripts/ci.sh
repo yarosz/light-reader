@@ -148,9 +148,9 @@ else
   # gives 1080x1168, so an emulator that differs lays out Pages no phone shows.
   disp=$("$adb" -s "$emu" shell dumpsys window displays | grep -m1 ' app=' | tr -d '\r')
   app=$(grep -oE 'app=[0-9]+x[0-9]+' <<<"$disp")
-  dpi=$("$adb" -s "$emu" shell wm density | tr -d '\r' | tail -1 | grep -oE '[0-9]+$')dpi
-  if [ "$app" != app=1080x1168 ] || [ "$dpi" != 480dpi ]; then
-    echo "ci: emulator shows ${app:-app=?} at ${dpi:-?dpi}; the LP3 is app=1080x1168 at 480dpi" >&2
+  dpi=$("$adb" -s "$emu" shell wm density | tr -d '\r' | tail -1 | grep -oE '[0-9]+$')
+  if [ "$app" != app=1080x1168 ] || [ "$dpi" != 480 ]; then
+    echo "ci: emulator shows ${app:-app=?} at ${dpi:-?}dpi; the LP3 is app=1080x1168 at 480dpi" >&2
     echo "ci: fix: adb shell cmd overlay enable-exclusive --category com.android.internal.systemui.navbar.gestural (three-button nav bar), or adb shell wm density 480 (wrong density)" >&2
     fail_ctx emulator "emulator app area is not the LP3's (need 1080x1168 at 480 dpi)"
   fi
@@ -194,7 +194,8 @@ url=""
 if pr=$(gh pr view --json number -q .number 2>/dev/null); then
   url=$(gh pr comment "$pr" --body "$body" 2>/dev/null | grep -oE 'https://github.com/[^ ]+' | tail -1)
 fi
-desc="local ci via scripts/ci.sh (agent session)"
-gh signoff emulator --commit "$head" --description "$desc" ${url:+--url "$url"} >/dev/null || die "posting signoff/emulator"
-[ "$lp3_ran" = 1 ] && { gh signoff lp3 --commit "$head" --description "$desc" ${url:+--url "$url"} >/dev/null || die "posting signoff/lp3"; }
+# gh-signoff's create takes only --commit and --url (--description is for `gh signoff fail`), so the
+# provenance lives in the evidence comment that --url links.
+gh signoff emulator --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/emulator"
+[ "$lp3_ran" = 1 ] && { gh signoff lp3 --commit "$head" ${url:+--url "$url"} >/dev/null || die "posting signoff/lp3"; }
 echo "ci: posted signoff/emulator$([ "$lp3_ran" = 1 ] && echo ' + signoff/lp3') on ${head:0:12}${url:+ ($url)}"

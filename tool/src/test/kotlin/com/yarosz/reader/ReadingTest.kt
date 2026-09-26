@@ -4,8 +4,9 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNotEquals
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -98,7 +99,7 @@ class ReadingTest {
         val place = shown.page.start
         val bigger = key.copy(fontStep = 3)
         val relaid = book.reading.open(1, place, bigger)
-        assertNotEquals(firstPass.id, relaid.pass.id)
+        assertNotSame(firstPass, relaid.pass)
         assertEquals(bigger, relaid.pass.key)
         assertTrue(place >= relaid.page.start && place < relaid.page.end)
 
@@ -161,5 +162,18 @@ class ReadingTest {
         val partial = pass(key, windowChars = 510).also { p -> p.record(0, tenCharLines(p.windows[0])) }
         assertTrue(partial.pages.isNotEmpty() && partial.pages.last().end < length)
         assertIs<Landing.Fresh>(backwardLanding(partial, key, length))
+    }
+
+    @Test
+    fun `record keeps a window's first layout, so a late background measure can't change packed Pages`() {
+        val chapter = Chapter("", listOf(Block(BlockKind.Paragraph, "x".repeat(500))))
+        val pass = Pass<List<LineMetrics>>(0, 0, chapter, key, windows(chapter, 1_000), 0) { it }
+        fun lines(chars: Int) = List(500 / chars) { i -> LineMetrics(i * chars, i * 10f, i * 10f + 10f, endsAtBreak = true, heading = false) }
+        val first = lines(10)
+        pass.record(0, first)
+        val pages = pass.pages
+        pass.record(0, lines(50))
+        assertSame(first, pass.measured(0))
+        assertEquals(pages, pass.pages)
     }
 }

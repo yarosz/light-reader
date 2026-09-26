@@ -37,7 +37,7 @@ fun windows(chapter: Chapter, maxChars: Int = WINDOW_CHARS): List<Window> {
 fun windowIndexFor(windows: List<Window>, offset: Int): Int = windows.indexContaining(offset) { it.start }
 
 /** Zero-width space: stands in for the '\n' between blocks in a window's laid-out text (see [windowText]). */
-const val BLOCK_SEPARATOR = '​'
+const val BLOCK_SEPARATOR = '\u200B'
 
 /**
  * A window's text for layout: its blocks with [BLOCK_SEPARATOR] wherever [Chapter.text] has a '\n'

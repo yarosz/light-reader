@@ -157,7 +157,7 @@ private class XhtmlHandler : DefaultHandler() {
         for (i in start until start + length) {
             val c = ch[i]
             when {
-                c == '﻿' || c == '­' -> Unit // zero-width no-break space, soft hyphen
+                c == '\uFEFF' || c == '\u00AD' -> Unit // zero-width no-break space, soft hyphen
                 c.isWhitespace() && c != ' ' -> {
                     if (text.isNotEmpty() && text.last() != ' ' && text.last() != '\n') text.append(' ')
                 }

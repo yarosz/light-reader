@@ -90,6 +90,7 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     fun bind(typesetter: Typesetter) {
         val chapters = book.value?.chapters ?: return
         this.typesetter = typesetter
+        prefetching?.cancel()
         reading = Reading(chapters, measure = { pass, window -> measure(typesetter, pass, window, sync = true) }, linesOf = { it.lines })
         open(if (frame.value == null) "open" else "relayout")
     }
@@ -124,21 +125,23 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     }
 
     /**
-     * Runs one step of the session, publishes what it shows, logs the pass when the step started one,
-     * and keeps the neighbouring windows coming. firstPageMs runs from the step's start to the Page
-     * being ready to draw: the windows' styled text, their measures and the packing, on this thread.
+     * Runs one step of the session, publishes what it shows, logs the pass when the step started one
+     * (re-entering a cached pass logs nothing), and keeps the neighbouring windows coming. firstPageMs
+     * runs from the step's start to the Page being ready to draw: the windows' styled text, their
+     * measures and the packing, on this thread.
      */
     private fun show(reason: String, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
         val reading = reading ?: return null
-        val before = frame.value?.pass?.id
+        val before = frame.value?.pass
+        val started = reading.passesStarted
         syncWindows = 0
         val start = System.nanoTime()
         val shown = step(reading) ?: return null
         val elapsed = System.nanoTime() - start
         frame.value = shown
         val pass = shown.pass
-        if (pass.id != before) {
-            prefetching?.cancel()
+        if (pass !== before) prefetching?.cancel()
+        if (reading.passesStarted != started) {
             Log.i(PERF_TAG, "pass reason=$reason chapter=${pass.chapterIndex} chars=${pass.length} font=${FONT_SIZES[pass.key.fontStep]} " +
                 "windows=${pass.windows.size} syncWindows=$syncWindows firstPageMs=${ms(elapsed)}")
         }
@@ -146,16 +149,24 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
         return shown
     }
 
-    /** Measures the next window the shown pass wants, off the main thread, one at a time, until it is covered. */
+    /**
+     * Measures the next window the shown pass wants, off the main thread, one at a time, until it is
+     * covered. A cancel can't interrupt a measure already running, so the next one starts only once it
+     * returns: rapid font taps never stack measures. A turn that needs the window being measured here
+     * measures it on the main thread, and [Pass.record] then drops this late copy.
+     */
     private fun prefetch() {
-        if (prefetching?.isActive == true) return
+        if (prefetching != null) return
         val typesetter = typesetter ?: return
         val (pass, window) = reading?.prefetchTarget() ?: return
         prefetching = viewModelScope.launch {
-            val layout = withContext(Dispatchers.Default) { measure(typesetter, pass, window, sync = false) }
-            if (frame.value?.pass?.id != pass.id) return@launch
-            pass.record(window, layout)
-            prefetch()
+            try {
+                val layout = withContext(Dispatchers.Default) { measure(typesetter, pass, window, sync = false) }
+                if (frame.value?.pass === pass) pass.record(window, layout)
+            } finally {
+                prefetching = null
+                prefetch()
+            }
         }
     }
 

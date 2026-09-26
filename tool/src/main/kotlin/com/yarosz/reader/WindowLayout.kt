@@ -36,7 +36,10 @@ private const val WARM_UP_WIDTH_PX = 240
 /** A window measured at one [LayoutKey]: its layout, for drawing, and its lines, for packing. */
 class WindowLayout(val layout: TextLayoutResult, val lines: List<LineMetrics>)
 
-/** The body style at [FONT_SIZES] step [fontStep] (DESIGN.md). Colour is left to drawing, so a theme change needs no relayout. */
+/**
+ * The body style at [FONT_SIZES] step [fontStep] (DESIGN.md). Body colour is left to drawing, but
+ * captions bake [Typesetter]'s caption colour into the layout, so a theme change relays the book out.
+ */
 fun readingStyle(fontStep: Int): TextStyle {
     val size = FONT_SIZES[fontStep]
     return TextStyle(

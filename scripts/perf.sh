@@ -174,6 +174,7 @@ model=$(a shell getprop ro.product.model | tr -d '\r')
 echo
 echo "First Page ms on $model; ADR 0007 bar: 300 P90, warm"
 echo "firstPageMs: pass start to anchor Page ready (AnnotatedString build, measure, packing); not EPUB parse, composition or first frame"
+echo "window n and sync are lower bounds: window lines are read 1 s after each pass line, so later background measures are missed"
 printf "%-6s %3s %9s  %23s  %11s\n" "" "n" "chars" "firstPageMs P50/P90/max" "syncWin max"
 stats open
 stats font

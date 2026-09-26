@@ -13,7 +13,8 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  * One layout pass (ADR 0007): a chapter's windows at one [LayoutKey], measured outward from [anchor]
  * and re-packed as each window lands. [M] is a measured window as the platform keeps it, its layout
  * for drawing and its lines for packing; the pass reads only the lines, through [linesOf]. A Page once
- * packed never changes (see [pack]), so turning back shows the Page just read.
+ * packed never changes (see [pack]), so turning back shows the Page just read. [id] is for logs: it
+ * is unique within one [Reading] only, so compare passes by identity.
  */
 class Pass<M>(
     val id: Int,
@@ -35,7 +36,9 @@ class Pass<M>(
 
     fun measured(window: Int): M? = measured[window]
 
+    /** Keeps [layout] for [window] unless it is already measured: the Pages drawn from the first layout must not change under the reader. */
     fun record(window: Int, layout: M) {
+        if (measured[window] != null) return
         measured[window] = layout
         packed = repack()
     }
@@ -104,7 +107,9 @@ class Reading<M>(
     private val windowChars: Int = WINDOW_CHARS,
 ) {
     private val passes = LinkedHashMap<Int, Pass<M>>()
-    private var nextId = 0
+    /** Passes this session has started; also the next pass's id. */
+    var passesStarted = 0
+        private set
     private var shown: Shown<M>? = null
 
     /** Shows the Page holding [offset] in chapter [chapterIndex] at [key]: from a cached pass with that Page, else a new pass anchored there. */
@@ -144,7 +149,7 @@ class Reading<M>(
     private fun enter(chapterIndex: Int, offset: Int, key: LayoutKey): Shown<M> {
         val chapter = chapters[chapterIndex]
         val pass = passes.remove(chapterIndex)?.takeIf { it.pageAt(offset) != null }
-            ?: Pass(nextId++, chapterIndex, chapter, key, windows(chapter, windowChars), offset, linesOf)
+            ?: Pass(passesStarted++, chapterIndex, chapter, key, windows(chapter, windowChars), offset, linesOf)
         passes[chapterIndex] = pass
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())
         return turnTo(pass, offset)
