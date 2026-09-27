@@ -1,11 +1,11 @@
 package com.yarosz.reader
 
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
-import java.net.URLDecoder
 import java.security.MessageDigest
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import javax.xml.parsers.SAXParserFactory
 import org.xml.sax.Attributes
 import org.xml.sax.helpers.DefaultHandler
 
@@ -36,48 +36,179 @@ data class Chapter(val spineId: String, val title: String, val blocks: List<Bloc
 /** [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see [bookIdentifier]. */
 data class Book(val identifier: String, val title: String, val chapters: List<Chapter>)
 
+/** The most a container, package, or encryption document may decompress to; real ones are a few KB. */
+const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
+
+/** The most one Spine document may decompress to: generous (the largest Gutenberg ones are under 2 MB), but no zip bomb. */
+const val MAX_CHAPTER_BYTES = 32L * 1024 * 1024
+
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
  * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does).
+ * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
+ * its Catalogue entry's, else the file name.
  */
-fun parseEpub(file: File): Book = ZipFile(file).use { zip ->
-    fun open(path: String): InputStream =
-        zip.getInputStream(zip.getEntry(path) ?: error("EPUB is missing $path"))
-
-    val opfPath = ContainerHandler().also { sax(open("META-INF/container.xml"), it) }.opfPath
-        ?: error("container.xml has no rootfile")
-    val opfDir = opfPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
-    val opf = OpfHandler().also { sax(open(opfPath), it) }
-
-    val docs = opf.spine.mapNotNull { idref -> opf.manifest[idref]?.let { idref to it } }.map { (idref, href) ->
-        idref to XhtmlHandler().also { sax(open(opfDir + URLDecoder.decode(href, "UTF-8")), it) }
-    }
+fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Book = ZipFile(file).use { zip ->
+    val pkg = readPackage(zip, fallbackTitle)
+    val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { parseUntrusted(zip.open(item.path), it, MAX_CHAPTER_BYTES) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
-    val title = opf.title ?: file.nameWithoutExtension
     Book(
-        identifier = bookIdentifier(opf.identifiers, opf.uniqueIdentifier, title, opf.spine),
-        title = title,
+        identifier = pkg.identifier,
+        title = pkg.title,
         chapters = body.mapIndexed { i, (idref, doc) -> Chapter(idref, doc.title ?: "Section ${i + 1}", doc.blocks) },
     )
+}
+
+/** A Spine item's idref and the path of its document inside the zip. */
+data class SpineItem(val idref: String, val path: String)
+
+/** What a Book's package document says about it, read without parsing the text. */
+data class Package(val identifier: String, val title: String, val spine: List<SpineItem>)
+
+/**
+ * Reads the package document that the container names. [fallbackTitle] titles a Book whose package
+ * has no `dc:title`, or an empty one. Throws when the zip has no container or package document, no
+ * Spine item that has a document, or is missing a Spine document, and when the container or package
+ * isn't XML or passes [MAX_PACKAGE_XML_BYTES].
+ */
+fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
+    val opf = readOpf(zip)
+    val spine = opf.spine.mapNotNull { idref ->
+        opf.manifest[idref]?.takeIf { it.mediaType == "application/xhtml+xml" }?.let { SpineItem(idref, it.path) }
+    }
+    check(spine.isNotEmpty()) { "the package has no Spine item with a document" }
+    val documents = spine.map { zip.entry(it.path) }
+    val title = opf.title?.takeIf { it.isNotEmpty() } ?: fallbackTitle
+    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, documents), title, spine)
+}
+
+/** The package document the container names, its manifest paths resolved inside the zip. */
+private fun readOpf(zip: ZipFile): OpfHandler {
+    val opfPath = ContainerHandler().also { parseUntrusted(zip.open("META-INF/container.xml"), it, MAX_PACKAGE_XML_BYTES) }.opfPath
+        ?: error("container.xml has no rootfile")
+    val opfDir = opfPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+    return OpfHandler(opfDir).also { parseUntrusted(zip.open(opfPath), it, MAX_PACKAGE_XML_BYTES) }
+}
+
+/**
+ * The zip path that [href] names relative to [dir] ("" or ending in "/"). An href is a URI path, not
+ * form data: percent escapes decode as UTF-8, "+" stays "+", and a "%" that starts no escape stays
+ * as written. A fragment is dropped, and "." and ".." segments resolve, never above the zip's root.
+ */
+internal fun zipPath(dir: String, href: String): String {
+    val segments = ArrayDeque<String>()
+    for (segment in (dir + decodePercent(href.substringBefore('#'))).split('/')) {
+        when (segment) {
+            "", "." -> Unit
+            ".." -> segments.removeLastOrNull()
+            else -> segments.addLast(segment)
+        }
+    }
+    return segments.joinToString("/")
+}
+
+private fun decodePercent(text: String): String {
+    if ('%' !in text) return text
+    val out = StringBuilder()
+    val bytes = ByteArrayOutputStream()
+    fun flush() {
+        if (bytes.size() == 0) return
+        out.append(bytes.toString("UTF-8"))
+        bytes.reset()
+    }
+    var i = 0
+    while (i < text.length) {
+        val escape = if (text[i] == '%' && i + 2 < text.length) text.substring(i + 1, i + 3).toIntOrNull(16) else null
+        if (escape != null) {
+            bytes.write(escape)
+            i += 3
+        } else {
+            flush()
+            out.append(text[i++])
+        }
+    }
+    flush()
+    return out.toString()
+}
+
+private fun ZipFile.entry(path: String): ZipEntry = getEntry(path) ?: error("EPUB is missing $path")
+
+private fun ZipFile.open(path: String): InputStream = getInputStream(entry(path))
+
+private val RIGHTS_FILES = listOf("META-INF/rights.xml", "META-INF/sinf.xml", "META-INF/license.lcpl")
+private val FONT_EXTENSIONS = setOf("ttf", "otf", "woff", "woff2")
+
+/** The IDPF and Adobe font obfuscation algorithms: not protection, only a scramble of embedded fonts. */
+private val FONT_OBFUSCATION = setOf("http://www.idpf.org/2008/embedding", "http://ns.adobe.com/pdf/enc#RC")
+
+private fun isFontType(mediaType: String) = mediaType.startsWith("font/") || mediaType.startsWith("application/font-") ||
+    mediaType.startsWith("application/x-font-") || mediaType == "application/vnd.ms-opentype"
+
+/**
+ * True when the EPUB is copy-protected (ADR 0005): it carries an Adobe, Apple, or Readium LCP rights
+ * file, or its `META-INF/encryption.xml` encrypts anything but a font. Font obfuscation alone is
+ * common in DRM-free EPUBs. An encrypted file counts as a font when it is encrypted with a font
+ * obfuscation algorithm, when the manifest gives it a font media type, or, last, by its file
+ * extension. An encryption.xml that doesn't parse counts as protection, since nothing it covers could
+ * be read.
+ */
+fun isCopyProtected(zip: ZipFile): Boolean {
+    if (RIGHTS_FILES.any { zip.getEntry(it) != null }) return true
+    val encryption = zip.getEntry("META-INF/encryption.xml") ?: return false
+    val encrypted = runCatching { EncryptionHandler().also { parseUntrusted(zip.getInputStream(encryption), it, MAX_PACKAGE_XML_BYTES) }.encrypted }
+        .getOrElse { return true }
+    val mediaTypes = runCatching { readOpf(zip).manifest.values.associate { it.path to it.mediaType } }.getOrDefault(emptyMap())
+    return encrypted.any { (algorithm, uri) ->
+        val path = zipPath("", uri)
+        algorithm !in FONT_OBFUSCATION && mediaTypes[path]?.let(::isFontType) != true &&
+            path.substringAfterLast('.').lowercase() !in FONT_EXTENSIONS
+    }
 }
 
 /**
  * The Book's identifier: the `dc:identifier` that the package's `unique-identifier` names, else the
  * first `dc:identifier`. [identifiers] pairs each one's `id` attribute (null when absent) with its
- * trimmed text, in document order. A book with none gets "sha256:" plus the hex SHA-256 of its title
- * and spine idrefs, one per line. That is stable across re-downloads of the same file but not across
- * editions.
+ * trimmed text, in document order. A book with none gets "sha256:" plus the hex SHA-256 of its Spine's
+ * content: each Spine document's CRC-32 and length, one pair per line in reading order. The zip's
+ * central directory records both for every entry, so this reads no document, yet any change to the
+ * text changes it. Two different books never share it just because they share a title and generic
+ * idrefs. It is stable across re-downloads and repackaging of the same text, not across editions.
  */
-fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: String?, title: String, spine: List<String>): String {
+fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: String?, spine: List<ZipEntry>): String {
     val usable = identifiers.filter { it.second.isNotEmpty() }
     usable.firstOrNull { uniqueIdentifier != null && it.first == uniqueIdentifier }?.let { return it.second }
     usable.firstOrNull()?.let { return it.second }
-    val digest = MessageDigest.getInstance("SHA-256").digest((listOf(title) + spine).joinToString("\n").toByteArray())
+    val content = spine.joinToString("\n") { "${it.crc.toString(16)} ${it.size}" }
+    val digest = MessageDigest.getInstance("SHA-256").digest(content.toByteArray())
     return "sha256:" + digest.joinToString("") { "%02x".format(it) }
 }
 
-private fun sax(input: InputStream, handler: DefaultHandler) = input.use {
-    SAXParserFactory.newInstance().newSAXParser().parse(it, handler)
+/** One EncryptedData: its own EncryptionMethod's algorithm (not a key's, inside KeyInfo) and its CipherReference. */
+private data class Encrypted(val algorithm: String?, val uri: String)
+
+private class EncryptionHandler : DefaultHandler() {
+    val encrypted = mutableListOf<Encrypted>()
+    private var algorithm: String? = null
+    private var uri: String? = null
+    private var depth = 0
+
+    override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
+        depth++
+        when (qName.substringAfter(':')) {
+            "EncryptedData" -> {
+                algorithm = null
+                this.uri = null
+                depth = 0
+            }
+            "EncryptionMethod" -> if (depth == 1) algorithm = attrs.getValue("Algorithm")
+            "CipherReference" -> if (this.uri == null) this.uri = attrs.getValue("URI").orEmpty()
+        }
+    }
+
+    override fun endElement(uri: String, localName: String, qName: String) {
+        depth--
+        if (qName.substringAfter(':') == "EncryptedData") encrypted += Encrypted(algorithm, this.uri.orEmpty())
+    }
 }
 
 private class ContainerHandler : DefaultHandler() {
@@ -87,8 +218,12 @@ private class ContainerHandler : DefaultHandler() {
     }
 }
 
-private class OpfHandler : DefaultHandler() {
-    val manifest = mutableMapOf<String, String>()
+/** A manifest item: its zip path and media type. */
+private class ManifestItem(val path: String, val mediaType: String)
+
+/** Reads a package document in [dir] ("" or ending in "/"). */
+private class OpfHandler(private val dir: String) : DefaultHandler() {
+    val manifest = mutableMapOf<String, ManifestItem>()
     val spine = mutableListOf<String>()
     var title: String? = null
     var uniqueIdentifier: String? = null
@@ -100,8 +235,10 @@ private class OpfHandler : DefaultHandler() {
 
     override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
         when (qName.substringAfter(':')) {
-            "item" -> if (attrs.getValue("media-type") == "application/xhtml+xml") {
-                manifest[attrs.getValue("id")] = attrs.getValue("href")
+            "item" -> {
+                val id = attrs.getValue("id")
+                val href = attrs.getValue("href")
+                if (id != null && href != null) manifest[id] = ManifestItem(zipPath(dir, href), attrs.getValue("media-type").orEmpty().lowercase())
             }
             "itemref" -> spine += attrs.getValue("idref")
             "title" -> if (title == null) inTitle = true

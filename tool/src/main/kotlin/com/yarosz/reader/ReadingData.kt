@@ -66,6 +66,9 @@ data class ReadingData(
     val extras: Map<String, JsonElement> = emptyMap(),
 )
 
+/** The title stored for the Book in [file], a name inside filesDir, or null when none is stored. */
+fun ReadingData.storedTitle(file: String): String? = books.values.firstOrNull { it.file == file }?.title?.takeIf { it.isNotBlank() }
+
 /** Puts the Book on the Shelf, adding its entry when it has none, with [title] and [file] current. */
 fun ReadingData.shelve(identifier: String, title: String, file: String): ReadingData {
     val entry = books[identifier]?.copy(title = title, file = file, onShelf = true)

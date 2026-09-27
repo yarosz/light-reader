@@ -56,19 +56,37 @@ Ordered. Each item ends on its _done-when_.
   reviewers before v1; ask in #204 which SDK commit the builder uses and whether Tool Manager transfer is
   live on retail; at the first Light-signed build, the sentinel check in `RELEASING.md`. **Tool id:
   `com.yarosz.reader`**, permanent from first publish.
-- **N2 follow-ups.** With N3: a Book with no `dc:identifier` is hashed over its whole Spine and, with
-  no `dc:title`, its file name; a Place whose Spine item is gone (an edition renamed its ids) could
-  re-find its snippet in other Chapters before falling back. With N4: set `finished` from Progress. At the
+- **N2 follow-ups.** With N3, and required before any edition switch: a Place must re-find its
+  snippet in other Chapters when it isn't in the same-id Chapter, not only when the Spine item is
+  gone. Gutenberg's two editions of a Book share `dc:identifier` (`http://www.gutenberg.org/1342`)
+  but not their Spines (16 against 9 items), and reuse idrefs such as `item5` for different text, so
+  a same-id Chapter can hold other text entirely. (Done in N3's pure core: a Book with no
+  `dc:identifier` is hashed over its Spine documents' CRC-32 and length, pinned by a test; with no
+  `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: set `finished` from Progress. At the
   first release after N2: the upgrade-path test (release N over N-1 with a populated store).
 - **N3 · Shelf + Catalogues (ADR 0001, 0005).** One Atom parser (OPDS acquisition links and EPUB
-  enclosures); shipped Gutenberg + "Standard Ebooks: new releases"; acquisition preference EPUB3 >
-  EPUB2, with-images variant; foreground downloads with visible states; Book identity by
-  `dc:identifier`; copy-protection detection. OPDS search via the feed's OpenSearch link (hidden when
-  absent); Catalogue entry → detail page ("Add to Shelf"); Shelf rows open the Book. Shelf order: in
+  enclosures); shipped Gutenberg + "Standard Ebooks: new releases"; acquisition preference: no
+  images or unmarked over with images, then EPUB3 > EPUB2, until images ship (flip
+  `PREFER_IMAGES_EDITION` in `Catalogue.kt`), and one "Add to Shelf" per Book across its page's
+  entries (`bestDownload`); foreground downloads with visible states; Book identity by
+  `dc:identifier`; copy-protection detection. OPDS search via the feed's OpenSearch link, or its ready
+  Atom template as Calibre gives (hidden when absent); Catalogue entry → detail page ("Add to Shelf"); Shelf rows open the Book. Shelf order: in
   progress (recent first), not started, finished. "Edit" in the top bar removes a Book (file deleted,
   Place kept). Error and offline copy. HTTPS only; a typed http:// tries https:// once. Measure a
   190 KB Gutenberg Spine item on the emulator as soon as one opens. _Done when:_ a Book from each
   shipped Catalogue downloads, appears on the Shelf, and resumes its own Place offline.
+  Pure core done (no UI yet): `Atom.kt` (feeds, OpenSearch), `Catalogue.kt` (shapes, shipped
+  Catalogues, acquisition preference), `Network.kt` (`HttpsUrl`, `Transport`, typed failures),
+  `Download.kt` (temp, validate, rename; `DownloadState`), copy-protection in `Epub.kt`. Next: the
+  Shelf screen, then the Catalogue screens, wiring `HttpsTransport` and `Downloader`.
+  Hardening done: every XML document (feeds, OpenSearch, container, OPF, encryption, chapters) goes
+  through one untrusted-XML parser (`Xml.kt`: no external entity or DTD is ever read, DOCTYPEs still
+  parse); caps on feeds (8 MB), one text construct (64 K characters), package XML (4 MB), chapters
+  (32 MB), and Books (300 MB, with 16 MB always left free); a Downloader deletes stale
+  `download-*.part` files a killed process left; `UntrustedCertificate` for a certificate failure;
+  redirects followed in code, https only. Open: an EPUB2 chapter's undeclared named entities (such
+  as `&nbsp;`) are skipped, joining the words around them; a Gutenberg list row carries its author
+  only as `<content>` text, shown as the summary.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
   Chapter title; "Contents" lists Chapters; "about N min left in this Chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,

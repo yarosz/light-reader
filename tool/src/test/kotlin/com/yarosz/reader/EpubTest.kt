@@ -1,8 +1,12 @@
 package com.yarosz.reader
 
 import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -30,17 +34,99 @@ class EpubTest {
     }
 
     @Test
-    fun `the unique identifier wins, else the first, else a hash of title and spine`() {
+    fun `the unique identifier wins, else the first, else a hash of the Spine's content`() {
+        val spine = listOf(document(0x1a2b, 100), document(0x3c4d, 200))
         val ids = listOf(null to "urn:isbn:1", "blank" to "", "uid" to "https://example.org/book")
-        assertEquals("https://example.org/book", bookIdentifier(ids, "uid", "T", listOf("a")))
-        assertEquals("urn:isbn:1", bookIdentifier(ids, "missing", "T", listOf("a")))
-        assertEquals("urn:isbn:1", bookIdentifier(ids, null, "T", listOf("a")))
+        assertEquals("https://example.org/book", bookIdentifier(ids, "uid", spine))
+        assertEquals("urn:isbn:1", bookIdentifier(ids, "missing", spine))
+        assertEquals("urn:isbn:1", bookIdentifier(ids, null, spine))
 
-        val hashed = bookIdentifier(emptyList(), null, "T", listOf("a", "b"))
-        assertTrue(Regex("sha256:[0-9a-f]{64}").matches(hashed), hashed)
-        assertEquals(hashed, bookIdentifier(listOf("blank" to ""), "blank", "T", listOf("a", "b")))
-        assertFalse(hashed == bookIdentifier(emptyList(), null, "T", listOf("a", "c")))
-        assertFalse(hashed == bookIdentifier(emptyList(), null, "U", listOf("a", "b")))
+        val hashed = bookIdentifier(emptyList(), null, spine)
+        // Pinned: a stored Book's Place is keyed by this, so changing the formula orphans it.
+        assertEquals("sha256:16e0b346e8479706c82c2de88b5bbac7459e0aaaca533c080770f121e9cc5e6a", hashed)
+        assertEquals(hashed, bookIdentifier(listOf("blank" to ""), "blank", listOf(document(0x1a2b, 100, "other/name.xhtml"), document(0x3c4d, 200))))
+        assertFalse(hashed == bookIdentifier(emptyList(), null, spine.reversed()))
+        assertFalse(hashed == bookIdentifier(emptyList(), null, listOf(document(0x1a2b, 100), document(0x3c4e, 200))))
+        assertFalse(hashed == bookIdentifier(emptyList(), null, listOf(document(0x1a2b, 100), document(0x3c4d, 201))))
+    }
+
+    @Test
+    fun `a Book with no identifier keeps its hash across re-downloads, and changes with its text, not its title`() {
+        val dir = createTempDirectory("epub").toFile()
+        fun identify(name: String, title: String, chapters: List<String>) =
+            parseEpub(File(dir, name).writeEpub(epubFiles(identifier = null, title = title, chapters = chapters))).identifier
+        try {
+            val first = identify("a.epub", "Stories", listOf("Once upon a time.", "The end."))
+            assertEquals(first, identify("b.epub", "Stories", listOf("Once upon a time.", "The end.")))
+            assertEquals(first, identify("c.epub", "Stories, retitled", listOf("Once upon a time.", "The end.")))
+            assertFalse(first == identify("d.epub", "Stories", listOf("Once upon a time.", "The End.")))
+            assertFalse(first == identify("e.epub", "Stories", listOf("Twice upon a time.", "The end.")))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    private fun document(crc: Long, size: Long, name: String = "text/$crc.xhtml") = ZipEntry(name).also {
+        it.crc = crc
+        it.size = size
+    }
+
+    @Test
+    fun `the package names the Book and its Spine documents without parsing the text`() {
+        val pkg = ZipFile(File("src/test/fixtures/alice.epub")).use { readPackage(it, "ignored") }
+        assertEquals(book.identifier, pkg.identifier)
+        assertEquals(book.title, pkg.title)
+        assertEquals(SpineItem("chapter-1.xhtml", "epub/text/chapter-1.xhtml"), pkg.spine.first { it.idref == "chapter-1.xhtml" })
+    }
+
+    @Test
+    fun `manifest hrefs are URI paths, resolved against the package's directory`() {
+        assertEquals("OEBPS/text/a+b c.xhtml", zipPath("OEBPS/", "text/a+b%20c.xhtml"))
+        assertEquals("OEBPS/100%.xhtml", zipPath("OEBPS/", "100%.xhtml"))
+        assertEquals("OEBPS/%zz%2.xhtml", zipPath("OEBPS/", "%zz%2.xhtml"))
+        assertEquals("OEBPS/caf\u00e9.xhtml", zipPath("OEBPS/", "caf%C3%A9.xhtml"))
+        assertEquals("Text/c.xhtml", zipPath("OEBPS/", "../Text/c.xhtml"))
+        assertEquals("c.xhtml", zipPath("OEBPS/", "../../c.xhtml"))
+        assertEquals("OEBPS/c.xhtml", zipPath("OEBPS/", "./c.xhtml#part"))
+        assertEquals("OEBPS/fonts/a.otf", zipPath("", "/OEBPS/fonts/a.otf"))
+
+        val dir = createTempDirectory("epub").toFile()
+        try {
+            val files = mapOf(
+                "mimetype" to "application/epub+zip",
+                "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>""",
+                "OEBPS/content.opf" to """<package><metadata/><manifest>
+                    <item id="a" href="a+b.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="b" href="100%.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="c" href="../Text/c.xhtml" media-type="application/xhtml+xml"/>
+                    </manifest><spine><itemref idref="a"/><itemref idref="b"/><itemref idref="c"/></spine></package>""",
+                "OEBPS/a+b.xhtml" to "<html><body><p>A</p></body></html>",
+                "OEBPS/100%.xhtml" to "<html><body><p>B</p></body></html>",
+                "Text/c.xhtml" to "<html><body><p>C</p></body></html>",
+            )
+            assertEquals(listOf("A", "B", "C"), parseEpub(File(dir, "paths.epub").writeEpub(files)).chapters.map { it.text })
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `a package with no title takes the fallback, and one with no Spine document fails`() {
+        val dir = createTempDirectory("epub").toFile()
+        try {
+            val untitled = File(dir, "untitled.epub").writeEpub(epubFiles(title = null))
+            assertEquals("untitled", parseEpub(untitled).title)
+            val blank = File(dir, "blank.epub").writeEpub(epubFiles(title = ""))
+            assertEquals("blank", parseEpub(blank).title)
+            val missing = File(dir, "missing.epub").writeEpub(epubFiles().filterKeys { it != "OEBPS/c0.xhtml" })
+            assertFailsWith<IllegalStateException> { ZipFile(missing).use { readPackage(it, "missing") } }
+            val empty = File(dir, "empty.epub").writeEpub(epubFiles(chapters = emptyList()))
+            assertFailsWith<IllegalStateException> { ZipFile(empty).use { readPackage(it, "empty") } }
+            val bare = File(dir, "bare.epub").writeEpub(mapOf("mimetype" to "application/epub+zip"))
+            assertFailsWith<IllegalStateException> { ZipFile(bare).use { readPackage(it, "bare") } }
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test

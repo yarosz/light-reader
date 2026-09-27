@@ -54,6 +54,17 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `a Book with no title opens under the title stored for its file, and keeps it`() {
+        File(dir, "alice.epub").writeEpub(epubFiles(identifier = "urn:uuid:untitled", title = null))
+        ReadingStore(dir).save { ReadingData().shelve("urn:uuid:untitled", "From the Catalogue", "alice.epub") }
+        val vm = ReaderViewModel(dir, io)
+        vm.openBook()
+        settle()
+        assertEquals("From the Catalogue", vm.book.value?.title)
+        assertEquals("From the Catalogue", ReadingStore(dir).load().books.getValue("urn:uuid:untitled").title)
+    }
+
+    @Test
     fun `the dev-start hook opens at the default font, whatever the last run left in the file`() {
         ReadingStore(dir).save { ReadingData(settings = Settings(fontStep = 3)) }
         File(dir, "dev-start").writeText("2\n")
