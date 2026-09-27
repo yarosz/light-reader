@@ -4,6 +4,7 @@ import java.io.File
 import java.io.InputStream
 import java.net.URLDecoder
 import java.security.MessageDigest
+import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import javax.xml.parsers.SAXParserFactory
 import org.xml.sax.Attributes
@@ -59,8 +60,8 @@ data class Package(val identifier: String, val title: String, val spine: List<Sp
 
 /**
  * Reads the package document that the container names. [fallbackTitle] titles a Book whose package
- * has no `dc:title`. Throws when the zip has no container or package document, or no Spine item
- * that has a document.
+ * has no `dc:title`, or an empty one. Throws when the zip has no container or package document, no
+ * Spine item that has a document, or is missing a Spine document.
  */
 fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
     val opfPath = ContainerHandler().also { sax(zip.open("META-INF/container.xml"), it) }.opfPath
@@ -71,11 +72,14 @@ fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
         opf.manifest[idref]?.let { SpineItem(idref, opfDir + URLDecoder.decode(it, "UTF-8")) }
     }
     check(spine.isNotEmpty()) { "the package has no Spine item with a document" }
-    val title = opf.title ?: fallbackTitle
-    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, title, opf.spine), title, spine)
+    val documents = spine.map { zip.entry(it.path) }
+    val title = opf.title?.takeIf { it.isNotEmpty() } ?: fallbackTitle
+    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, documents), title, spine)
 }
 
-private fun ZipFile.open(path: String): InputStream = getInputStream(getEntry(path) ?: error("EPUB is missing $path"))
+private fun ZipFile.entry(path: String): ZipEntry = getEntry(path) ?: error("EPUB is missing $path")
+
+private fun ZipFile.open(path: String): InputStream = getInputStream(entry(path))
 
 private val RIGHTS_FILES = listOf("META-INF/rights.xml", "META-INF/sinf.xml", "META-INF/license.lcpl")
 private val FONT_EXTENSIONS = setOf("ttf", "otf", "woff", "woff2")
@@ -97,15 +101,18 @@ fun isCopyProtected(zip: ZipFile): Boolean {
 /**
  * The Book's identifier: the `dc:identifier` that the package's `unique-identifier` names, else the
  * first `dc:identifier`. [identifiers] pairs each one's `id` attribute (null when absent) with its
- * trimmed text, in document order. A book with none gets "sha256:" plus the hex SHA-256 of its title
- * and spine idrefs, one per line. That is stable across re-downloads of the same file but not across
- * editions.
+ * trimmed text, in document order. A book with none gets "sha256:" plus the hex SHA-256 of its Spine's
+ * content: each Spine document's CRC-32 and length, one pair per line in reading order. The zip's
+ * central directory records both for every entry, so this reads no document, yet any change to the
+ * text changes it. Two different books never share it just because they share a title and generic
+ * idrefs. It is stable across re-downloads and repackaging of the same text, not across editions.
  */
-fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: String?, title: String, spine: List<String>): String {
+fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: String?, spine: List<ZipEntry>): String {
     val usable = identifiers.filter { it.second.isNotEmpty() }
     usable.firstOrNull { uniqueIdentifier != null && it.first == uniqueIdentifier }?.let { return it.second }
     usable.firstOrNull()?.let { return it.second }
-    val digest = MessageDigest.getInstance("SHA-256").digest((listOf(title) + spine).joinToString("\n").toByteArray())
+    val content = spine.joinToString("\n") { "${it.crc.toString(16)} ${it.size}" }
+    val digest = MessageDigest.getInstance("SHA-256").digest(content.toByteArray())
     return "sha256:" + digest.joinToString("") { "%02x".format(it) }
 }
 
