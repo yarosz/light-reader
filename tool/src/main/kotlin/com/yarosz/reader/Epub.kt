@@ -33,8 +33,11 @@ data class Chapter(val spineId: String, val title: String, val blocks: List<Bloc
     }
 }
 
-/** [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see [bookIdentifier]. */
-data class Book(val identifier: String, val title: String, val chapters: List<Chapter>)
+/**
+ * [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see
+ * [bookIdentifier]. [author] is its package's `dc:creator`s, null when it names none.
+ */
+data class Book(val identifier: String, val title: String, val chapters: List<Chapter>, val author: String? = null)
 
 /** The most a container, package, or encryption document may decompress to; real ones are a few KB. */
 const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
@@ -56,14 +59,18 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Bo
         identifier = pkg.identifier,
         title = pkg.title,
         chapters = body.mapIndexed { i, (idref, doc) -> Chapter(idref, doc.title ?: "Section ${i + 1}", doc.blocks) },
+        author = pkg.author,
     )
 }
 
 /** A Spine item's idref and the path of its document inside the zip. */
 data class SpineItem(val idref: String, val path: String)
 
-/** What a Book's package document says about it, read without parsing the text. */
-data class Package(val identifier: String, val title: String, val spine: List<SpineItem>)
+/**
+ * What a Book's package document says about it, read without parsing the text. [author] is every
+ * non-empty `dc:creator`, joined by ", ", or null when there is none.
+ */
+data class Package(val identifier: String, val title: String, val spine: List<SpineItem>, val author: String? = null)
 
 /**
  * Reads the package document that the container names. [fallbackTitle] titles a Book whose package
@@ -79,7 +86,8 @@ fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
     check(spine.isNotEmpty()) { "the package has no Spine item with a document" }
     val documents = spine.map { zip.entry(it.path) }
     val title = opf.title?.takeIf { it.isNotEmpty() } ?: fallbackTitle
-    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, documents), title, spine)
+    val author = opf.creators.filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { null }
+    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, documents), title, spine, author)
 }
 
 /** The package document the container names, its manifest paths resolved inside the zip. */
@@ -234,7 +242,9 @@ private class OpfHandler(private val dir: String) : DefaultHandler() {
     var title: String? = null
     var uniqueIdentifier: String? = null
     val identifiers = mutableListOf<Pair<String?, String>>()
+    val creators = mutableListOf<String>()
     private var inTitle = false
+    private var creatorText: StringBuilder? = null
     private val titleText = StringBuilder()
     private var identifierId: String? = null
     private var identifierText: StringBuilder? = null
@@ -253,12 +263,14 @@ private class OpfHandler(private val dir: String) : DefaultHandler() {
                 identifierId = attrs.getValue("id")
                 identifierText = StringBuilder()
             }
+            "creator" -> creatorText = StringBuilder()
         }
     }
 
     override fun characters(ch: CharArray, start: Int, length: Int) {
         if (inTitle) titleText.appendRange(ch, start, start + length)
         identifierText?.appendRange(ch, start, start + length)
+        creatorText?.appendRange(ch, start, start + length)
     }
 
     override fun endElement(uri: String, localName: String, qName: String) {
@@ -271,9 +283,15 @@ private class OpfHandler(private val dir: String) : DefaultHandler() {
                 identifiers += identifierId to it.toString().trim()
                 identifierText = null
             }
+            "creator" -> creatorText?.let {
+                creators += it.toString().trim().replace(WHITESPACE_RUN, " ")
+                creatorText = null
+            }
         }
     }
 }
+
+private val WHITESPACE_RUN = Regex("\\s+")
 
 private val BLOCK_ELEMENTS = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "dt", "dd", "figcaption", "pre")
 private val VERSE_MARKERS = listOf("verse", "poem", "song", "lyrics")

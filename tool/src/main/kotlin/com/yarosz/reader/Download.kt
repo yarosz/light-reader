@@ -41,8 +41,8 @@ sealed interface DownloadState {
 
     sealed interface Finished : DownloadState
 
-    /** The Book is on the phone as [file], a name inside the books directory. */
-    data class Done(val identifier: String, val title: String, val file: String) : Finished
+    /** The Book is on the phone as [file], a name inside the Downloader's directory. [author] is its package's, if any. */
+    data class Done(val identifier: String, val title: String, val file: String, val author: String? = null) : Finished
 
     data class Failed(val reason: DownloadFailure) : Finished
 }
@@ -162,7 +162,7 @@ class Downloader(
         }
         val target = File(dir, bookFileName(pkg.identifier))
         if (!rename(temp, target)) return DownloadState.Failed(DiskError)
-        return DownloadState.Done(pkg.identifier, pkg.title, target.name)
+        return DownloadState.Done(pkg.identifier, pkg.title, target.name, pkg.author)
     }
 }
 

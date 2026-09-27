@@ -29,6 +29,23 @@ class EpubTest {
     }
 
     @Test
+    fun `the author is every dc creator, joined, or none`() {
+        assertEquals("Lewis Carroll", book.author)
+        val dir = createTempDirectory("author").toFile()
+        try {
+            fun authorOf(creators: String): String? {
+                val files = epubFiles().let { it + ("OEBPS/content.opf" to it.getValue("OEBPS/content.opf").replace("</metadata>", "$creators</metadata>")) }
+                return ZipFile(File(dir, "b.epub").writeEpub(files)).use { readPackage(it, "t") }.author
+            }
+            assertEquals("Jane Austen, Charlotte Brontë", authorOf("<dc:creator>Jane Austen</dc:creator><dc:creator> Charlotte\n  Brontë </dc:creator>"))
+            assertEquals(null, authorOf(""))
+            assertEquals(null, authorOf("<dc:creator> </dc:creator>"))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `each chapter names the Spine item it came from`() {
         assertEquals((1..12).map { "chapter-$it.xhtml" }, book.chapters.map { it.spineId })
     }
