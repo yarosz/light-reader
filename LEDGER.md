@@ -58,9 +58,8 @@ Ordered. Each item ends on its _done-when_.
   `com.yarosz.reader`**, permanent from first publish.
 - **N2 follow-ups.** With N3: a Book with no `dc:identifier` is hashed over its whole Spine and, with
   no `dc:title`, its file name; a Place whose Spine item is gone (an edition renamed its ids) could
-  re-find its snippet in other Chapters before falling back. With N4: set `finished` from Progress. Any
-  time: a dev-start session (`mise run perf`) overwrites the stored Place and font step; the upgrade-path
-  test (release N over N-1 with a populated store) runs at the first release after N2.
+  re-find its snippet in other Chapters before falling back. With N4: set `finished` from Progress. At the
+  first release after N2: the upgrade-path test (release N over N-1 with a populated store).
 - **N3 · Shelf + Catalogues (ADR 0001, 0005).** One Atom parser (OPDS acquisition links and EPUB
   enclosures); shipped Gutenberg + "Standard Ebooks: new releases"; acquisition preference EPUB3 >
   EPUB2, with-images variant; foreground downloads with visible states; Book identity by

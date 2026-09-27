@@ -65,6 +65,34 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `a dev-start session saves nothing, so the device's reading data is left as it was`() {
+        ReadingStore(dir).save { ReadingData(settings = Settings(fontStep = 3)) }
+        val before = File(dir, "reading-data.json").readText()
+        File(dir, "dev-start").writeText("2\n")
+        val vm = ReaderViewModel(dir, io)
+        vm.openBook()
+        settle()
+        vm.changeFont(+1)
+        settle()
+        vm.onAppPause()
+        assertEquals(before, File(dir, "reading-data.json").readText())
+    }
+
+    @Test
+    fun `opening a Book lands on its stored Place`() {
+        val book = parseEpub(File(dir, "alice.epub"))
+        val chapter = book.chapters[3]
+        val offset = chapter.text.length / 2
+        ReadingStore(dir).save {
+            ReadingData().shelve(book.identifier, book.title, "alice.epub").withPlace(book.identifier, chapter.placeOf(offset, 1))
+        }
+        val vm = ReaderViewModel(dir, io)
+        vm.openBook()
+        settle()
+        assertEquals(Position(3, offset), vm.position.value)
+    }
+
+    @Test
     fun `a show during the first open starts no second open, so a change made meanwhile survives`() {
         ReadingStore(dir).save { ReadingData(settings = Settings(fontStep = 2)) }
         val vm = ReaderViewModel(dir, io)
