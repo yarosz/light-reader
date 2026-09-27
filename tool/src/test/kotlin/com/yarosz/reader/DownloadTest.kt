@@ -9,6 +9,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -98,7 +99,7 @@ class DownloadTest {
 
     @Test
     fun `a full disk, a failed sync, or a failed rename is a disk error and leaves nothing behind`() {
-        assertEquals(DiskError, failure(Answer(body = epub, length = Long.MAX_VALUE)))
+        assertEquals(DiskError, failure(Answer(body = epub), { Downloader(it, dir, usableSpace = { MIN_FREE_BYTES + epub.size - 1 }) }))
         assertEquals(DiskError, failure(Answer(body = epub), { Downloader(it, dir, sync = { throw SyncFailedException("sync") }) }))
         assertEquals(DiskError, failure(Answer(body = epub), { Downloader(it, dir, rename = { _, _ -> false }) }))
         assertEquals(emptyList(), files())
@@ -120,6 +121,53 @@ class DownloadTest {
         }
         assertEquals(emptyList(), files())
         assertEquals(1, transport.closed)
+    }
+
+    @Test
+    fun `a download stops at the declared length, and more bytes than declared is a broken response`() {
+        assertEquals(Unreachable, failure(Answer(body = epub + ByteArray(10), length = epub.size.toLong())))
+        assertEquals(Unreachable, failure(Answer(body = epub, length = epub.size - 1L)))
+        assertEquals(emptyList(), files())
+    }
+
+    @Test
+    fun `a Book larger than the cap is refused, whether declared or found while copying`() {
+        val capped = { transport: Transport -> Downloader(transport, dir, maxBookBytes = epub.size - 1L) }
+        assertEquals(NotAnEpub, failure(Answer(body = epub), capped))
+        assertEquals(NotAnEpub, failure(Answer(body = epub, length = null), capped))
+        assertTrue(download(Answer(body = epub, length = null), { Downloader(it, dir, maxBookBytes = epub.size.toLong()) }) is DownloadState.Done)
+    }
+
+    @Test
+    fun `running out of storage during the copy is a disk error, checked before the phone is full`() {
+        var spaceChecks = 0
+        val filling = { transport: Transport -> Downloader(transport, dir, usableSpace = { if (spaceChecks++ == 0) Long.MAX_VALUE else MIN_FREE_BYTES }) }
+        assertEquals(DiskError, failure(Answer(body = epub, length = null), filling))
+        assertEquals(2, spaceChecks)
+        assertEquals(emptyList(), files())
+    }
+
+    @Test
+    fun `a body cut short with no declared length is a dropped connection, not a bad file`() {
+        assertEquals(Unreachable, failure(Answer(body = epub.copyOf(epub.size / 2), length = null)))
+        assertEquals(NotAnEpub, failure(Answer(body = "<html>Gone</html>".toByteArray(), length = null)))
+    }
+
+    @Test
+    fun `a package or chapter that would expand without bound is not an EPUB`() {
+        assertEquals(NotAnEpub, failure(Answer(body = zipBytes(epubFiles() + ("OEBPS/content.opf" to LAUGHS)))))
+        assertEquals(emptyList(), files())
+    }
+
+    @Test
+    fun `a Downloader deletes temp files a killed download left, but not a running one's or a Book`() {
+        val old = System.currentTimeMillis() - 60 * 60 * 1000
+        val leftover = File(dir, "download-123.part").apply { writeText("x"); setLastModified(old) }
+        val running = File(dir, "download-456.part").apply { writeText("x") }
+        val book = File(dir, bookFileName("urn:uuid:storm")).apply { writeText("x"); setLastModified(old) }
+        Downloader(serving(Answer()), dir)
+        assertEquals(listOf(book.name, running.name).sorted(), files())
+        assertFalse(leftover.exists())
     }
 
     @Test

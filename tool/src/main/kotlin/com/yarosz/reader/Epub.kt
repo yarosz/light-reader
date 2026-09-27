@@ -6,7 +6,6 @@ import java.net.URLDecoder
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import javax.xml.parsers.SAXParserFactory
 import org.xml.sax.Attributes
 import org.xml.sax.helpers.DefaultHandler
 
@@ -37,13 +36,19 @@ data class Chapter(val spineId: String, val title: String, val blocks: List<Bloc
 /** [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see [bookIdentifier]. */
 data class Book(val identifier: String, val title: String, val chapters: List<Chapter>)
 
+/** The most a container, package, or encryption document may decompress to; real ones are a few KB. */
+const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
+
+/** The most one Spine document may decompress to: generous (the largest Gutenberg ones are under 2 MB), but no zip bomb. */
+const val MAX_CHAPTER_BYTES = 32L * 1024 * 1024
+
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
  * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does).
  */
 fun parseEpub(file: File): Book = ZipFile(file).use { zip ->
     val pkg = readPackage(zip, file.nameWithoutExtension)
-    val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { sax(zip.open(item.path), it) } }
+    val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { parseUntrusted(zip.open(item.path), it, MAX_CHAPTER_BYTES) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
     Book(
         identifier = pkg.identifier,
@@ -61,13 +66,14 @@ data class Package(val identifier: String, val title: String, val spine: List<Sp
 /**
  * Reads the package document that the container names. [fallbackTitle] titles a Book whose package
  * has no `dc:title`, or an empty one. Throws when the zip has no container or package document, no
- * Spine item that has a document, or is missing a Spine document.
+ * Spine item that has a document, or is missing a Spine document, and when the container or package
+ * isn't XML or passes [MAX_PACKAGE_XML_BYTES].
  */
 fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
-    val opfPath = ContainerHandler().also { sax(zip.open("META-INF/container.xml"), it) }.opfPath
+    val opfPath = ContainerHandler().also { parseUntrusted(zip.open("META-INF/container.xml"), it, MAX_PACKAGE_XML_BYTES) }.opfPath
         ?: error("container.xml has no rootfile")
     val opfDir = opfPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
-    val opf = OpfHandler().also { sax(zip.open(opfPath), it) }
+    val opf = OpfHandler().also { parseUntrusted(zip.open(opfPath), it, MAX_PACKAGE_XML_BYTES) }
     val spine = opf.spine.mapNotNull { idref ->
         opf.manifest[idref]?.let { SpineItem(idref, opfDir + URLDecoder.decode(it, "UTF-8")) }
     }
@@ -93,7 +99,7 @@ private val FONT_EXTENSIONS = setOf("ttf", "otf", "woff", "woff2")
 fun isCopyProtected(zip: ZipFile): Boolean {
     if (RIGHTS_FILES.any { zip.getEntry(it) != null }) return true
     val encryption = zip.getEntry("META-INF/encryption.xml") ?: return false
-    val targets = runCatching { EncryptionHandler().also { sax(zip.getInputStream(encryption), it) }.targets }
+    val targets = runCatching { EncryptionHandler().also { parseUntrusted(zip.getInputStream(encryption), it, MAX_PACKAGE_XML_BYTES) }.targets }
         .getOrElse { return true }
     return targets.any { URLDecoder.decode(it, "UTF-8").substringAfterLast('.').lowercase() !in FONT_EXTENSIONS }
 }
@@ -114,10 +120,6 @@ fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: S
     val content = spine.joinToString("\n") { "${it.crc.toString(16)} ${it.size}" }
     val digest = MessageDigest.getInstance("SHA-256").digest(content.toByteArray())
     return "sha256:" + digest.joinToString("") { "%02x".format(it) }
-}
-
-private fun sax(input: InputStream, handler: DefaultHandler) = input.use {
-    SAXParserFactory.newInstance().newSAXParser().parse(it, handler)
 }
 
 private class EncryptionHandler : DefaultHandler() {

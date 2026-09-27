@@ -98,6 +98,21 @@ class NetworkTest {
     }
 
     @Test
+    fun `an entity-expansion bomb, or a body past the feed cap, is unreadable`() {
+        val huge = """<feed xmlns="http://www.w3.org/2005/Atom"><title>${" ".repeat(MAX_FEED_BYTES.toInt())}</title></feed>""".toByteArray()
+        val transport = FakeTransport(
+            mapOf(
+                "https://a.example.org/bomb" to Answer(body = LAUGHS.toByteArray()),
+                "https://a.example.org/huge" to Answer(body = huge),
+                "https://a.example.org/osd" to Answer(body = huge),
+            ),
+        )
+        assertEquals(Fetched.Failed(Unreadable), fetchPage(transport, url("https://a.example.org/bomb")))
+        assertEquals(Fetched.Failed(Unreadable), fetchPage(transport, url("https://a.example.org/huge")))
+        assertEquals(Fetched.Failed(Unreadable), fetchSearch(transport, url("https://a.example.org/osd")))
+    }
+
+    @Test
     fun `Gutenberg's search template is an http one, upgraded to https`() {
         val transport = FakeTransport(mapOf("https://www.gutenberg.org/catalog/osd-books.xml" to Answer(body = fixture("gutenberg-osd.xml"))))
         val search = assertIs<Fetched.Ok<SearchTemplate>>(fetchSearch(transport, url("https://www.gutenberg.org/catalog/osd-books.xml"))).value

@@ -187,6 +187,16 @@ class CatalogueTest {
     }
 
     @Test
+    fun `a title or summary longer than the text cap is cut at the cap`() {
+        val e = entry(
+            """<link rel="enclosure" type="application/epub+zip" href="b.epub"/>""",
+            "<title>${"t".repeat(MAX_TEXT_CHARS + 10)}</title><summary type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\">${"<p>s</p>".repeat(MAX_TEXT_CHARS)}</div></summary>",
+        )
+        assertEquals(MAX_TEXT_CHARS, e.title.length)
+        assertTrue(e.summary!!.length <= MAX_TEXT_CHARS, "${e.summary!!.length}")
+    }
+
+    @Test
     fun `content given by reference, or blank, is no summary`() {
         val link = """<link rel="enclosure" type="application/epub+zip" href="b.epub"/>"""
         assertNull(entry(link, """<title>T</title><content type="text/html" src="about.html"/>""").summary)

@@ -1,11 +1,8 @@
 package com.yarosz.reader
 
 import java.io.InputStream
-import java.io.StringReader
 import java.net.URLEncoder
-import javax.xml.parsers.SAXParserFactory
 import org.xml.sax.Attributes
-import org.xml.sax.InputSource
 import org.xml.sax.helpers.DefaultHandler
 
 private const val ATOM = "http://www.w3.org/2005/Atom"
@@ -13,6 +10,12 @@ private const val OPENSEARCH = "http://a9.com/-/spec/opensearch/1.1/"
 
 /** Results asked of a search template that has a count parameter: Gutenberg's page size. */
 const val SEARCH_PAGE_SIZE = 25
+
+/** The most of a feed or OpenSearch body read: a Gutenberg page with inline thumbnails is under 1 MB. */
+const val MAX_FEED_BYTES = 8L * 1024 * 1024
+
+/** The most characters kept of one title, name, or summary; the rest is dropped. */
+const val MAX_TEXT_CHARS = 64 * 1024
 
 private val ACQUISITION_RELS = setOf("enclosure", "http://opds-spec.org/acquisition", "http://opds-spec.org/acquisition/open-access")
 
@@ -23,17 +26,18 @@ private val NOT_OPENING_RELS = setOf("related", "self", "start", "up", "search",
  * Reads one Catalogue page (ADR 0001): OPDS 1.x navigation and acquisition feeds, and plain Atom whose
  * entries carry EPUB enclosures. Relative links resolve against [url], the page's own URL; a link
  * that can't be made https is dropped. An entry with nothing to open or download is dropped too.
- * Null when the document isn't an Atom feed; throws SAXException when it isn't XML.
+ * Null when the document isn't an Atom feed; throws SAXException when it isn't XML or passes
+ * [MAX_FEED_BYTES].
  */
 fun parseFeed(input: InputStream, url: HttpsUrl): CataloguePage? =
-    FeedHandler(url).also { saxNamespaced(input, it) }.page()
+    FeedHandler(url).also { parseUntrusted(input, it, MAX_FEED_BYTES, namespaceAware = true) }.page()
 
 /**
  * The search an OpenSearch description offers for Atom results, preferring an OPDS template, or null
  * when it offers none that can be filled.
  */
 fun parseOpenSearch(input: InputStream, url: HttpsUrl): SearchTemplate? {
-    val handler = OpenSearchHandler().also { saxNamespaced(input, it) }
+    val handler = OpenSearchHandler().also { parseUntrusted(input, it, MAX_FEED_BYTES, namespaceAware = true) }
     return handler.atomTemplates.sortedByDescending { (type, _) -> "profile=opds-catalog" in type }
         .map { (_, template) -> SearchTemplate(template, url) }
         .firstOrNull { it.fill("x") != null }
@@ -66,16 +70,7 @@ class SearchTemplate(val template: String, private val base: HttpsUrl) {
     }
 }
 
-private fun saxNamespaced(input: InputStream, handler: DefaultHandler) = input.use {
-    SAXParserFactory.newInstance().apply { isNamespaceAware = true }.newSAXParser().parse(it, handler)
-}
-
-/** Never fetches a DTD or external entity: a feed is untrusted, and nothing may go over http. */
-private abstract class UntrustedHandler : DefaultHandler() {
-    override fun resolveEntity(publicId: String?, systemId: String?) = InputSource(StringReader(""))
-}
-
-private class FeedHandler(private val url: HttpsUrl) : UntrustedHandler() {
+private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
     private var isFeed = false
     private var title = ""
     private var next: HttpsUrl? = null
@@ -191,17 +186,17 @@ private const val BREAK = ' '
 /**
  * The text of one Atom text construct, as plain lines: "text" as it is, "html" with its markup
  * removed, and "xhtml" as the text of its elements. Paragraph and line breaks become line ends;
- * other whitespace runs become one space.
+ * other whitespace runs become one space. Keeps the first [MAX_TEXT_CHARS] characters.
  */
 private class TextCapture(private val type: String, val depth: Int) {
     private val builder = StringBuilder()
 
     fun append(ch: CharArray, start: Int, length: Int) {
-        builder.appendRange(ch, start, start + length)
+        builder.appendRange(ch, start, start + minOf(length, MAX_TEXT_CHARS - builder.length))
     }
 
     fun open(localName: String) {
-        if (localName.lowercase() in XHTML_BLOCKS) builder.append(BREAK)
+        if (localName.lowercase() in XHTML_BLOCKS && builder.length < MAX_TEXT_CHARS) builder.append(BREAK)
     }
 
     fun close(localName: String) = open(localName)
@@ -228,7 +223,7 @@ private fun decodeEntities(text: String) = ENTITY.replace(text) { match ->
     }
 }
 
-private class OpenSearchHandler : UntrustedHandler() {
+private class OpenSearchHandler : DefaultHandler() {
     /** Each Atom Url's type and template, in document order. */
     val atomTemplates = mutableListOf<Pair<String, String>>()
 
