@@ -132,11 +132,14 @@ wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s
   done
   return 1
 }
-install_and_launch() {  # serial apk; dev-start opens chapter 1 at the default font and saves nothing, so
-                        # A+ A+ A- A- always cycles and the device's reading data is left as it was
+install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at chapter 1 and the
+                        # default font, and saves nothing, so A+ A+ A- A- always cycles and the device's
+                        # reading data is left as it was. A device with no alice.epub gets the test fixture.
   dev_started="$dev_started $1"
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
     && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 0 > files/dev-start'" \
+    && { "$adb" -s "$1" shell run-as $pkg test -f files/alice.epub \
+      || "$adb" -s "$1" shell run-as $pkg sh -c "'cat > files/alice.epub'" <tool/src/test/fixtures/alice.epub; } \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
 clear_starts() {  # on any exit: a dev-start left behind would open every later launch at chapter 1, and

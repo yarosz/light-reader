@@ -121,11 +121,13 @@ reader_on_top() {
   [[ $focus == *"$pkg/"* ]]
 }
 
+dev_start() { a shell run-as $pkg sh -c "'echo $* > files/dev-start'"; }
+# Without dev-start the Tool opens on the Shelf; chapter 0 opens the Book to find its largest Chapter.
+dev_start 0
 open_reader
 book=$(await ' book ')
 largest=$(field largest <<<"$book")
 echo "perf: $(field chapters <<<"$book") chapters; largest is index $largest, $(field largestChars <<<"$book") chars"
-dev_start() { a shell run-as $pkg sh -c "'echo $* > files/dev-start'"; }
 offset=0
 if $seam; then
   dev_start "$largest" 0 ${chars:+"$chars"}

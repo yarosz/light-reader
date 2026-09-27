@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SimpleLightScreen
 import java.io.File
-import java.net.URL
 import java.util.Locale
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -16,22 +15,23 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val BOOK_URL = "https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/" +
-    "john-tenniel/downloads/lewis-carroll_alices-adventures-in-wonderland_john-tenniel.epub?source=download"
-
 /** Logcat tag for layout timings; `scripts/perf.sh` parses these lines. */
 private const val PERF_TAG = "ReaderPerf"
-
-private const val TAG = "Reader"
 
 /** How long page turns and font changes settle before the reading data is saved. */
 const val SAVE_DEBOUNCE_MS = 1_000L
 
-/** What opening the Book off the main thread produced. */
-private data class Opened(val fileName: String, val book: Book, val start: DevStart?, val fromDisk: ReadingData)
-
-/** [io] is where the Book is opened and the reading data saved; tests pass one they control. */
-class ReaderViewModel(private val filesDir: File, private val io: CoroutineDispatcher = Dispatchers.IO) : LightViewModel<Unit>() {
+/**
+ * Reads the Book in [file]. [saver] is the Shelf's, so the Reader's Places and font step reach the
+ * same reading data the Shelf shows. [start] is a dev-start session's Place (see [DEV_BOOK_FILE]),
+ * opened at the default font. [io] is where the Book is opened; tests pass one they control.
+ */
+class ReaderViewModel(
+    private val file: File,
+    private val saver: ReadingSaver,
+    private val start: DevStart? = null,
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+) : LightViewModel<Unit>() {
     val book = MutableStateFlow<Book?>(null)
     val status = MutableStateFlow("Opening…")
 
@@ -48,13 +48,6 @@ class ReaderViewModel(private val filesDir: File, private val io: CoroutineDispa
     private var syncWindows = 0
     private var windowChars = WINDOW_CHARS
 
-    private val store = ReadingStore(filesDir)
-    /** False in a dev-start session, so perf and CI runs leave the device's reading data as they found it. */
-    @Volatile
-    private var persisting = true
-    private val saver = ReadingSaver(viewModelScope, io, SAVE_DEBOUNCE_MS, { mine -> if (persisting) store.save(mine) }) {
-        Log.w(TAG, "reading data save failed", it)
-    }
     private var loading: Job? = null
 
     override fun onScreenShow(screen: SimpleLightScreen<Unit>) = openBook()
@@ -63,23 +56,16 @@ class ReaderViewModel(private val filesDir: File, private val io: CoroutineDispa
     internal fun openBook() {
         if (book.value != null || loading?.isActive == true) return
         loading = viewModelScope.launch {
-            runCatching {
-                withContext(io) {
-                    val file = downloadIfMissing()
-                    val fromDisk = store.load()
-                    Opened(file.name, parseEpub(file, fromDisk.storedTitle(file.name) ?: file.nameWithoutExtension), devStart(), fromDisk)
-                }
-            }
-                .onSuccess { (fileName, opened, start, fromDisk) ->
+            val stored = saver.data
+            runCatching { withContext(io) { parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension) } }
+                .onSuccess { opened ->
                     val largest = opened.chapters.indices.maxByOrNull { opened.chapters[it].text.length }
                     if (largest != null) {
                         Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
                             "largestChars=${opened.chapters[largest].text.length}")
                     }
-                    persisting = start == null
-                    saver.loaded(fromDisk)
-                    saver.change { it.shelve(opened.identifier, opened.title, fileName) }
-                    if (start == null) fontStep.value = fromDisk.settings.fontStep.coerceIn(FONT_SIZES.indices)
+                    saver.change { it.shelve(opened.identifier, opened.title, file.name, opened.author, now = System.currentTimeMillis()) }
+                    if (start == null) fontStep.value = saver.data.settings.fontStep.coerceIn(FONT_SIZES.indices)
                     if (start != null && opened.chapters.isNotEmpty()) {
                         val chapter = start.chapter.coerceIn(opened.chapters.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
@@ -87,35 +73,13 @@ class ReaderViewModel(private val filesDir: File, private val io: CoroutineDispa
                         val ends = windows(opened.chapters[chapter], windowChars).joinToString(",") { it.end.toString() }
                         Log.i(PERF_TAG, "windows chapter=$chapter windowChars=$windowChars ends=$ends")
                     } else {
-                        fromDisk.books[opened.identifier]?.place?.let(opened::resolve)?.let { position.value = it }
+                        saver.data.books[opened.identifier]?.place?.let(opened::resolve)?.let { position.value = it }
                     }
                     book.value = opened
                 }
                 .onFailure { status.value = "Couldn't open the book: ${it.message}" }
         }
     }
-
-    private fun downloadIfMissing(): File {
-        val file = File(filesDir, "alice.epub")
-        if (!file.exists()) {
-            status.value = "Downloading Alice…"
-            val partial = File(filesDir, "alice.epub.part")
-            URL(BOOK_URL).openStream().use { input -> partial.outputStream().use { input.copyTo(it) } }
-            partial.renameTo(file)
-        }
-        return file
-    }
-
-    /**
-     * Dev hook for `scripts/perf.sh`: filesDir/dev-start opens the book at a chapter and offset, at the
-     * default font, with an optional window size (see [parseDevStart]). Such a session neither reads nor
-     * saves the reading data, so a run never depends on or changes the device's Place and font step.
-     * Only `adb shell run-as` can write that file, and run-as works on debuggable builds only. A read
-     * error or garbage opens the book normally.
-     */
-    private fun devStart(): DevStart? = runCatching {
-        File(filesDir, "dev-start").takeIf { it.exists() }?.readText()?.let(::parseDevStart)
-    }.getOrNull()
 
     /** Loads the typefaces and hyphenator off the main thread while the book is still opening (ADR 0007). */
     fun warmUp(measurer: TextMeasurer) {
