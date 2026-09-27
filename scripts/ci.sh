@@ -132,10 +132,13 @@ wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s
   done
   return 1
 }
-install_and_launch() {  # serial apk
+install_and_launch() {  # serial apk; dev-start opens chapter 1 at the default font, whatever Place and
+                        # font step the reading data holds, so A+ A+ A- A- always cycles
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
+    && "$adb" -s "$1" shell run-as $pkg sh -c "'echo 0 > files/dev-start'" \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
+clear_start() { "$adb" -s "$1" shell run-as $pkg rm -f files/dev-start || echo "ci: could not remove files/dev-start on $1" >&2; }
 
 # --- signoff/emulator
 if [ "$docs_only" = 1 ]; then
@@ -168,7 +171,9 @@ else
   # The emulator talks to the LightOS emulator app, not LightOS: swap the server package for this build.
   scripts/emulator-build.sh ./gradlew -q --console=plain :tool:assembleDebug || fail_ctx emulator "assembleDebug"
   install_and_launch "$emu" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx emulator "install"
-  line=$(roundtrip "$emu") || fail_ctx emulator "font round trip: $line"
+  rc=0; line=$(roundtrip "$emu") || rc=1
+  clear_start "$emu"
+  [ $rc = 0 ] || fail_ctx emulator "font round trip: $line"
   note "emulator font round trip (identical Page): $line"
 fi
 
@@ -184,7 +189,9 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   install_and_launch "$lp3" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx lp3 "install"
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
-  line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
+  rc=0; line=$(roundtrip "$lp3") || rc=1
+  clear_start "$lp3"
+  [ $rc = 0 ] || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
   lp3_ran=1
 elif [ "$docs_only" = 0 ]; then
