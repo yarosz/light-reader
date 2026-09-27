@@ -80,6 +80,37 @@ class EpubTest {
     }
 
     @Test
+    fun `manifest hrefs are URI paths, resolved against the package's directory`() {
+        assertEquals("OEBPS/text/a+b c.xhtml", zipPath("OEBPS/", "text/a+b%20c.xhtml"))
+        assertEquals("OEBPS/100%.xhtml", zipPath("OEBPS/", "100%.xhtml"))
+        assertEquals("OEBPS/%zz%2.xhtml", zipPath("OEBPS/", "%zz%2.xhtml"))
+        assertEquals("OEBPS/caf\u00e9.xhtml", zipPath("OEBPS/", "caf%C3%A9.xhtml"))
+        assertEquals("Text/c.xhtml", zipPath("OEBPS/", "../Text/c.xhtml"))
+        assertEquals("c.xhtml", zipPath("OEBPS/", "../../c.xhtml"))
+        assertEquals("OEBPS/c.xhtml", zipPath("OEBPS/", "./c.xhtml#part"))
+        assertEquals("OEBPS/fonts/a.otf", zipPath("", "/OEBPS/fonts/a.otf"))
+
+        val dir = createTempDirectory("epub").toFile()
+        try {
+            val files = mapOf(
+                "mimetype" to "application/epub+zip",
+                "META-INF/container.xml" to """<container><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>""",
+                "OEBPS/content.opf" to """<package><metadata/><manifest>
+                    <item id="a" href="a+b.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="b" href="100%.xhtml" media-type="application/xhtml+xml"/>
+                    <item id="c" href="../Text/c.xhtml" media-type="application/xhtml+xml"/>
+                    </manifest><spine><itemref idref="a"/><itemref idref="b"/><itemref idref="c"/></spine></package>""",
+                "OEBPS/a+b.xhtml" to "<html><body><p>A</p></body></html>",
+                "OEBPS/100%.xhtml" to "<html><body><p>B</p></body></html>",
+                "Text/c.xhtml" to "<html><body><p>C</p></body></html>",
+            )
+            assertEquals(listOf("A", "B", "C"), parseEpub(File(dir, "paths.epub").writeEpub(files)).chapters.map { it.text })
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `a package with no title takes the fallback, and one with no Spine document fails`() {
         val dir = createTempDirectory("epub").toFile()
         try {

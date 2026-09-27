@@ -17,14 +17,16 @@ class CopyProtectionTest {
         dir.deleteRecursively()
     }
 
-    private fun protected(extra: Map<String, String>): Boolean =
-        ZipFile(File(dir, "book.epub").writeEpub(epubFiles() + extra)).use(::isCopyProtected)
+    private fun protected(extra: Map<String, String>, manifest: String = ""): Boolean =
+        ZipFile(File(dir, "book.epub").writeEpub(epubFiles(extraManifest = manifest) + extra)).use(::isCopyProtected)
 
-    private fun encryption(vararg uris: String, algorithm: String = "http://www.idpf.org/2008/embedding") =
+    private fun encryption(vararg uris: String, algorithm: String = "http://www.idpf.org/2008/embedding", keyInfo: String = "") =
         "META-INF/encryption.xml" to """<?xml version="1.0"?>
             <encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
-            ${uris.joinToString("") { """<enc:EncryptedData><enc:EncryptionMethod Algorithm="$algorithm"/><enc:CipherData><enc:CipherReference URI="$it"/></enc:CipherData></enc:EncryptedData>""" }}
+            ${uris.joinToString("") { """<enc:EncryptedData><enc:EncryptionMethod Algorithm="$algorithm"/>$keyInfo<enc:CipherData><enc:CipherReference URI="$it"/></enc:CipherData></enc:EncryptedData>""" }}
             </encryption>"""
+
+    private val aes = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"
 
     @Test
     fun `a plain EPUB and the checked-in Alice are not copy-protected`() {
@@ -48,8 +50,36 @@ class CopyProtectionTest {
 
     @Test
     fun `an encrypted document is copy-protected, even beside obfuscated fonts`() {
-        assertTrue(protected(mapOf(encryption("OEBPS/c0.xhtml", algorithm = "http://www.w3.org/2001/04/xmlenc#aes128-cbc"))))
-        assertTrue(protected(mapOf(encryption("OEBPS/fonts/Body.ttf", "OEBPS/images/cover.jpg"))))
+        assertTrue(protected(mapOf(encryption("OEBPS/c0.xhtml", algorithm = aes))))
+        val both = """<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
+            <enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/><enc:CipherData><enc:CipherReference URI="OEBPS/fonts/Body.ttf"/></enc:CipherData></enc:EncryptedData>
+            <enc:EncryptedData><enc:EncryptionMethod Algorithm="$aes"/><enc:CipherData><enc:CipherReference URI="OEBPS/images/cover.jpg"/></enc:CipherData></enc:EncryptedData>
+            </encryption>"""
+        assertTrue(protected(mapOf("META-INF/encryption.xml" to both)))
+    }
+
+    @Test
+    fun `a font obfuscation algorithm means a font, whatever the file is called`() {
+        assertFalse(protected(mapOf(encryption("OEBPS/fonts/Body", "OEBPS/f/Title.bin"))))
+        assertFalse(protected(mapOf(encryption("OEBPS/f/Body.dat", algorithm = "http://ns.adobe.com/pdf/enc#RC"))))
+    }
+
+    @Test
+    fun `a file the manifest calls a font is a font, whatever its extension or algorithm`() {
+        listOf("font/otf", "font/woff2", "application/font-sfnt", "application/vnd.ms-opentype", "application/x-font-ttf", "FONT/TTF").forEach { type ->
+            val manifest = """<item id="f" href="fonts/Body+Bold%20Italic" media-type="$type"/>"""
+            assertFalse(protected(mapOf(encryption("OEBPS/fonts/Body+Bold%20Italic", algorithm = aes)), manifest), type)
+        }
+        val image = """<item id="i" href="images/cover" media-type="image/jpeg"/>"""
+        assertTrue(protected(mapOf(encryption("OEBPS/images/cover", algorithm = aes)), image))
+    }
+
+    @Test
+    fun `the extension is the last signal, and only the data's own algorithm counts, not its key's`() {
+        assertFalse(protected(mapOf(encryption("OEBPS/fonts/Body.otf", algorithm = aes))))
+        assertTrue(protected(mapOf(encryption("OEBPS/images/cover.jpg", algorithm = aes))))
+        val key = """<ds:KeyInfo xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><enc:EncryptedKey><enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/></enc:EncryptedKey></ds:KeyInfo>"""
+        assertTrue(protected(mapOf(encryption("OEBPS/c0.xhtml", algorithm = aes, keyInfo = key))))
     }
 
     @Test

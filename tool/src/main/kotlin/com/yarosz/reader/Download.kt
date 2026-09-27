@@ -1,5 +1,6 @@
 package com.yarosz.reader
 
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -23,6 +24,8 @@ private const val SPACE_CHECK_BYTES = 1024L * 1024
 
 /** A temp file older than this was left by a killed process: a running download writes to its own every few seconds. */
 private const val STALE_PART_MS = 10L * 60 * 1000
+
+private const val TAG = "Reader"
 
 private const val PART_PREFIX = "download-"
 private const val PART_SUFFIX = ".part"
@@ -151,6 +154,8 @@ class Downloader(
                 readPackage(zip, fallbackTitle)
             }
         } catch (e: Exception) {
+            // Broad on purpose: the file is untrusted. Logged so a parser bug is diagnosable.
+            Log.w(TAG, "download is not a readable EPUB", e)
             return DownloadState.Failed(NotAnEpub)
         }
         val target = File(dir, bookFileName(pkg.identifier))

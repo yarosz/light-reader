@@ -10,6 +10,7 @@ fun epubFiles(
     identifier: String? = "urn:uuid:test-book",
     title: String? = "A Test Book",
     chapters: List<String> = listOf("It was a dark and stormy night."),
+    extraManifest: String = "",
 ): Map<String, String> {
     val metadata = listOfNotNull(
         identifier?.let { "<dc:identifier id=\"uid\">$it</dc:identifier>" },
@@ -20,7 +21,7 @@ fun epubFiles(
     return mapOf(
         "mimetype" to "application/epub+zip",
         "META-INF/container.xml" to """<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>""",
-        "OEBPS/content.opf" to """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">$metadata</metadata><manifest>$manifest</manifest><spine>$spine</spine></package>""",
+        "OEBPS/content.opf" to """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">$metadata</metadata><manifest>$manifest$extraManifest</manifest><spine>$spine</spine></package>""",
     ) + chapters.mapIndexed { i, text ->
         "OEBPS/c$i.xhtml" to """<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c$i</title></head><body><p>$text</p></body></html>"""
     }
