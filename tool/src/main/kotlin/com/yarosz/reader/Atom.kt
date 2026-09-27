@@ -102,7 +102,7 @@ private class FeedHandler(private val url: HttpsUrl) : UntrustedHandler() {
         when (path.joinToString("/")) {
             "feed/entry" -> entry = EntryBuilder()
             "feed/title", "feed/entry/title", "feed/entry/summary", "feed/entry/content", "feed/entry/author/name" ->
-                if (attrs.getValue("src") == null) text = TextCapture(attrs.getValue("type") ?: "text", path.size)
+                text = TextCapture(attrs.getValue("type") ?: "text", path.size)
             "feed/link" -> feedLink(attrs)
             "feed/entry/link" -> entry?.link(attrs)
         }

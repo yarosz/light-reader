@@ -196,7 +196,7 @@ class CatalogueTest {
     @Test
     fun `a feed-level search must be an OpenSearch description, a feed without links has no next or search`() {
         val page = feed(
-            """<title>T</title><link rel="search" type="application/atom+xml" href="s?q={searchTerms}"/>
+            """<title>T</title><link rel="search" type="application/atom+xml" href="search.xml"/>
                <author><name>Feed author</name></author><entry><title>E</title><link rel="enclosure" type="application/epub+zip" href="b.epub"/></entry>""",
         )!!
         assertNull(page.search)
