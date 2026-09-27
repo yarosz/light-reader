@@ -147,6 +147,8 @@ class Downloader(
             ZipFile(temp)
         } catch (e: ZipException) {
             return DownloadState.Failed(if (!lengthKnown && startsLikeZip(temp)) Unreachable else NotAnEpub)
+        } catch (e: IOException) {
+            return DownloadState.Failed(NotAnEpub)
         }
         val pkg = try {
             opened.use { zip ->

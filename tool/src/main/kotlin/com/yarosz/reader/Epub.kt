@@ -157,7 +157,6 @@ fun isCopyProtected(zip: ZipFile): Boolean {
     val encryption = zip.getEntry("META-INF/encryption.xml") ?: return false
     val encrypted = runCatching { EncryptionHandler().also { parseUntrusted(zip.getInputStream(encryption), it, MAX_PACKAGE_XML_BYTES) }.encrypted }
         .getOrElse { return true }
-    if (encrypted.all { it.algorithm in FONT_OBFUSCATION }) return false
     val mediaTypes = runCatching { readOpf(zip).manifest.values.associate { it.path to it.mediaType } }.getOrDefault(emptyMap())
     return encrypted.any { (algorithm, uri) ->
         val path = zipPath("", uri)

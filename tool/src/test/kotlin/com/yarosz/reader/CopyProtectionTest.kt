@@ -62,6 +62,11 @@ class CopyProtectionTest {
     fun `a font obfuscation algorithm means a font, whatever the file is called`() {
         assertFalse(protected(mapOf(encryption("OEBPS/fonts/Body", "OEBPS/f/Title.bin"))))
         assertFalse(protected(mapOf(encryption("OEBPS/f/Body.dat", algorithm = "http://ns.adobe.com/pdf/enc#RC"))))
+        val mixed = """<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#">
+            <enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/><enc:CipherData><enc:CipherReference URI="OEBPS/f/Title.bin"/></enc:CipherData></enc:EncryptedData>
+            <enc:EncryptedData><enc:EncryptionMethod Algorithm="$aes"/><enc:CipherData><enc:CipherReference URI="OEBPS/f/Body.otf"/></enc:CipherData></enc:EncryptedData>
+            </encryption>"""
+        assertFalse(protected(mapOf("META-INF/encryption.xml" to mixed)))
     }
 
     @Test
