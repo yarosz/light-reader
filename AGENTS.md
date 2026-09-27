@@ -33,8 +33,8 @@ phone to read more deliberately. One clear capability, nothing else.
 
 Every change arrives as a pull request. Required to merge: the GitHub Actions `build` check (unit tests
 + the Light-builder simulation on a clean Linux machine) and `signoff/emulator`. Only `mise run ci`
-posts `signoff/*` statuses; never run `gh signoff` by hand. It posts `signoff/lp3` too when a Light
-Phone III is attached, and releases require a green `signoff/lp3`.
+posts `signoff/*` statuses (through the GitHub API, described as local CI); never post them by hand. It
+posts `signoff/lp3` too when a Light Phone III is attached, and releases require a green `signoff/lp3`.
 
 Every PR also needs review before merge: a product review for changes to user-facing behaviour, copy,
 or docs, and a code review for code changes (a PR can need both). Merge only once each required review
