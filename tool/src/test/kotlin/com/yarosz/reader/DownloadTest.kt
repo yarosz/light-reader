@@ -65,6 +65,18 @@ class DownloadTest {
     }
 
     @Test
+    fun `a Book with no title keeps its Catalogue title when reopened from its file`() {
+        val done = download(Answer(body = zipBytes(epubFiles(title = null)))) as DownloadState.Done
+        assertEquals(bookFileName("urn:uuid:test-book"), done.file)
+        val shelved = ReadingData().shelve(done.identifier, done.title, done.file)
+        val file = File(dir, done.file)
+        val reopened = parseEpub(file, shelved.storedTitle(done.file) ?: file.nameWithoutExtension)
+        assertEquals("From the Catalogue", reopened.title)
+        assertEquals("From the Catalogue", shelved.shelve(reopened.identifier, reopened.title, done.file).books.getValue(done.identifier).title)
+        assertEquals(file.nameWithoutExtension, parseEpub(file).title)
+    }
+
+    @Test
     fun `progress is a fraction of the total when known`() {
         assertEquals(0.25f, DownloadState.Downloading(1, 4).progress)
         assertEquals(1f, DownloadState.Downloading(9, 4).progress)

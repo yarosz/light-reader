@@ -66,7 +66,8 @@ class ReaderViewModel(private val filesDir: File, private val io: CoroutineDispa
             runCatching {
                 withContext(io) {
                     val file = downloadIfMissing()
-                    Opened(file.name, parseEpub(file), devStart(), store.load())
+                    val fromDisk = store.load()
+                    Opened(file.name, parseEpub(file, fromDisk.storedTitle(file.name) ?: file.nameWithoutExtension), devStart(), fromDisk)
                 }
             }
                 .onSuccess { (fileName, opened, start, fromDisk) ->

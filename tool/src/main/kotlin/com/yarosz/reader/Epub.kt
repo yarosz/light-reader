@@ -45,9 +45,11 @@ const val MAX_CHAPTER_BYTES = 32L * 1024 * 1024
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
  * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does).
+ * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
+ * its Catalogue entry's, else the file name.
  */
-fun parseEpub(file: File): Book = ZipFile(file).use { zip ->
-    val pkg = readPackage(zip, file.nameWithoutExtension)
+fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Book = ZipFile(file).use { zip ->
+    val pkg = readPackage(zip, fallbackTitle)
     val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { parseUntrusted(zip.open(item.path), it, MAX_CHAPTER_BYTES) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
     Book(
