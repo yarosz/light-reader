@@ -5,7 +5,11 @@ import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.security.cert.CertPathValidatorException
+import java.security.cert.CertificateException
+import javax.net.ssl.SSLException
 import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -35,6 +39,22 @@ class NetworkTest {
     }
 
     @Test
+    fun `a URL is its value, and upgraded is request context, not identity`() {
+        assertEquals(url("http://example.org/a"), url("https://example.org/a"))
+        assertEquals(url("http://example.org/a").hashCode(), url("https://example.org/a").hashCode())
+        assertEquals(setOf(url("https://example.org/a")), setOf(url("http://example.org/a"), url("https://example.org/a")))
+    }
+
+    @Test
+    fun `a URL is always ASCII, and any non-http scheme is refused before parsing`() {
+        assertEquals("https://example.org/caf%C3%A9/%E2%80%94.epub", url("https://example.org/café/—.epub").value)
+        assertEquals("https://example.org/a/caf%C3%A9", HttpsUrl.parse("café", url("https://example.org/a/b"))?.value)
+        assertNull(HttpsUrl.parse("data:image/png;base64," + "A".repeat(1_000_000)))
+        assertNull(HttpsUrl.parse(" javascript:alert(1)", url("https://example.org/")))
+        assertNull(HttpsUrl.parse("DATA:,x", url("https://example.org/")))
+    }
+
+    @Test
     fun `relative URLs resolve against the base, including a bare host and a query of its own`() {
         val base = url("https://books.example.org/opds/root.xml?page=2#top")
         assertEquals("https://books.example.org/opds/new.xml", HttpsUrl.parse("new.xml", base)?.value)
@@ -49,14 +69,39 @@ class NetworkTest {
 
     @Test
     fun `an upgraded URL that refuses the connection or the handshake has no HTTPS, other failures are unreachable`() {
-        val upgraded = url("http://books.example.org/")
+        val upgraded = HttpsUrl.parse("http://books.example.org/")!!
         val https = url("https://books.example.org/")
         assertEquals(NoHttps, unreachable(upgraded, ConnectException("refused")))
         assertEquals(NoHttps, unreachable(upgraded, SSLHandshakeException("not TLS")))
+        assertEquals(NoHttps, unreachable(upgraded, SSLException("Unsupported or unrecognized SSL message")))
         assertEquals(Unreachable, unreachable(upgraded, UnknownHostException("offline")))
         assertEquals(Unreachable, unreachable(upgraded, SocketTimeoutException()))
         assertEquals(Unreachable, unreachable(https, ConnectException("refused")))
-        assertEquals(Unreachable, unreachable(https, SSLHandshakeException("bad certificate")))
+        assertEquals(Unreachable, unreachable(https, SSLHandshakeException("not TLS")))
+    }
+
+    @Test
+    fun `a certificate the phone doesn't trust is its own failure, upgraded or not`() {
+        val untrusted = SSLHandshakeException("untrusted").apply {
+            initCause(CertificateException("Trust anchor for certification path not found.", CertPathValidatorException("no anchor")))
+        }
+        val pathOnly = SSLHandshakeException("path").apply { initCause(CertPathValidatorException("expired")) }
+        listOf(url("https://books.example.org/"), HttpsUrl.parse("http://books.example.org/")!!).forEach { at ->
+            assertEquals(UntrustedCertificate, unreachable(at, untrusted))
+            assertEquals(UntrustedCertificate, unreachable(at, pathOnly))
+            assertEquals(UntrustedCertificate, unreachable(at, SSLPeerUnverifiedException("Hostname books.example.org not verified")))
+        }
+    }
+
+    @Test
+    fun `a redirect resolves against the URL it came from, only to https`() {
+        val from = url("https://books.example.org/opds/root.xml")
+        assertEquals(url("https://books.example.org/opds/new.xml"), redirectTarget(from, "new.xml"))
+        assertEquals(url("https://cdn.example.org/b.epub"), redirectTarget(from, "https://cdn.example.org/b.epub"))
+        assertNull(redirectTarget(from, null))
+        assertNull(redirectTarget(from, "ftp://books.example.org/b.epub"))
+        assertNull(redirectTarget(from, "http://[bad"))
+        assertEquals(NoHttps, unreachable(from, kotlin.runCatching { redirectTarget(from, "HTTP://books.example.org/") }.exceptionOrNull() as IOException))
     }
 
     @Test
