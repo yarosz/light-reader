@@ -51,3 +51,57 @@ one, and a cold backward crossing may leave a short first Page in the Chapter (A
 A paragraph gets a first-line indent only when it follows another paragraph (Standard Ebooks' p + p
 convention); the first paragraph after a heading, caption or verse, or a chapter's first block, starts
 flush, judged on block kinds, never on window boundaries.
+
+## Shelf
+
+The Tool's first screen: the Books on this phone. Product rulings from the advisor (2026-09-27); copy
+is verbatim, and `Shelf.kt` holds it.
+
+**Top bar.** `LightTopBar` with "Reader" in the centre. The left slot is "Edit", free because the Shelf
+is the root screen; it reads "Done" while editing and is hidden when the Shelf is empty. The right
+button is "Add", which opens the list of Catalogues.
+
+**Order.** Books in progress by most recently read, then never-opened Books by date added, then
+finished Books at the bottom. The top row is "continue reading", so there is no separate row. Within
+never-opened, the newest is first, and a download that hasn't arrived yet counts as added when it
+started. A Book stored before the Shelf existed has no date and sorts as the oldest.
+
+**Row.** Text only, with no covers on the Shelf or in Catalogue lists. The title is on the first line
+and one state on the second. One tap opens the Book at its Place.
+
+| State | Second line | Tap |
+|---|---|---|
+| In progress | "author · 42%" (see below) | opens the Book |
+| Never opened | "not started" | opens the Book |
+| Downloading | "downloading…" | nothing |
+| Failed, retryable | "download failed · tap to retry" | downloads again |
+| Finished | "finished" (see below) | opens the Book |
+| File missing, source known | "file missing · tap to download again" | downloads again, keeps the Place |
+| File missing, no source | "file missing" | nothing; the Book can only be removed |
+
+Until N4 computes Progress, an in-progress row shows the author alone, never a placeholder percent,
+and "finished" waits for N4 too, so a finished Book reads like one in progress. When there is no author,
+the state stands alone, so an in-progress Book with no author has no second line. A Book's download
+state wins over its file, and its file over its reading state.
+
+**Empty.** "Nothing on your Shelf yet." with a text button "Add a Book". Text labels, not glyphs.
+
+**Edit.** Every row's trailing edge becomes "Remove". Tapping it turns the row itself, inline and not
+as a modal, into "Remove from Shelf? Your place is kept if you add it again." plus "Remove" and
+"Cancel". Row taps don't open Books while editing. Removal deletes the file and keeps the Place
+record, and removing a Book that is downloading cancels the download. Removing the last Book leaves
+Edit.
+
+**Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
+failures (Unreachable, HttpError, DiskError) leave a row reading "download failed · tap to retry".
+Permanent failures (CopyProtected, NotAnEpub, and also NoHttps and UntrustedCertificate, which a
+retry can't fix) show their copy on the Book's detail page and add nothing to the Shelf. A
+copy-protected Book must never become a row that can't be read.
+
+**Offline.** Nothing changes on the Shelf, because everything there works offline: no rows are
+removed and nothing is greyed out. "You're offline. Your Shelf still works." is one line of
+secondary text at the top of the Catalogue list, shown when Add is tapped offline.
+
+**Missing file.** A Book whose file is gone reads "file missing · tap to download again", and the tap
+downloads it again from the Book's source, keeping its Place. A Book with no known source (a future
+N7 import) reads "file missing" and can only be removed.
