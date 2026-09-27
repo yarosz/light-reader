@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import org.xml.sax.SAXException
@@ -51,7 +52,7 @@ class CatalogueTest {
         assertEquals("Our most popular books.", popular.summary)
         assertEquals(url("https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads"), popular.opens)
         assertEquals(emptyList(), popular.acquisitions)
-        assertEquals(url("https://www.gutenberg.org/catalog/osd-books.xml"), page.search)
+        assertEquals(CatalogueSearch.Description(url("https://www.gutenberg.org/catalog/osd-books.xml")), page.search)
         assertNull(page.next)
     }
 
@@ -100,7 +101,7 @@ class CatalogueTest {
         )
         assertEquals(listOf("application/epub+zip", "application/epub+zip", "application/kepub+zip", "application/x-mobipocket-ebook", "application/xhtml+xml"), nibs.acquisitions.map { it.type })
         assertNull(nibs.opens)
-        assertEquals(url("https://standardebooks.org/opensearch"), page.search)
+        assertEquals(CatalogueSearch.Description(url("https://standardebooks.org/opensearch")), page.search)
     }
 
     @Test
@@ -187,6 +188,11 @@ class CatalogueTest {
     }
 
     @Test
+    fun `a reference to no character, NUL or a lone surrogate, stays as written`() {
+        assertEquals("&#0; &#x0; &#xD800; &#56320; \uD83D\uDE00", decodeEntities("&#0; &#x0; &#xD800; &#56320; &#x1F600;"))
+    }
+
+    @Test
     fun `a title or summary longer than the text cap is cut at the cap`() {
         val e = entry(
             """<link rel="enclosure" type="application/epub+zip" href="b.epub"/>""",
@@ -204,7 +210,7 @@ class CatalogueTest {
     }
 
     @Test
-    fun `a feed-level search must be an OpenSearch description, a feed without links has no next or search`() {
+    fun `an Atom search link is a search only when it is a template, a feed without links has no next or search`() {
         val page = feed(
             """<title>T</title><link rel="search" type="application/atom+xml" href="search.xml"/>
                <author><name>Feed author</name></author><entry><title>E</title><link rel="enclosure" type="application/epub+zip" href="b.epub"/></entry>""",
@@ -212,6 +218,35 @@ class CatalogueTest {
         assertNull(page.search)
         assertNull(page.next)
         assertEquals(emptyList(), page.entries.single().authors)
+        assertNull(feed("<title>T</title>")!!.search)
+    }
+
+    @Test
+    fun `Calibre's Atom search template is ready to fill, and wins over an OpenSearch description`() {
+        val calibre = """<link rel="search" type="application/atom+xml" href="/opds/search/{searchTerms}" title="Search"/>"""
+        val osd = """<link rel="search" type="application/opensearchdescription+xml" href="/opds/osd.xml"/>"""
+        listOf(calibre, osd + calibre, calibre + osd).forEach { links ->
+            val search = feed("<title>Calibre</title>$links", at = "https://calibre.example.org/opds")!!.search
+            val ready = assertIs<CatalogueSearch.Ready>(search, links)
+            assertEquals("https://calibre.example.org/opds/search/jane%20austen", ready.template.url("jane austen").value)
+        }
+        assertEquals(
+            CatalogueSearch.Description(url("https://calibre.example.org/opds/osd.xml")),
+            feed("<title>T</title>$osd", at = "https://calibre.example.org/opds")!!.search,
+        )
+    }
+
+    @Test
+    fun `an OPDS complete-entry link is the entry's details, never a feed it opens`() {
+        val e = entry(
+            """<link rel="alternate" type="application/atom+xml;type=entry;profile=opds-catalog" href="entry/1.xml"/>
+               <link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="1.epub"/>""",
+        )
+        assertNull(e.opens)
+        assertEquals(url("https://books.example.org/opds/entry/1.xml"), e.details)
+        val spaced = entry("""<link type="application/atom+xml; type = entry" href="entry/2.xml"/><link type="application/atom+xml;profile=opds-catalog" href="feed.xml"/>""")
+        assertEquals(url("https://books.example.org/opds/feed.xml"), spaced.opens)
+        assertEquals(url("https://books.example.org/opds/entry/2.xml"), spaced.details)
     }
 
     @Test

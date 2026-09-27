@@ -10,27 +10,38 @@ val SHIPPED_CATALOGUES = listOf(
 )
 
 /**
- * One fetched page of a Catalogue. [next] is the following page (rel="next"). [search] is the
- * feed's OpenSearch description, to resolve with [fetchSearch]; null means the Catalogue has no
- * search.
+ * One fetched page of a Catalogue. [next] is the following page (rel="next"). [search] is how to
+ * search the Catalogue; null means it has no search.
  */
 data class CataloguePage(
     val title: String,
     val entries: List<CatalogueEntry>,
     val next: HttpsUrl?,
-    val search: HttpsUrl?,
+    val search: CatalogueSearch?,
 )
+
+/** How a feed offers search. */
+sealed interface CatalogueSearch {
+    /** An OpenSearch description, to resolve with [fetchSearch] (OPDS, Standard Ebooks, Gutenberg). */
+    data class Description(val url: HttpsUrl) : CatalogueSearch
+
+    /** A template the feed gives directly, ready to fill (Calibre's content server). */
+    data class Ready(val template: SearchTemplate) : CatalogueSearch
+}
 
 /**
  * One entry of a page: a Book to add, a way further into the Catalogue, or both. Text only, because
  * lists never show covers. [opens] is the feed the entry leads to, such as a Gutenberg Book's own
- * page. [related] are further feeds named by the entry, such as Gutenberg's "By Austen, Jane…".
+ * page. [details] is the entry's complete OPDS entry document (an alternate link typed
+ * "type=entry"), which is never a feed to open. [related] are further feeds named by the entry, such
+ * as Gutenberg's "By Austen, Jane…".
  */
 data class CatalogueEntry(
     val title: String,
     val authors: List<String>,
     val summary: String?,
     val opens: HttpsUrl?,
+    val details: HttpsUrl?,
     val related: List<NavigationLink>,
     val acquisitions: List<Acquisition>,
 ) {

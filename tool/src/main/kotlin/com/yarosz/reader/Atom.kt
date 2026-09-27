@@ -43,8 +43,8 @@ fun parseOpenSearch(input: InputStream, url: HttpsUrl): SearchTemplate? {
         .firstOrNull { it.fill("x") != null }
 }
 
-/** An OpenSearch URL template, and the description's URL that a relative template resolves against. */
-class SearchTemplate(val template: String, private val base: HttpsUrl) {
+/** An OpenSearch URL template, and the URL of the document that gave it, which a relative template resolves against. */
+data class SearchTemplate(val template: String, val base: HttpsUrl) {
     /** The results URL for [terms]. */
     fun url(terms: String): HttpsUrl = checkNotNull(fill(terms)) { "search template $template can't be filled" }
 
@@ -55,7 +55,7 @@ class SearchTemplate(val template: String, private val base: HttpsUrl) {
     internal fun fill(terms: String): HttpsUrl? {
         if ("{searchTerms}" !in template && "{searchTerms?}" !in template) return null
         var complete = true
-        val filled = Regex("\\{([^}]*)\\}").replace(template) { match ->
+        val filled = TEMPLATE_PARAMETER.replace(template) { match ->
             val name = match.groupValues[1]
             when (name.removeSuffix("?")) {
                 "searchTerms" -> URLEncoder.encode(terms, "UTF-8").replace("+", "%20")
@@ -70,11 +70,13 @@ class SearchTemplate(val template: String, private val base: HttpsUrl) {
     }
 }
 
+private val TEMPLATE_PARAMETER = Regex("\\{([^}]*)\\}")
+
 private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
     private var isFeed = false
     private var title = ""
     private var next: HttpsUrl? = null
-    private var search: HttpsUrl? = null
+    private var search: CatalogueSearch? = null
     private val entries = mutableListOf<CatalogueEntry>()
 
     /** The Atom elements open around the current one; a foreign element is recorded as "". */
@@ -132,11 +134,21 @@ private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
         }
     }
 
+    /**
+     * A feed's search is an OpenSearch description, or a ready Atom template such as Calibre's
+     * "/opds/search/{searchTerms}". A ready template wins, since it needs no second fetch.
+     */
     private fun feedLink(attrs: Attributes) {
-        val href = HttpsUrl.parse(attrs.getValue("href") ?: return, url) ?: return
+        val raw = attrs.getValue("href") ?: return
         when (attrs.getValue("rel")) {
-            "next" -> next = href
-            "search" -> if (mediaType(attrs) == "application/opensearchdescription+xml") search = href
+            "next" -> HttpsUrl.parse(raw, url)?.let { next = it }
+            "search" -> when (MediaType.of(attrs).essence) {
+                "application/opensearchdescription+xml" -> if (search == null) {
+                    HttpsUrl.parse(raw, url)?.let { search = CatalogueSearch.Description(it) }
+                }
+                "application/atom+xml" -> SearchTemplate(raw, url).takeIf { it.fill("x") != null }
+                    ?.let { search = CatalogueSearch.Ready(it) }
+            }
         }
     }
 
@@ -146,17 +158,19 @@ private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
         var summary: String? = null
         var content: String? = null
         var opens: HttpsUrl? = null
+        var details: HttpsUrl? = null
         val related = mutableListOf<NavigationLink>()
         val acquisitions = mutableListOf<Acquisition>()
 
         fun link(attrs: Attributes) {
             val href = HttpsUrl.parse(attrs.getValue("href") ?: return, url) ?: return
             val rel = attrs.getValue("rel") ?: "alternate"
-            val type = mediaType(attrs)
+            val type = MediaType.of(attrs)
             val linkTitle = attrs.getValue("title")?.trim()?.takeIf { it.isNotEmpty() }
             when {
-                rel in ACQUISITION_RELS -> acquisitions += Acquisition(href, type, linkTitle, attrs.getValue("length")?.toLongOrNull())
-                type != "application/atom+xml" -> Unit
+                rel in ACQUISITION_RELS -> acquisitions += Acquisition(href, type.essence, linkTitle, attrs.getValue("length")?.toLongOrNull())
+                type.essence != "application/atom+xml" -> Unit
+                type.isEntry -> if (rel == "alternate" && details == null) details = href
                 rel == "related" -> linkTitle?.let { related += NavigationLink(it, href) }
                 rel !in NOT_OPENING_RELS && opens == null -> opens = href
             }
@@ -167,21 +181,31 @@ private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
             authors = authors.toList(),
             summary = (summary ?: content)?.takeIf { it.isNotEmpty() },
             opens = opens,
+            details = details,
             related = related.toList(),
             acquisitions = acquisitions.toList(),
         )
     }
 }
 
-private fun mediaType(attrs: Attributes) = attrs.getValue("type").orEmpty().substringBefore(';').trim().lowercase()
+/** A link's media type: [essence] without parameters, and whether a parameter says it is one Atom entry ("type=entry"). */
+private class MediaType(val essence: String, val isEntry: Boolean) {
+    companion object {
+        fun of(attrs: Attributes): MediaType {
+            val parts = attrs.getValue("type").orEmpty().lowercase().split(';').map { it.trim() }
+            return MediaType(parts.first(), parts.drop(1).any { it.replace(" ", "") == "type=entry" })
+        }
+    }
+}
 
 private val XHTML_BLOCKS = setOf("p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "tr")
 private val HTML_BLOCK_TAG = Regex("<\\s*/?\\s*(?:${XHTML_BLOCKS.joinToString("|")})\\b[^>]*>", RegexOption.IGNORE_CASE)
 private val HTML_TAG = Regex("<[^>]*>")
 private val ENTITY = Regex("&(#[0-9]+|#[xX][0-9a-fA-F]+|amp|lt|gt|quot|apos|nbsp);")
+private val WHITESPACE = Regex("\\s+")
 
-/** Marks a paragraph or line break of the markup; source line ends are only whitespace. */
-private const val BREAK = ' '
+/** Marks a paragraph or line break of the markup (PARAGRAPH SEPARATOR); source line ends are only whitespace. */
+private const val BREAK = '\u2029'
 
 /**
  * The text of one Atom text construct, as plain lines: "text" as it is, "html" with its markup
@@ -204,11 +228,12 @@ private class TextCapture(private val type: String, val depth: Int) {
     fun text(): String {
         val raw = builder.toString()
         val plain = if (type == "html") decodeEntities(HTML_TAG.replace(HTML_BLOCK_TAG.replace(raw, "$BREAK"), "")) else raw
-        return plain.split(BREAK).map { it.replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() }.joinToString("\n")
+        return plain.split(BREAK).map { it.replace(WHITESPACE, " ").trim() }.filter { it.isNotEmpty() }.joinToString("\n")
     }
 }
 
-private fun decodeEntities(text: String) = ENTITY.replace(text) { match ->
+/** Decodes escaped HTML's named and numeric references; one that names no character (&#0;, a lone surrogate) stays as written. */
+internal fun decodeEntities(text: String) = ENTITY.replace(text) { match ->
     when (val name = match.groupValues[1]) {
         "amp" -> "&"
         "lt" -> "<"
@@ -218,7 +243,7 @@ private fun decodeEntities(text: String) = ENTITY.replace(text) { match ->
         "nbsp" -> " "
         else -> {
             val code = if (name[1] == 'x' || name[1] == 'X') name.substring(2).toIntOrNull(16) else name.substring(1).toIntOrNull()
-            if (code != null && Character.isValidCodePoint(code)) String(Character.toChars(code)) else match.value
+            if (code != null && code in 1..0x10FFFF && code !in 0xD800..0xDFFF) String(Character.toChars(code)) else match.value
         }
     }
 }
