@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+	<ShortName>Standard Ebooks</ShortName>
+	<Description>Search the Standard Ebooks catalog.</Description>
+	<Developer>Standard Ebooks</Developer>
+	<Language>en-US</Language>
+	<SyndicationRight>open</SyndicationRight>
+	<OutputEncoding>UTF-8</OutputEncoding>
+	<InputEncoding>UTF-8</InputEncoding>
+	<Image width="16" height="16" type="image/svg+xml">https://standardebooks.org/images/favicons/favicon-16x16.svg</Image>
+	<Image width="32" height="32" type="image/png">https://standardebooks.org/images/favicons/favicon-32x32.png</Image>
+	<Image width="64" height="64" type="image/png">https://standardebooks.org/images/favicons/favicon-64x64.png</Image>
+	<Url type="application/opensearchdescription+xml" rel="self" template="https://standardebooks.org/opensearch" />
+	<Url type="text/html" template="https://standardebooks.org/ebooks?query={searchTerms}&amp;per-page={count}&amp;page={startPage}"/>
+	<Url type="application/xhtml+xml" template="https://standardebooks.org/ebooks?query={searchTerms}&amp;per-page={count}&amp;page={startPage}"/>
+	<Url type="application/atom+xml" template="https://standardebooks.org/feeds/atom/all?query={searchTerms}&amp;per-page={count}&amp;page={startPage}"/>
+	<Url type="application/atom+xml;profile=opds-catalog;kind=acquisition" template="https://standardebooks.org/feeds/opds/all?query={searchTerms}&amp;per-page={count}&amp;page={startPage}"/>
+	<Url type="application/opds+json" template="https://standardebooks.org/feeds/opds/all?query={searchTerms}&amp;per-page={count}&amp;page={startPage}"/>
+	<Query role="example" searchTerms="fiction" startPage="1" count="12"/>
+</OpenSearchDescription>

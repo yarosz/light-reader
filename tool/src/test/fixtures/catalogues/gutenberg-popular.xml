@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:relevance="http://a9.com/-/opensearch/extensions/relevance/1.0/">
+<id>http://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads</id>
+<updated>2026-09-27T21:10:56Z</updated>
+<title>All Books</title>
+<subtitle>Free eBooks since 1971.</subtitle>
+<author>
+<name>Project Gutenberg</name>
+<uri>https://www.gutenberg.org</uri>
+<email>webmaster@gutenberg.org</email>
+</author>
+<icon>https://www.gutenberg.org/gutenberg/favicon.ico</icon>
+<link rel="search" type="application/opensearchdescription+xml" title="Project Gutenberg Catalog Search" href="https://www.gutenberg.org/catalog/osd-books.xml"/>
+<link rel="self" title="This Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?sort_order=downloads"/>
+<link rel="alternate" type="text/html" title="HTML Page" href="/ebooks/search/?sort_order=downloads"/>
+<link rel="start" title="Start Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks.opds/"/>
+<link rel="next" title="Next Page" type="application/atom+xml;profile=opds-catalog" href="/ebooks/search.opds/?sort_order=downloads&amp;start_index=26"/>
+<opensearch:itemsPerPage>25</opensearch:itemsPerPage>
+<opensearch:startIndex>1</opensearch:startIndex>
+<entry>
+<updated>2026-09-27T21:10:56Z</updated>
+<id>https://www.gutenberg.org/ebooks/1342.opds</id>
+<title>Pride and Prejudice</title>
+<content type="text">Jane Austen</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/1342.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,iVBORw0KGgo="/>
+</entry>
+<entry>
+<updated>2026-09-27T21:10:56Z</updated>
+<id>https://www.gutenberg.org/ebooks/2701.opds</id>
+<title>Moby Dick; Or, The Whale</title>
+<content type="text">Herman Melville</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/2701.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,iVBORw0KGgo="/>
+</entry>
+<entry>
+<updated>2026-09-27T21:10:56Z</updated>
+<id>https://www.gutenberg.org/ebooks/84.opds</id>
+<title>Frankenstein; or, the modern prometheus</title>
+<content type="text">Mary Wollstonecraft Shelley</content>
+<link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/84.opds"/>
+<link type="image/png" rel="http://opds-spec.org/image/thumbnail" href="data:image/png;base64,iVBORw0KGgo="/>
+</entry>
+</feed>

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet href="https://standardebooks.org/feeds/atom/style" type="text/xsl"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+	<script xmlns="http://www.w3.org/1999/xhtml" src="https://standardebooks.org/scripts/xslt-polyfill.min.js"/>
+	<id>https://standardebooks.org/feeds/atom/new-releases</id>
+	<link href="https://standardebooks.org/feeds/atom/new-releases" rel="self" type="application/atom+xml"/>
+	<title>Standard Ebooks - Newest Ebooks</title>
+	<subtitle>The 15 latest Standard Ebooks, most-recently-released first.</subtitle>
+	<icon>https://standardebooks.org/images/logo.png</icon>
+	<updated>2026-09-27T20:43:52Z</updated>
+	<author>
+		<name>Standard Ebooks</name>
+		<uri>https://standardebooks.org</uri>
+	</author>
+	<link href="https://standardebooks.org/opensearch" rel="search" title="Standard Ebooks" type="application/opensearchdescription+xml"/>
+	<entry>
+		<id>https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs</id>
+		<title>His Royal Nibs</title>
+		<author>
+			<name>Winnifred Eaton Reeve</name>
+			<uri>https://standardebooks.org/ebooks/winnifred-eaton-reeve</uri>
+		</author>
+		<published>2026-09-27T20:41:54Z</published>
+		<updated>2026-09-27T20:41:55Z</updated>
+		<rights>Public domain in the United States. Users located outside of the United States must check their local laws before using this ebook. Original content released to the public domain via the Creative Commons CC0 1.0 Universal Public Domain Dedication.</rights>
+		<summary type="text">A young Englishman finds a new purpose in life as a hired hand at a ranch in Canada.</summary>
+		<content type="html">&lt;p&gt;A young man dubbed “Cheerio” for his English background, clean appearance, and well-kept suit, unexpectedly arrives at the highly regarded O Bar O ranch with one goal in mind: to offer his services as a hired hand, and thus find a new start in life in a foreign land. The ranch’s foreman, Bully Bill, surprised and irritated by the unwelcome stranger, decides to give Cheerio the job after witnessing his cool composure in the presence of a startled herd, preventing the ranch owner’s son from getting injured.&lt;/p&gt; &lt;p&gt;Cheerio proves his worth at every opportunity and earns the respect, both honest and begrudging, from riders and cowpunchers alike. His hard working day-to-day routine is balanced by his developing friendship with the boy he saved, Sandy McPherson, and the boy’s his sister Hilda, for whom Cheerio develops a liking and who has become the subject of Cheerio’s artistic endeavors.&lt;/p&gt; &lt;p&gt;Everything seems to be going well for Cheerio until an incident at the branding corral brings back uncomfortable memories of his past life. Being deemed a coward and a weak man by his boss and peers, Cheerio grasps at one final chance to redeem himself and achieve his dream: to play a nightly game of chess with Canadian champion and famous rancher P. D. McPherson.&lt;/p&gt; &lt;p&gt;&lt;i&gt;His Royal Nibs&lt;/i&gt; is a story of resilience, newfound love, and fresh beginnings inspired by &lt;a href="https://standardebooks.org/ebooks/winnifred-eaton-reeve"&gt;Winnifred Eaton Reeve’s&lt;/a&gt; desire to write fiction set in Alberta, Canada after a career spent writing Japanese-themed works under a variety of pseudonyms, the most famous of which being “Onoto Watanna.” &lt;i&gt;His Royal Nibs&lt;/i&gt; would turn out to be her last published novel.&lt;/p&gt;</content>
+		<category scheme="http://purl.org/dc/terms/LCSH" term="Ranch life--Fiction"/>
+		<category scheme="http://purl.org/dc/terms/LCSH" term="Canada--Fiction"/>
+		<category scheme="https://standardebooks.org/vocab/subjects" term="Fiction"/>
+		<media:thumbnail height="525" url="https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs/downloads/cover-thumbnail.jpg" width="350"/>
+		<link href="https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs" rel="alternate" title="This ebook’s page at Standard Ebooks" type="application/xhtml+xml"/>
+		<link href="https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs/downloads/winnifred-eaton-reeve_his-royal-nibs.epub?source=feed" length="659030" rel="enclosure" title="Recommended compatible epub" type="application/epub+zip"/>
+		<link href="https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs/downloads/winnifred-eaton-reeve_his-royal-nibs_advanced.epub?source=feed" length="1109601" rel="enclosure" title="Advanced epub" type="application/epub+zip"/>
+		<link href="https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs/downloads/winnifred-eaton-reeve_his-royal-nibs.kepub.epub?source=feed" length="592532" rel="enclosure" title="Kobo Kepub epub" type="application/kepub+zip"/>
+		<link href="https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs/downloads/winnifred-eaton-reeve_his-royal-nibs.azw3?source=feed" length="681733" rel="enclosure" title="Amazon Kindle azw3" type="application/x-mobipocket-ebook"/>
+		<link href="https://standardebooks.org/ebooks/winnifred-eaton-reeve/his-royal-nibs/text/single-page" length="397690" rel="enclosure" title="XHTML" type="application/xhtml+xml"/>
+	</entry>
+<entry>
+		<id>https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp</id>
+		<title>The Autobiography of a Super-Tramp</title>
+		<author>
+			<name>W. H. Davies</name>
+			<uri>https://standardebooks.org/ebooks/w-h-davies</uri>
+		</author>
+		<published>2026-09-22T15:40:20Z</published>
+		<updated>2026-09-22T15:40:21Z</updated>
+		<rights>Public domain in the United States. Users located outside of the United States must check their local laws before using this ebook. Original content released to the public domain via the Creative Commons CC0 1.0 Universal Public Domain Dedication.</rights>
+		<summary type="text">At the end of the 19th century, a destitute tramp wanders across England and North America.</summary>
+		<content type="html">&lt;p&gt;&lt;i&gt;The Autobiography of a Super-Tramp&lt;/i&gt;, poet &lt;a href="https://standardebooks.org/ebooks/w-h-davies"&gt;W. H. Davies’&lt;/a&gt; autobiography, recalls spurning a youth of subsistence and squalor in England to pursue a life of travel abroad. With quiet and understated prose, Davies recounts a tramp’s life: riding railroad boxcars and evading fare collectors, cadging free meals, working as a migrant field hand, and dealing with corrupt law enforcement and judges. Each encounter gives Davies a chance to share his observations on the state of America and England at the turn of the 20th century.&lt;/p&gt; &lt;p&gt;Davies’ anti-authoritarianism inspired contemporaries like George Bernard Shaw—who both lobbied for the book’s publication and provided its preface—as well as future drifters like Christopher “Alexander Supertramp” McCandless.&lt;/p&gt;</content>
+		<category scheme="http://purl.org/dc/terms/LCSH" term="Poets, English--20th century--Biography"/>
+		<category scheme="http://purl.org/dc/terms/LCSH" term="Davies, W. H. (William Henry), 1871-1940"/>
+		<category scheme="http://purl.org/dc/terms/LCSH" term="Tramps--Biography"/>
+		<category scheme="https://standardebooks.org/vocab/subjects" term="Autobiography"/>
+		<category scheme="https://standardebooks.org/vocab/subjects" term="Travel"/>
+		<media:thumbnail height="525" url="https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp/downloads/cover-thumbnail.jpg" width="350"/>
+		<link href="https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp" rel="alternate" title="This ebook’s page at Standard Ebooks" type="application/xhtml+xml"/>
+		<link href="https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp/downloads/w-h-davies_the-autobiography-of-a-super-tramp.epub?source=feed" length="795863" rel="enclosure" title="Recommended compatible epub" type="application/epub+zip"/>
+		<link href="https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp/downloads/w-h-davies_the-autobiography-of-a-super-tramp_advanced.epub?source=feed" length="1391441" rel="enclosure" title="Advanced epub" type="application/epub+zip"/>
+		<link href="https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp/downloads/w-h-davies_the-autobiography-of-a-super-tramp.kepub.epub?source=feed" length="688915" rel="enclosure" title="Kobo Kepub epub" type="application/kepub+zip"/>
+		<link href="https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp/downloads/w-h-davies_the-autobiography-of-a-super-tramp.azw3?source=feed" length="822446" rel="enclosure" title="Amazon Kindle azw3" type="application/x-mobipocket-ebook"/>
+		<link href="https://standardebooks.org/ebooks/w-h-davies/the-autobiography-of-a-super-tramp/text/single-page" length="576329" rel="enclosure" title="XHTML" type="application/xhtml+xml"/>
+	</entry>
+</feed>
