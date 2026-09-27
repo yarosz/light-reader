@@ -3,6 +3,7 @@ package com.yarosz.reader
 import java.io.File
 import java.io.InputStream
 import java.net.URLDecoder
+import java.security.MessageDigest
 import java.util.zip.ZipFile
 import javax.xml.parsers.SAXParserFactory
 import org.xml.sax.Attributes
@@ -17,7 +18,8 @@ data class Span(val start: Int, val end: Int, val emphasis: Emphasis)
 
 data class Block(val kind: BlockKind, val text: String, val spans: List<Span> = emptyList())
 
-data class Chapter(val title: String, val blocks: List<Block>) {
+/** [spineId] is the idref of the Spine item this Chapter came from; a Place names its Chapter by it (ADR 0002). */
+data class Chapter(val spineId: String, val title: String, val blocks: List<Block>) {
     /** Blocks joined by '\n'. Reading positions are offsets into this string. */
     val text: String = blocks.joinToString("\n") { it.text }
 
@@ -31,7 +33,8 @@ data class Chapter(val title: String, val blocks: List<Block>) {
     }
 }
 
-data class Book(val title: String, val chapters: List<Chapter>)
+/** [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see [bookIdentifier]. */
+data class Book(val identifier: String, val title: String, val chapters: List<Chapter>)
 
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
@@ -46,14 +49,31 @@ fun parseEpub(file: File): Book = ZipFile(file).use { zip ->
     val opfDir = opfPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
     val opf = OpfHandler().also { sax(open(opfPath), it) }
 
-    val docs = opf.spine.mapNotNull { opf.manifest[it] }.map { href ->
-        XhtmlHandler().also { sax(open(opfDir + URLDecoder.decode(href, "UTF-8")), it) }
+    val docs = opf.spine.mapNotNull { idref -> opf.manifest[idref]?.let { idref to it } }.map { (idref, href) ->
+        idref to XhtmlHandler().also { sax(open(opfDir + URLDecoder.decode(href, "UTF-8")), it) }
     }
-    val body = docs.filter { it.isBodyMatter }.ifEmpty { docs }.filter { it.blocks.isNotEmpty() }
+    val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
+    val title = opf.title ?: file.nameWithoutExtension
     Book(
-        title = opf.title ?: file.nameWithoutExtension,
-        chapters = body.mapIndexed { i, doc -> Chapter(doc.title ?: "Section ${i + 1}", doc.blocks) },
+        identifier = bookIdentifier(opf.identifiers, opf.uniqueIdentifier, title, opf.spine),
+        title = title,
+        chapters = body.mapIndexed { i, (idref, doc) -> Chapter(idref, doc.title ?: "Section ${i + 1}", doc.blocks) },
     )
+}
+
+/**
+ * The Book's identifier: the `dc:identifier` that the package's `unique-identifier` names, else the
+ * first `dc:identifier`. [identifiers] pairs each one's `id` attribute (null when absent) with its
+ * trimmed text, in document order. A book with none gets "sha256:" plus the hex SHA-256 of its title
+ * and spine idrefs, one per line. That is stable across re-downloads of the same file but not across
+ * editions.
+ */
+fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: String?, title: String, spine: List<String>): String {
+    val usable = identifiers.filter { it.second.isNotEmpty() }
+    usable.firstOrNull { uniqueIdentifier != null && it.first == uniqueIdentifier }?.let { return it.second }
+    usable.firstOrNull()?.let { return it.second }
+    val digest = MessageDigest.getInstance("SHA-256").digest((listOf(title) + spine).joinToString("\n").toByteArray())
+    return "sha256:" + digest.joinToString("") { "%02x".format(it) }
 }
 
 private fun sax(input: InputStream, handler: DefaultHandler) = input.use {
@@ -71,8 +91,12 @@ private class OpfHandler : DefaultHandler() {
     val manifest = mutableMapOf<String, String>()
     val spine = mutableListOf<String>()
     var title: String? = null
+    var uniqueIdentifier: String? = null
+    val identifiers = mutableListOf<Pair<String?, String>>()
     private var inTitle = false
     private val titleText = StringBuilder()
+    private var identifierId: String? = null
+    private var identifierText: StringBuilder? = null
 
     override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
         when (qName.substringAfter(':')) {
@@ -81,17 +105,29 @@ private class OpfHandler : DefaultHandler() {
             }
             "itemref" -> spine += attrs.getValue("idref")
             "title" -> if (title == null) inTitle = true
+            "package" -> uniqueIdentifier = attrs.getValue("unique-identifier")
+            "identifier" -> {
+                identifierId = attrs.getValue("id")
+                identifierText = StringBuilder()
+            }
         }
     }
 
     override fun characters(ch: CharArray, start: Int, length: Int) {
         if (inTitle) titleText.appendRange(ch, start, start + length)
+        identifierText?.appendRange(ch, start, start + length)
     }
 
     override fun endElement(uri: String, localName: String, qName: String) {
-        if (inTitle && qName.substringAfter(':') == "title") {
-            title = titleText.toString().trim()
-            inTitle = false
+        when (qName.substringAfter(':')) {
+            "title" -> if (inTitle) {
+                title = titleText.toString().trim()
+                inTitle = false
+            }
+            "identifier" -> identifierText?.let {
+                identifiers += identifierId to it.toString().trim()
+                identifierText = null
+            }
         }
     }
 }

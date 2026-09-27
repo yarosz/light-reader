@@ -74,14 +74,14 @@ class WindowsTest {
 
     @Test
     fun `an empty chapter has no windows`() {
-        assertEquals(emptyList(), windows(Chapter("", emptyList())))
+        assertEquals(emptyList(), windows(Chapter("spine", "", emptyList())))
     }
 
     @Test
     fun `a heading cuts a window that is at least half full, but not one that is less`() {
         val paragraph = Block(BlockKind.Paragraph, "x".repeat(100))
         val heading = Block(BlockKind.Heading, "Title")
-        val chapter = Chapter("", listOf(paragraph, paragraph, heading, paragraph))
+        val chapter = Chapter("spine", "", listOf(paragraph, paragraph, heading, paragraph))
         assertEquals(listOf(Window(0, 1, 0, 202), Window(2, 3, 202, 308)), windows(chapter, maxChars = 400))
         assertEquals(listOf(Window(0, 3, 0, 308)), windows(chapter, maxChars = 1_000))
     }
@@ -92,7 +92,7 @@ class WindowsTest {
         val short = Block(BlockKind.Paragraph, "x".repeat(10))
         assertEquals(
             listOf(Window(0, 0, 0, 11), Window(1, 1, 11, 512), Window(2, 2, 512, 522)),
-            windows(Chapter("", listOf(short, long, short)), maxChars = 100),
+            windows(Chapter("spine", "", listOf(short, long, short)), maxChars = 100),
         )
     }
 }

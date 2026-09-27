@@ -26,7 +26,7 @@ class WindowTextTest {
 
     @Test
     fun `a window keeps the separator after its last block unless it ends the chapter`() {
-        val chapter = Chapter("", listOf(Block(BlockKind.Paragraph, "one"), Block(BlockKind.Paragraph, "two"), Block(BlockKind.Paragraph, "three")))
+        val chapter = Chapter("spine", "", listOf(Block(BlockKind.Paragraph, "one"), Block(BlockKind.Paragraph, "two"), Block(BlockKind.Paragraph, "three")))
         val (first, last) = windows(chapter, maxChars = 8)
         assertEquals("one${BLOCK_SEPARATOR}two$BLOCK_SEPARATOR", chapter.windowText(first))
         assertEquals("three", chapter.windowText(last))
@@ -35,7 +35,7 @@ class WindowTextTest {
 
     @Test
     fun `verse keeps its own line breaks inside a window's text`() {
-        val chapter = Chapter("", listOf(Block(BlockKind.Verse, "line one\nline two"), Block(BlockKind.Paragraph, "prose")))
+        val chapter = Chapter("spine", "", listOf(Block(BlockKind.Verse, "line one\nline two"), Block(BlockKind.Paragraph, "prose")))
         assertEquals("line one\nline two${BLOCK_SEPARATOR}prose", chapter.windowText(windows(chapter).single()))
     }
 
@@ -64,11 +64,11 @@ class WindowTextTest {
     @Test
     fun `a paragraph opening a window still indents when the block before it in the chapter is a paragraph`() {
         val paragraph = Block(BlockKind.Paragraph, "x".repeat(100))
-        val chapter = Chapter("", listOf(paragraph, paragraph, paragraph))
+        val chapter = Chapter("spine", "", listOf(paragraph, paragraph, paragraph))
         val second = windows(chapter, maxChars = 150)[1]
         assertEquals(1, second.firstBlock)
         assertTrue(indentsFirstLine(chapter.blocks, second.firstBlock))
-        val opening = Chapter("", listOf(Block(BlockKind.Heading, "x".repeat(100)), paragraph, paragraph))
+        val opening = Chapter("spine", "", listOf(Block(BlockKind.Heading, "x".repeat(100)), paragraph, paragraph))
         val afterHeading = windows(opening, maxChars = 150)[1]
         assertEquals(1, afterHeading.firstBlock)
         assertFalse(indentsFirstLine(opening.blocks, afterHeading.firstBlock))

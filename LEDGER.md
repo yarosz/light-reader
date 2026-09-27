@@ -1,7 +1,7 @@
 # Ledger
 
-STATUS: N1, the release path and P (Paginator v2) done; next is N2 (reading data store)
-LAST SESSION: 2026-09-24
+STATUS: N1, the release path, P (Paginator v2) and N2 (reading data store) done; next is N3 (Shelf + Catalogues)
+LAST SESSION: 2026-09-27
 
 ## v1 user flow
 
@@ -29,6 +29,7 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | R4 | Release docs (#2) | `RELEASING.md`, `SECURITY.md`, `CONTRIBUTING.md`, issue template, LP3 screenshots in `docs/screenshots/` |
 | #3 | Phone builds bind to LightOS (#4) | `serverPackage = "com.lightos"` committed (Light builds releases from it); `scripts/emulator-build.sh` swaps in the emulator's package for emulator builds only; a unit test and `light-build.sh` guard the committed line; `signoff/lp3` green on the fix |
 | P | Paginator v2 (#6–#9) | Page-end rules in both directions, 480 dpi type scale, portrait lock; 10 K windows packed from the Place (ADR 0007). LP3, Pride and Prejudice 165 K-character chapter, P90: open 111 ms, font change 122 ms (was 1,940 / 870); seam-adjacent open 194 ms. `mise run perf` reproduces it. Parser follow-ups #10, #11 |
+| N2 | Reading data store | `reading-data.json` per ADR 0002 (Place = Spine item, block, offset, snippet; Books keyed by `dc:identifier`), atomic replace with a separate `.bak`, a `.corrupt` copy of an unparseable file, debounced saves plus a flush on pause, merge tests; 105 unit tests, 19 mutations caught. Emulator and LP3: kill and relaunch lands on the same Page, the font step persists, a corrupt file opens at the `.bak` Place; emulator: main's build over it and back keeps the Place, a schemaVersion 2 file keeps its unknown fields |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
@@ -55,14 +56,11 @@ Ordered. Each item ends on its _done-when_.
   reviewers before v1; ask in #204 which SDK commit the builder uses and whether Tool Manager transfer is
   live on retail; at the first Light-signed build, the sentinel check in `RELEASING.md`. **Tool id:
   `com.yarosz.reader`**, permanent from first publish.
-- **N2 · Reading data store.** One `reading-data.json` in `filesDir`: Shelf + per-Book Place (ADR 0002)
-  + per-Tool settings (font step, polarity, pace). Atomic writes (temp + rename, debounced),
-  `schemaVersion`, `.bak` of the last good write used on parse failure, finished state (Progress 100%).
-  Merge: newer Place wins, keep entries for Books not on the Shelf, ignore unknown fields, never clobber.
-  Never crash on a higher `schemaVersion` than the code knows (rollback safety); test one downgrade.
-  Upgrade-path test: install release N over N−1 with a populated store; Shelf and Places survive.
-  _Done when:_ kill the Tool on a Page, relaunch, lands on the same Page (emulator), and merge rules
-  have tests.
+- **N2 follow-ups.** With N3: a Book with no `dc:identifier` is hashed over its whole Spine and, with
+  no `dc:title`, its file name; a Place whose Spine item is gone (an edition renamed its ids) could
+  re-find its snippet in other Chapters before falling back. With N4: set `finished` from Progress. Any
+  time: a dev-start session (`mise run perf`) overwrites the stored Place and font step; the upgrade-path
+  test (release N over N-1 with a populated store) runs at the first release after N2.
 - **N3 · Shelf + Catalogues (ADR 0001, 0005).** One Atom parser (OPDS acquisition links and EPUB
   enclosures); shipped Gutenberg + "Standard Ebooks: new releases"; acquisition preference EPUB3 >
   EPUB2, with-images variant; foreground downloads with visible states; Book identity by

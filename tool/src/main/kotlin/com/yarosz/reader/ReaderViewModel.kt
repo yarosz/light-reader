@@ -9,6 +9,7 @@ import com.thelightphone.sdk.SimpleLightScreen
 import java.io.File
 import java.net.URL
 import java.util.Locale
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,10 +22,16 @@ private const val BOOK_URL = "https://standardebooks.org/ebooks/lewis-carroll/al
 /** Logcat tag for layout timings; `scripts/perf.sh` parses these lines. */
 private const val PERF_TAG = "ReaderPerf"
 
-/** Where the reader is: a chapter and a character offset into [Chapter.text]. */
-data class Position(val chapter: Int, val offset: Int)
+private const val TAG = "Reader"
 
-class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
+/** How long page turns and font changes settle before the reading data is saved. */
+const val SAVE_DEBOUNCE_MS = 1_000L
+
+/** What opening the Book off the main thread produced. */
+private data class Opened(val fileName: String, val book: Book, val start: DevStart?, val fromDisk: ReadingData)
+
+/** [io] is where the Book is opened and the reading data saved; tests pass one they control. */
+class ReaderViewModel(private val filesDir: File, private val io: CoroutineDispatcher = Dispatchers.IO) : LightViewModel<Unit>() {
     val book = MutableStateFlow<Book?>(null)
     val status = MutableStateFlow("Opening…")
 
@@ -41,22 +48,39 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     private var syncWindows = 0
     private var windowChars = WINDOW_CHARS
 
-    override fun onScreenShow(screen: SimpleLightScreen<Unit>) {
-        if (book.value != null) return
-        viewModelScope.launch {
-            runCatching { withContext(Dispatchers.IO) { parseEpub(downloadIfMissing()) to devStart() } }
-                .onSuccess { (opened, start) ->
+    private val store = ReadingStore(filesDir)
+    private val saver = ReadingSaver(viewModelScope, io, SAVE_DEBOUNCE_MS, store::save) { Log.w(TAG, "reading data save failed", it) }
+    private var loading: Job? = null
+
+    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = openBook()
+
+    /** Opens the Book once: a show while the first open is still running (a pause and resume) starts no second one. */
+    internal fun openBook() {
+        if (book.value != null || loading?.isActive == true) return
+        loading = viewModelScope.launch {
+            runCatching {
+                withContext(io) {
+                    val file = downloadIfMissing()
+                    Opened(file.name, parseEpub(file), devStart(), store.load())
+                }
+            }
+                .onSuccess { (fileName, opened, start, fromDisk) ->
                     val largest = opened.chapters.indices.maxByOrNull { opened.chapters[it].text.length }
                     if (largest != null) {
                         Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
                             "largestChars=${opened.chapters[largest].text.length}")
                     }
+                    saver.loaded(fromDisk)
+                    saver.change { it.shelve(opened.identifier, opened.title, fileName) }
+                    if (start == null) fontStep.value = fromDisk.settings.fontStep.coerceIn(FONT_SIZES.indices)
                     if (start != null && opened.chapters.isNotEmpty()) {
                         val chapter = start.chapter.coerceIn(opened.chapters.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
                         position.value = Position(chapter, start.offset.coerceIn(0, opened.chapters[chapter].text.length))
                         val ends = windows(opened.chapters[chapter], windowChars).joinToString(",") { it.end.toString() }
                         Log.i(PERF_TAG, "windows chapter=$chapter windowChars=$windowChars ends=$ends")
+                    } else {
+                        fromDisk.books[opened.identifier]?.place?.let(opened::resolve)?.let { position.value = it }
                     }
                     book.value = opened
                 }
@@ -76,9 +100,10 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     }
 
     /**
-     * Dev hook for `scripts/perf.sh`: filesDir/dev-start opens the book at a chapter and offset, with an
-     * optional window size (see [parseDevStart]). Only `adb shell run-as` can write that file, and run-as
-     * works on debuggable builds only. A read error or garbage opens the book normally.
+     * Dev hook for `scripts/perf.sh`: filesDir/dev-start opens the book at a chapter and offset, at the
+     * default font, with an optional window size (see [parseDevStart]); the font a run leaves in the
+     * reading data would otherwise start the next run somewhere else. Only `adb shell run-as` can write
+     * that file, and run-as works on debuggable builds only. A read error or garbage opens the book normally.
      */
     private fun devStart(): DevStart? = runCatching {
         File(filesDir, "dev-start").takeIf { it.exists() }?.readText()?.let(::parseDevStart)
@@ -106,6 +131,7 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
         val step = (fontStep.value + delta).coerceIn(FONT_SIZES.indices)
         if (step == fontStep.value) return
         fontStep.value = step
+        saver.change { it.copy(settings = it.settings.copy(fontStep = step)) }
         open("font")
     }
 
@@ -119,6 +145,16 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
         else -> false
     }
 
+    /** Activity.onPause: the last hook guaranteed to run before the process can be killed. */
+    override fun onAppPause() = saver.flush()
+
+    override fun onScreenHide(screen: SimpleLightScreen<Unit>) = saver.flush()
+
+    override fun onCleared() {
+        saver.flush()
+        super.onCleared()
+    }
+
     /** A pass at the Place (a cached one when it holds the Place's Page) at the current font and column. */
     private fun open(reason: String) {
         val typesetter = typesetter ?: return
@@ -129,6 +165,9 @@ class ReaderViewModel(private val filesDir: File) : LightViewModel<Unit>() {
     private fun turn(step: (Reading<WindowLayout>) -> Shown<WindowLayout>?) {
         val shown = show("chapter", step) ?: return
         position.value = Position(shown.pass.chapterIndex, shown.page.start)
+        val identifier = book.value?.identifier ?: return
+        val place = shown.pass.chapter.placeOf(shown.page.start, System.currentTimeMillis())
+        saver.change { it.withPlace(identifier, place) }
     }
 
     /**
