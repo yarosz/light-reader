@@ -139,9 +139,11 @@ install_and_launch() {  # serial apk; dev-start opens chapter 1 at the default f
     && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 0 > files/dev-start'" \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
-clear_starts() {  # on any exit: a dev-start left behind would open every later launch at chapter 1
+clear_starts() {  # on any exit: a dev-start left behind would open every later launch at chapter 1, and
+                  # the Reader it launched saves nothing, so stop it before anyone reads in it
   for s in $dev_started; do
     "$adb" -s "$s" shell run-as $pkg rm -f files/dev-start || echo "ci: could not remove files/dev-start on $s" >&2
+    "$adb" -s "$s" shell am force-stop $pkg || echo "ci: could not stop $pkg on $s" >&2
   done
 }
 dev_started=""

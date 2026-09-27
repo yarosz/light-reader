@@ -109,8 +109,8 @@ class ReaderViewModel(private val filesDir: File, private val io: CoroutineDispa
      * Dev hook for `scripts/perf.sh`: filesDir/dev-start opens the book at a chapter and offset, at the
      * default font, with an optional window size (see [parseDevStart]). Such a session neither reads nor
      * saves the reading data, so a run never depends on or changes the device's Place and font step.
-     * Only `adb shell run-as` can write
-     * that file, and run-as works on debuggable builds only. A read error or garbage opens the book normally.
+     * Only `adb shell run-as` can write that file, and run-as works on debuggable builds only. A read
+     * error or garbage opens the book normally.
      */
     private fun devStart(): DevStart? = runCatching {
         File(filesDir, "dev-start").takeIf { it.exists() }?.readText()?.let(::parseDevStart)
