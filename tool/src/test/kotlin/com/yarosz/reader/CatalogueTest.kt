@@ -4,6 +4,7 @@ import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -69,22 +70,72 @@ class CatalogueTest {
     }
 
     @Test
-    fun `a Gutenberg Book page offers each edition, and the images edition's EPUB3 is chosen`() {
+    fun `a Gutenberg Book page offers each edition, and one Add to Shelf picks the no-images EPUB`() {
         val page = fixture("gutenberg-1342.xml", "https://www.gutenberg.org/ebooks/1342.opds")
         val (noImages, images) = page.entries
-        assertEquals(listOf("Austen, Jane"), images.authors)
+        assertEquals(listOf("Jane Austen"), images.authors)
         assertEquals("https://www.gutenberg.org/ebooks/1342.epub.noimages", noImages.download?.url?.value)
         assertEquals("https://www.gutenberg.org/ebooks/1342.epub3.images", images.download?.url?.value)
         assertEquals(24835578L, images.download?.length)
         assertEquals("application/epub+zip", images.download?.type)
-        assertEquals(
-            "https://www.gutenberg.org/ebooks/1342.epub3.images",
-            bestAcquisition(page.entries.flatMap { it.acquisitions })?.url?.value,
-        )
+        val best = bestDownload(page.entries)
+        assertEquals("https://www.gutenberg.org/ebooks/1342.epub.noimages", best?.url?.value)
+        assertEquals(558381L, best?.length)
+        assertEquals("558 KB", formatSize(best!!.length!!))
+        assertEquals("https://www.gutenberg.org/ebooks/1342.epub3.images", bestAcquisition(page.entries.flatMap { it.acquisitions }, preferImages = true)?.url?.value)
         assertEquals(4, images.acquisitions.size)
         assertNull(images.opens)
         assertEquals(NavigationLink("By Austen, Jane…", url("https://www.gutenberg.org/ebooks/author/68.opds")), images.related.first())
-        assertTrue(images.summary!!.startsWith("This edition has images.\nTitle: Pride and Prejudice\n"), images.summary)
+    }
+
+    @Test
+    fun `Gutenberg's metadata dump is no summary, Standard Ebooks' prose is`() {
+        val gutenberg = fixture("gutenberg-1342.xml", "https://www.gutenberg.org/ebooks/1342.opds")
+        assertEquals(listOf(null, null), gutenberg.entries.map { it.summary })
+        val se = fixture("standardebooks-new-releases.xml", "https://standardebooks.org/feeds/atom/new-releases")
+        assertTrue(se.entries.all { !it.summary.isNullOrEmpty() })
+        assertTrue(isMetadataList("This edition has images.\nTitle: Pride and Prejudice\nEBook No.: 1342\nReading Level: Reading ease score: 69.2"))
+        assertFalse(isMetadataList("Note: a short novel.\nIt was a dark and stormy night.\nThe end."))
+        assertFalse(isMetadataList("Title: T\nAuthor: A"))
+    }
+
+    @Test
+    fun `only a simple inverted author name is un-inverted`() {
+        listOf(
+            "Austen, Jane" to "Jane Austen",
+            "Austen, Jane, 1775-1817" to "Jane Austen",
+            "Shelley, Mary Wollstonecraft, 1797-1851" to "Mary Wollstonecraft Shelley",
+            "Du Maurier, George, 1834-" to "George Du Maurier",
+            "Scott, Walter, -1832" to "Walter Scott",
+            "Anonymous, -1650" to "Anonymous, -1650",
+            "Marlowe, Christopher, 1564?-1593" to "Christopher Marlowe",
+            "O'Brien, Fitz-James" to "Fitz-James O'Brien",
+            "Brontë, Charlotte" to "Charlotte Brontë",
+            "Doyle, Arthur Conan, Sir, 1859-1930" to "Doyle, Arthur Conan, Sir, 1859-1930",
+            "Tolkien, J. R. R. (John Ronald Reuel), 1892-1973" to "Tolkien, J. R. R. (John Ronald Reuel), 1892-1973",
+            "Smith, John, Jr." to "Smith, John, Jr.",
+            "Austen, Jane; Brontë, Charlotte" to "Austen, Jane; Brontë, Charlotte",
+            "Homer, 751? BCE-651? BCE" to "Homer, 751? BCE-651? BCE",
+            "Various" to "Various",
+            "United States. Central Intelligence Agency" to "United States. Central Intelligence Agency",
+            "Winnifred Eaton Reeve" to "Winnifred Eaton Reeve",
+            "Austen, " to "Austen, ",
+        ).forEach { (name, shown) -> assertEquals(shown, displayAuthor(name), name) }
+    }
+
+    @Test
+    fun `a download size reads in KB below a megabyte and MB above`() {
+        listOf(
+            0L to "1 KB",
+            1_499L to "1 KB",
+            558_381L to "558 KB",
+            999_499L to "999 KB",
+            999_500L to "1.0 MB",
+            24_835_578L to "24.8 MB",
+            99_949_999L to "99.9 MB",
+            99_950_000L to "100 MB",
+            314_572_800L to "315 MB",
+        ).forEach { (bytes, shown) -> assertEquals(shown, formatSize(bytes), "$bytes") }
     }
 
     @Test
@@ -267,7 +318,7 @@ class CatalogueTest {
     }
 
     @Test
-    fun `EPUB beats kepub, EPUB3 beats EPUB2, images beat unmarked beat none, ties keep feed order`() {
+    fun `EPUB beats kepub, no images or unmarked beat images, then EPUB3 beats EPUB2, ties keep feed order`() {
         val kepub = epub("a.kepub.epub", type = "application/kepub+zip")
         val epub2 = epub("1.epub.images")
         val epub3 = epub("1.epub3.images")
@@ -276,12 +327,25 @@ class CatalogueTest {
         val titled3 = epub("download?id=1", "EPUB 3")
         assertEquals(plain, bestAcquisition(listOf(kepub, plain)))
         assertEquals(kepub, bestAcquisition(listOf(kepub, epub("k.azw3", type = "application/x-mobipocket-ebook"))))
-        assertEquals(epub3, bestAcquisition(listOf(noImages, epub2, epub3)))
+        assertEquals(noImages, bestAcquisition(listOf(epub3, epub2, noImages)))
+        assertEquals(epub3, bestAcquisition(listOf(epub2, epub3)))
         assertEquals(titled3, bestAcquisition(listOf(epub2, titled3)))
-        assertEquals(epub2, bestAcquisition(listOf(noImages, plain, epub2)))
-        assertEquals(plain, bestAcquisition(listOf(noImages, plain)))
-        assertEquals(noImages, bestAcquisition(listOf(noImages, epub("no-images.epub"))))
+        assertEquals(titled3, bestAcquisition(listOf(noImages, titled3)))
+        assertEquals(noImages, bestAcquisition(listOf(noImages, plain)))
+        assertEquals(plain, bestAcquisition(listOf(plain, noImages)))
+        assertEquals(plain, bestAcquisition(listOf(epub3, plain)))
         assertEquals(plain, bestAcquisition(listOf(plain, epub("2.epub"))))
         assertNull(bestAcquisition(emptyList()))
+    }
+
+    @Test
+    fun `with images preferred, images beat unmarked beat none, then EPUB3 beats EPUB2`() {
+        val epub2 = epub("1.epub.images")
+        val epub3 = epub("1.epub3.images")
+        val noImages = epub("1.epub.noimages", "EPUB (no images)")
+        val plain = epub("1.epub")
+        assertEquals(epub3, bestAcquisition(listOf(noImages, epub2, epub3), preferImages = true))
+        assertEquals(epub2, bestAcquisition(listOf(noImages, plain, epub2), preferImages = true))
+        assertEquals(plain, bestAcquisition(listOf(noImages, plain), preferImages = true))
     }
 }

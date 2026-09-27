@@ -1,5 +1,7 @@
 package com.yarosz.reader
 
+import java.util.Locale
+
 /** A source of Books: a name and the Atom feed it starts at (ADR 0001). */
 data class Catalogue(val name: String, val url: HttpsUrl)
 
@@ -61,17 +63,50 @@ private val EPUB3 = Regex("epub ?3")
 private val NO_IMAGES = Regex("no[ -]?images")
 
 /**
- * The one link to download among [links]: EPUB over kepub, then EPUB3 over EPUB2, then with images
- * over unmarked over without. Feeds mark these only in the link's file name and title, as Gutenberg
- * does ("1342.epub3.images", "EPUB (older e-readers, no images)"). A tie keeps feed order, which
- * puts a feed's own recommendation first (Standard Ebooks lists its compatible epub before the
- * advanced one). Null when no link is an EPUB.
+ * Whether an edition with images beats one without. False until the Reader draws images (v1.x): it
+ * shows an image only as its alt text, so the images edition is a larger download for the same
+ * reading (Pride and Prejudice: 25 MB against 558 KB). Flip it when images ship.
  */
-fun bestAcquisition(links: List<Acquisition>): Acquisition? =
+const val PREFER_IMAGES_EDITION = false
+
+/**
+ * The one link to download among [links]: EPUB over kepub, then the preferred edition (without images
+ * or unmarked over with images, per [preferImages]), then EPUB3 over EPUB2. Feeds mark these only in
+ * the link's file name and title, as Gutenberg does ("1342.epub3.images", "EPUB (older e-readers, no
+ * images)"); Gutenberg offers its no-images edition only as EPUB2 ("1342.epub.noimages"). A tie keeps
+ * feed order, which puts a feed's own recommendation first (Standard Ebooks lists its compatible epub
+ * before the advanced one). Null when no link is an EPUB.
+ */
+fun bestAcquisition(links: List<Acquisition>, preferImages: Boolean = PREFER_IMAGES_EDITION): Acquisition? =
     links.filter { it.type in EPUB_TYPES }.minWithOrNull(
         compareBy<Acquisition> { EPUB_TYPES.indexOf(it.type) }
-            .thenByDescending { EPUB3.containsMatchIn(it.markers()) }
-            .thenByDescending { it.markers().let { m -> if (NO_IMAGES.containsMatchIn(m)) 0 else if ("images" in m) 2 else 1 } },
+            .thenBy { it.editionRank(preferImages) }
+            .thenByDescending { EPUB3.containsMatchIn(it.markers()) },
     )
 
+/**
+ * The one link "Add to Shelf" downloads for a Book whose page lists several entries, one per edition
+ * (Gutenberg lists its no-images and images editions separately): the best of all their links.
+ */
+fun bestDownload(entries: List<CatalogueEntry>): Acquisition? = bestAcquisition(entries.flatMap { it.acquisitions })
+
+/** 0 for the preferred edition; without [preferImages], "no images" and unmarked tie. */
+private fun Acquisition.editionRank(preferImages: Boolean): Int {
+    val markers = markers()
+    val images = when {
+        NO_IMAGES.containsMatchIn(markers) -> -1
+        "images" in markers -> 1
+        else -> 0
+    }
+    return if (preferImages) -images else maxOf(images, 0)
+}
+
 private fun Acquisition.markers() = (url.value.substringBefore('?').substringAfterLast('/') + " " + title.orEmpty()).lowercase()
+
+/** A download size for the detail page, in decimal units: "558 KB", "24.8 MB", "300 MB". */
+fun formatSize(bytes: Long): String {
+    val kb = (bytes + 500) / 1000
+    if (kb < 1000) return "${maxOf(kb, 1)} KB"
+    val mb = bytes / 1_000_000.0
+    return if (mb < 99.95) String.format(Locale.ROOT, "%.1f MB", mb) else "${(bytes + 500_000) / 1_000_000} MB"
+}

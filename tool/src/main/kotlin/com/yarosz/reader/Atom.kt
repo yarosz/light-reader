@@ -126,7 +126,7 @@ private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
             "feed/entry/title" -> current?.title = value.orEmpty()
             "feed/entry/summary" -> current?.summary = value
             "feed/entry/content" -> current?.content = value
-            "feed/entry/author/name" -> value?.takeIf { it.isNotEmpty() }?.let { current?.authors?.add(it) }
+            "feed/entry/author/name" -> value?.takeIf { it.isNotEmpty() }?.let { current?.authors?.add(displayAuthor(it)) }
             "feed/entry" -> {
                 current?.build()?.let(entries::add)
                 entry = null
@@ -179,7 +179,7 @@ private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
         fun build(): CatalogueEntry? = if (opens == null && acquisitions.isEmpty()) null else CatalogueEntry(
             title = title,
             authors = authors.toList(),
-            summary = (summary ?: content)?.takeIf { it.isNotEmpty() },
+            summary = (summary ?: content)?.takeIf { it.isNotEmpty() && !isMetadataList(it) },
             opens = opens,
             details = details,
             related = related.toList(),
@@ -196,6 +196,32 @@ private class MediaType(val essence: String, val isEntry: Boolean) {
             return MediaType(parts.first(), parts.drop(1).any { it.replace(" ", "") == "type=entry" })
         }
     }
+}
+
+private val KEY_VALUE_LINE = Regex("\\p{L}[\\p{L} .]{0,30}: .*")
+
+/**
+ * True for a summary made of "Key: value" lines, like Gutenberg's metadata dump ("Title: …",
+ * "EBook No.: 1342"), which isn't prose to show: at least three lines, most of them such pairs.
+ */
+internal fun isMetadataList(text: String): Boolean {
+    val lines = text.lines()
+    return lines.size >= 3 && lines.count { KEY_VALUE_LINE.matches(it) } * 2 > lines.size
+}
+
+private val LIFE_DATES = Regex("\\d{1,4}\\??-(?:\\d{1,4}\\??)?|-\\d{1,4}\\??")
+private val PLAIN_NAME = Regex("\\p{L}[\\p{L}.' -]*")
+
+/**
+ * An author's name for display. Only the simple inverted form un-inverts: "Austen, Jane" and
+ * "Austen, Jane, 1775-1817" are "Jane Austen" (life dates dropped). Anything else stays as the feed
+ * gave it: further commas, "Various", organisations, several authors, parenthesised full names.
+ */
+fun displayAuthor(name: String): String {
+    val parts = name.split(',').map { it.trim() }
+    val simple = parts.size in 2..3 && parts.take(2).all { PLAIN_NAME.matches(it) } &&
+        (parts.size == 2 || LIFE_DATES.matches(parts[2]))
+    return if (simple) "${parts[1]} ${parts[0]}" else name
 }
 
 private val XHTML_BLOCKS = setOf("p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "tr")
