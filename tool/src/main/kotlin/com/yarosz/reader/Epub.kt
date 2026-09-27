@@ -41,24 +41,57 @@ data class Book(val identifier: String, val title: String, val chapters: List<Ch
  * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does).
  */
 fun parseEpub(file: File): Book = ZipFile(file).use { zip ->
-    fun open(path: String): InputStream =
-        zip.getInputStream(zip.getEntry(path) ?: error("EPUB is missing $path"))
-
-    val opfPath = ContainerHandler().also { sax(open("META-INF/container.xml"), it) }.opfPath
-        ?: error("container.xml has no rootfile")
-    val opfDir = opfPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
-    val opf = OpfHandler().also { sax(open(opfPath), it) }
-
-    val docs = opf.spine.mapNotNull { idref -> opf.manifest[idref]?.let { idref to it } }.map { (idref, href) ->
-        idref to XhtmlHandler().also { sax(open(opfDir + URLDecoder.decode(href, "UTF-8")), it) }
-    }
+    val pkg = readPackage(zip, file.nameWithoutExtension)
+    val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { sax(zip.open(item.path), it) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
-    val title = opf.title ?: file.nameWithoutExtension
     Book(
-        identifier = bookIdentifier(opf.identifiers, opf.uniqueIdentifier, title, opf.spine),
-        title = title,
+        identifier = pkg.identifier,
+        title = pkg.title,
         chapters = body.mapIndexed { i, (idref, doc) -> Chapter(idref, doc.title ?: "Section ${i + 1}", doc.blocks) },
     )
+}
+
+/** A Spine item's idref and the path of its document inside the zip. */
+data class SpineItem(val idref: String, val path: String)
+
+/** What a Book's package document says about it, read without parsing the text. */
+data class Package(val identifier: String, val title: String, val spine: List<SpineItem>)
+
+/**
+ * Reads the package document that the container names. [fallbackTitle] titles a Book whose package
+ * has no `dc:title`. Throws when the zip has no container or package document, or no Spine item
+ * that has a document.
+ */
+fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
+    val opfPath = ContainerHandler().also { sax(zip.open("META-INF/container.xml"), it) }.opfPath
+        ?: error("container.xml has no rootfile")
+    val opfDir = opfPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+    val opf = OpfHandler().also { sax(zip.open(opfPath), it) }
+    val spine = opf.spine.mapNotNull { idref ->
+        opf.manifest[idref]?.let { SpineItem(idref, opfDir + URLDecoder.decode(it, "UTF-8")) }
+    }
+    check(spine.isNotEmpty()) { "the package has no Spine item with a document" }
+    val title = opf.title ?: fallbackTitle
+    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, title, opf.spine), title, spine)
+}
+
+private fun ZipFile.open(path: String): InputStream = getInputStream(getEntry(path) ?: error("EPUB is missing $path"))
+
+private val RIGHTS_FILES = listOf("META-INF/rights.xml", "META-INF/sinf.xml", "META-INF/license.lcpl")
+private val FONT_EXTENSIONS = setOf("ttf", "otf", "woff", "woff2")
+
+/**
+ * True when the EPUB is copy-protected (ADR 0005): it carries an Adobe, Apple, or Readium LCP rights
+ * file, or its `META-INF/encryption.xml` encrypts anything but a font. Font obfuscation alone is
+ * common in DRM-free EPUBs. A font is known by its file extension. An encryption.xml that doesn't
+ * parse counts as protection, since nothing it covers could be read.
+ */
+fun isCopyProtected(zip: ZipFile): Boolean {
+    if (RIGHTS_FILES.any { zip.getEntry(it) != null }) return true
+    val encryption = zip.getEntry("META-INF/encryption.xml") ?: return false
+    val targets = runCatching { EncryptionHandler().also { sax(zip.getInputStream(encryption), it) }.targets }
+        .getOrElse { return true }
+    return targets.any { URLDecoder.decode(it, "UTF-8").substringAfterLast('.').lowercase() !in FONT_EXTENSIONS }
 }
 
 /**
@@ -78,6 +111,13 @@ fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: S
 
 private fun sax(input: InputStream, handler: DefaultHandler) = input.use {
     SAXParserFactory.newInstance().newSAXParser().parse(it, handler)
+}
+
+private class EncryptionHandler : DefaultHandler() {
+    val targets = mutableListOf<String>()
+    override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
+        if (qName.substringAfter(':') == "CipherReference") targets += attrs.getValue("URI").orEmpty()
+    }
 }
 
 private class ContainerHandler : DefaultHandler() {

@@ -1,8 +1,11 @@
 package com.yarosz.reader
 
 import java.io.File
+import java.util.zip.ZipFile
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -41,6 +44,29 @@ class EpubTest {
         assertEquals(hashed, bookIdentifier(listOf("blank" to ""), "blank", "T", listOf("a", "b")))
         assertFalse(hashed == bookIdentifier(emptyList(), null, "T", listOf("a", "c")))
         assertFalse(hashed == bookIdentifier(emptyList(), null, "U", listOf("a", "b")))
+    }
+
+    @Test
+    fun `the package names the Book and its Spine documents without parsing the text`() {
+        val pkg = ZipFile(File("src/test/fixtures/alice.epub")).use { readPackage(it, "ignored") }
+        assertEquals(book.identifier, pkg.identifier)
+        assertEquals(book.title, pkg.title)
+        assertEquals(SpineItem("chapter-1.xhtml", "epub/text/chapter-1.xhtml"), pkg.spine.first { it.idref == "chapter-1.xhtml" })
+    }
+
+    @Test
+    fun `a package with no title takes the fallback, and one with no Spine document fails`() {
+        val dir = createTempDirectory("epub").toFile()
+        try {
+            val untitled = File(dir, "untitled.epub").writeEpub(epubFiles(title = null))
+            assertEquals("untitled", parseEpub(untitled).title)
+            val empty = File(dir, "empty.epub").writeEpub(epubFiles(chapters = emptyList()))
+            assertFailsWith<IllegalStateException> { ZipFile(empty).use { readPackage(it, "empty") } }
+            val bare = File(dir, "bare.epub").writeEpub(mapOf("mimetype" to "application/epub+zip"))
+            assertFailsWith<IllegalStateException> { ZipFile(bare).use { readPackage(it, "bare") } }
+        } finally {
+            dir.deleteRecursively()
+        }
     }
 
     @Test
