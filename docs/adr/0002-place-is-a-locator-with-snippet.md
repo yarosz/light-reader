@@ -4,6 +4,13 @@ A Place is stored as (Spine item id, block index, character offset within the bl
 characters of text at the top of the Page. A Book is identified by its OPF `dc:identifier`, never by file
 name, so a re-download or re-import keeps its Place. The persisted format carries a `schemaVersion`.
 
+A later schema only adds fields. It never changes the type or meaning of a field an earlier schema
+knows. A build that meets a higher `schemaVersion` reads the fields it knows, carries every other field
+back verbatim, and never lowers the version, so rolling back a release (`RELEASING.md`) or importing a
+file from a newer build (N7) loses nothing. The one exception: turning a Page records a fresh Place, so
+fields a newer build added inside the old Place are dropped with it, because they described that Place.
+A change that needs a new type or meaning takes a new field name.
+
 Two invariants make this worth an ADR:
 
 1. **A Place is never rewritten by relayout.** Font and layout changes look the Place up; they don't

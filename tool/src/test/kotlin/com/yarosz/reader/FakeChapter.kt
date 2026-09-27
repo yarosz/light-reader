@@ -55,7 +55,7 @@ internal class FakeChapter(val chapter: Chapter) {
 
     companion object {
         /** Up to 60 blocks of 1 to 1,500 characters (the parser drops blank ones); the first is a heading and about one in ten of the rest. */
-        fun random(rnd: Random) = FakeChapter(Chapter("", List(rnd.nextInt(1, 60)) { i ->
+        fun random(rnd: Random) = FakeChapter(Chapter("spine", "", List(rnd.nextInt(1, 60)) { i ->
             val kind = if (i == 0 || rnd.nextDouble() < 0.1) BlockKind.Heading else BlockKind.Paragraph
             Block(kind, "x".repeat(rnd.nextInt(1, 1_500)))
         }))

@@ -20,6 +20,30 @@ class EpubTest {
     }
 
     @Test
+    fun `the Book is identified by the package's unique identifier`() {
+        assertEquals("https://standardebooks.org/ebooks/lewis-carroll/alices-adventures-in-wonderland/john-tenniel", book.identifier)
+    }
+
+    @Test
+    fun `each chapter names the Spine item it came from`() {
+        assertEquals((1..12).map { "chapter-$it.xhtml" }, book.chapters.map { it.spineId })
+    }
+
+    @Test
+    fun `the unique identifier wins, else the first, else a hash of title and spine`() {
+        val ids = listOf(null to "urn:isbn:1", "blank" to "", "uid" to "https://example.org/book")
+        assertEquals("https://example.org/book", bookIdentifier(ids, "uid", "T", listOf("a")))
+        assertEquals("urn:isbn:1", bookIdentifier(ids, "missing", "T", listOf("a")))
+        assertEquals("urn:isbn:1", bookIdentifier(ids, null, "T", listOf("a")))
+
+        val hashed = bookIdentifier(emptyList(), null, "T", listOf("a", "b"))
+        assertTrue(Regex("sha256:[0-9a-f]{64}").matches(hashed), hashed)
+        assertEquals(hashed, bookIdentifier(listOf("blank" to ""), "blank", "T", listOf("a", "b")))
+        assertFalse(hashed == bookIdentifier(emptyList(), null, "T", listOf("a", "c")))
+        assertFalse(hashed == bookIdentifier(emptyList(), null, "U", listOf("a", "b")))
+    }
+
+    @Test
     fun `chapter opens with its heading then the first paragraph`() {
         val blocks = book.chapters[0].blocks
         assertEquals(Block(BlockKind.Heading, "I: Down the Rabbit-Hole"), blocks[0])

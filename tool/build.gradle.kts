@@ -61,6 +61,11 @@ android {
         error += "RestrictedApi"
     }
 
+    testOptions {
+        // The store and ViewModel log through android.util.Log; unit tests get the stub, not a throw.
+        unitTests.isReturnDefaultValues = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.toVersion(rootProject.ext["jvmTarget"] as String)
         targetCompatibility = JavaVersion.toVersion(rootProject.ext["jvmTarget"] as String)
@@ -76,6 +81,8 @@ kotlin {
 dependencies {
     implementation(project(":sdk:client"))
     testImplementation(libs.kotlin.test)
+    // Same version as the SDK's coroutines; the catalog lives in the pinned submodule and has no alias for it.
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:${libs.kotlinx.coroutines.core.get().version}")
     ksp(libs.androidx.room.compiler)
 }
 

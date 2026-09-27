@@ -132,10 +132,22 @@ wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s
   done
   return 1
 }
-install_and_launch() {  # serial apk
+install_and_launch() {  # serial apk; dev-start opens chapter 1 at the default font and saves nothing, so
+                        # A+ A+ A- A- always cycles and the device's reading data is left as it was
+  dev_started="$dev_started $1"
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
+    && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 0 > files/dev-start'" \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
+clear_starts() {  # on any exit: a dev-start left behind would open every later launch at chapter 1, and
+                  # the Reader it launched saves nothing, so stop it before anyone reads in it
+  for s in $dev_started; do
+    "$adb" -s "$s" shell run-as $pkg rm -f files/dev-start || echo "ci: could not remove files/dev-start on $s" >&2
+    "$adb" -s "$s" shell am force-stop $pkg || echo "ci: could not stop $pkg on $s" >&2
+  done
+}
+dev_started=""
+trap clear_starts EXIT
 
 # --- signoff/emulator
 if [ "$docs_only" = 1 ]; then
@@ -178,10 +190,10 @@ lp3=$("$adb" devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/{print $1}
 lp3_ran=0
 if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   lightos=$("$adb" -s "$lp3" shell dumpsys package com.lightos | grep -m1 -oE 'versionName=[^ ]+' | cut -d= -f2)
-  android=$("$adb" -s "$lp3" shell getprop ro.build.version.release | tr -d '\r')
   # The committed lighttool.toml already targets LightOS on the phone.
   ./gradlew -q --console=plain :tool:assembleDebug || fail_ctx lp3 "assembleDebug (device)"
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
+  android=$("$adb" -s "$lp3" shell getprop ro.build.version.release | tr -d '\r')
   install_and_launch "$lp3" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx lp3 "install"
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
