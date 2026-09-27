@@ -84,6 +84,7 @@ class EpubTest {
         assertEquals("OEBPS/text/a+b c.xhtml", zipPath("OEBPS/", "text/a+b%20c.xhtml"))
         assertEquals("OEBPS/100%.xhtml", zipPath("OEBPS/", "100%.xhtml"))
         assertEquals("OEBPS/%zz%2.xhtml", zipPath("OEBPS/", "%zz%2.xhtml"))
+        assertEquals("OEBPS/a%+1b%-1c% 1d%41.xhtml", zipPath("OEBPS/", "a%+1b%-1c% 1d%2541.xhtml"))
         assertEquals("OEBPS/caf\u00e9.xhtml", zipPath("OEBPS/", "caf%C3%A9.xhtml"))
         assertEquals("Text/c.xhtml", zipPath("OEBPS/", "../Text/c.xhtml"))
         assertEquals("c.xhtml", zipPath("OEBPS/", "../../c.xhtml"))

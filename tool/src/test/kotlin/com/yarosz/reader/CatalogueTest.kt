@@ -65,6 +65,7 @@ class CatalogueTest {
         assertEquals("Pride and Prejudice", first.title)
         assertEquals(emptyList(), first.authors)
         assertEquals("Jane Austen", first.summary)
+        assertEquals(listOf("Jane Austen", "Herman Melville", "Mary Wollstonecraft Shelley"), page.entries.map { it.byline })
         assertEquals(url("https://www.gutenberg.org/ebooks/1342.opds"), first.opens)
         assertNull(first.download)
     }
@@ -86,6 +87,32 @@ class CatalogueTest {
         assertEquals(4, images.acquisitions.size)
         assertNull(images.opens)
         assertEquals(NavigationLink("By Austen, Jane…", url("https://www.gutenberg.org/ebooks/author/68.opds")), images.related.first())
+    }
+
+    @Test
+    fun `a row's second line is the author, else a short one-line content that isn't a Key-value pair`() {
+        val root = fixture("gutenberg-root.xml", "https://www.gutenberg.org/ebooks.opds/")
+        assertEquals(listOf("Our most popular books.", "Our latest releases.", "Random books."), root.entries.map { it.byline })
+        val book = fixture("gutenberg-1342.xml", "https://www.gutenberg.org/ebooks/1342.opds")
+        assertEquals(listOf("Jane Austen", "Jane Austen"), book.entries.map { it.byline })
+        val se = fixture("standardebooks-new-releases.xml", "https://standardebooks.org/feeds/atom/new-releases")
+        assertEquals(listOf("Winnifred Eaton Reeve", "W. H. Davies"), se.entries.map { it.byline })
+        val link = """<link rel="subsection" type="application/atom+xml" href="/b"/>"""
+        assertEquals("A, B", entry(link, "<title>T</title><author><name>A</name></author><author><name>B</name></author><content>ignored</content>").byline)
+        assertEquals("x".repeat(MAX_BYLINE_CHARS), entry(link, "<title>T</title><content>${"x".repeat(MAX_BYLINE_CHARS)}</content>").byline)
+        assertNull(entry(link, "<title>T</title><content>${"x".repeat(MAX_BYLINE_CHARS + 1)}</content>").byline)
+        assertNull(entry(link, "<title>T</title><content>EBook No.: 1342</content>").byline)
+        assertNull(entry(link, """<title>T</title><content type="html">&lt;p&gt;One&lt;/p&gt;&lt;p&gt;Two&lt;/p&gt;</content>""").byline)
+        assertNull(entry(link, "<title>T</title><summary>Only a summary</summary>").byline)
+    }
+
+    @Test
+    fun `one download for a page is picked only when every entry is the same Book`() {
+        val se = fixture("standardebooks-new-releases.xml", "https://standardebooks.org/feeds/atom/new-releases")
+        assertTrue(se.entries.size > 1 && se.entries.all { it.download != null })
+        assertNull(bestDownload(se.entries))
+        assertEquals(se.entries[0].download, bestDownload(se.entries.take(1)))
+        assertNull(bestDownload(emptyList()))
     }
 
     @Test

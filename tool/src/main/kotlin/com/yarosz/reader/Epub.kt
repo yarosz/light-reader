@@ -118,7 +118,11 @@ private fun decodePercent(text: String): String {
     }
     var i = 0
     while (i < text.length) {
-        val escape = if (text[i] == '%' && i + 2 < text.length) text.substring(i + 1, i + 3).toIntOrNull(16) else null
+        val escape = if (text[i] == '%' && i + 2 < text.length && isHexDigit(text[i + 1]) && isHexDigit(text[i + 2])) {
+            text.substring(i + 1, i + 3).toInt(16)
+        } else {
+            null
+        }
         if (escape != null) {
             bytes.write(escape)
             i += 3
@@ -130,6 +134,8 @@ private fun decodePercent(text: String): String {
     flush()
     return out.toString()
 }
+
+private fun isHexDigit(c: Char) = c in '0'..'9' || c in 'a'..'f' || c in 'A'..'F'
 
 private fun ZipFile.entry(path: String): ZipEntry = getEntry(path) ?: error("EPUB is missing $path")
 

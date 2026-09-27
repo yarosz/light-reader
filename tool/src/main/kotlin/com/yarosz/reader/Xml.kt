@@ -17,7 +17,9 @@ import org.xml.sax.helpers.DefaultHandler
  * downloaded EPUB) into [handler], reading at most [maxBytes] of [input] and passing at most
  * [maxBytes] characters of text and attribute values to the handler. Every external entity and
  * external DTD resolves to nothing, so parsing never reads a file or touches the network, while a
- * DOCTYPE (EPUB2's XHTML 1.1 one, the OEB one) is still accepted. The character budget bounds an
+ * DOCTYPE (EPUB2's XHTML 1.1 one, the OEB one) is still accepted. An entity the unread DTD would
+ * have declared reaches the handler as its character when it is one of XHTML's ([XHTML_ENTITIES]),
+ * so `a&nbsp;b` keeps its space; any other is skipped. The character budget bounds an
  * internal entity-expansion bomb whatever the platform parser's own limits. Closes [input].
  * Throws [TooLargeException] past either bound and another SAXException when the document isn't
  * XML; both are SAXExceptions, so an IOException means [input] itself failed.
@@ -72,8 +74,17 @@ private class CappedStream(inner: InputStream, private val max: Long) : FilterIn
     }
 }
 
-/** Passes SAX content to [inner], failing once text and attribute values together pass [max] characters. */
+/**
+ * Passes SAX content to [inner], failing once text and attribute values together pass [max]
+ * characters, and turning a skipped XHTML entity into its character.
+ */
 private class TextBudget(private val inner: ContentHandler, private var max: Long) : ContentHandler by inner {
+    override fun skippedEntity(name: String) {
+        val code = XHTML_ENTITIES[name] ?: return inner.skippedEntity(name)
+        val chars = Character.toChars(code)
+        characters(chars, 0, chars.size)
+    }
+
     override fun startElement(uri: String, localName: String, qName: String, atts: Attributes) {
         for (i in 0 until atts.length) spend(atts.getValue(i).length)
         inner.startElement(uri, localName, qName, atts)

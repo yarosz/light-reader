@@ -45,6 +45,17 @@ class XmlTest {
     }
 
     @Test
+    fun `XHTML's named entities under a DTD that is never read become their characters`() {
+        withNoNetwork {
+            val xml = "<?xml version=\"1.0\"?><!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://127.0.0.1:9/xhtml11.dtd\">" +
+                "<html>a&nbsp;b&mdash;&eacute;&hellip;&apos;&euro;&unknown;c</html>"
+            assertEquals("a\u00A0b\u2014\u00E9\u2026'\u20ACc", parse(xml))
+        }
+        assertEquals(253, XHTML_ENTITIES.size)
+        assertEquals(mapOf("nbsp" to 160, "yuml" to 255, "Yuml" to 376, "hearts" to 9829, "euro" to 8364), XHTML_ENTITIES.filterKeys { it in setOf("nbsp", "yuml", "Yuml", "hearts", "euro") })
+    }
+
+    @Test
     fun `text that expands past the budget fails, though the document itself is small`() {
         val doc = """<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "xxxxxxxxxx"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
             <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">]><x>&c;&c;</x>"""
