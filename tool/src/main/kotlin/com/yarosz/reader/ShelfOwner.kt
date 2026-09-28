@@ -71,6 +71,11 @@ class ShelfOwner(
     /** The rows to show; null until the reading data is loaded. */
     val rows: StateFlow<List<ShelfRow>?> = shown
 
+    private val snapshots = MutableStateFlow<ShelfSnapshot?>(null)
+
+    /** What the rows are made from, for the Catalogue screens; null until the reading data is loaded. */
+    val snapshot: StateFlow<ShelfSnapshot?> = snapshots
+
     /** A dev-start session to open once (see [DEV_BOOK_FILE]); the Shelf clears it when it navigates. */
     val devStart = MutableStateFlow<DevStart?>(null)
 
@@ -117,10 +122,11 @@ class ShelfOwner(
      * Downloads [source] onto the Shelf, or returns the download of it already running. Its row reads
      * "downloading…" meanwhile. On success the Book goes on the Shelf titled [title] (the Catalogue
      * entry's, or the stored one), with [source] as its source, keeping a Place it had. [replacing]
-     * is the Shelf row downloading its missing file again: a Book that arrives under another
-     * identifier takes over that row's Place and date (see [moveBook]). A retryable failure leaves
-     * "download failed · tap to retry"; a permanent one leaves the [replacing] row saying why, and
-     * a download from a Catalogue nothing, for the caller to show. Removing the row ends the download
+     * is the stored Book the download is for (a Shelf row downloading its missing file again, or a
+     * removed Book added again from a Catalogue): a Book that arrives under another identifier takes
+     * over its Place and date (see [moveBook]). A retryable failure leaves "download failed · tap to
+     * retry"; a permanent one leaves a [replacing] row that is on the Shelf saying why, and otherwise
+     * nothing, for the caller to show. Removing the row ends the download
      * as [DownloadResult.Removed].
      */
     fun download(source: HttpsUrl, title: String, author: String?, replacing: String? = null): Deferred<DownloadResult> {
@@ -144,6 +150,27 @@ class ShelfOwner(
         job.start()
         publish()
         return result
+    }
+
+    /** Fetches a Catalogue page on [io]. */
+    suspend fun fetchPage(url: HttpsUrl): Fetched<CataloguePage> = withContext(io) { fetchPage(transport, url) }
+
+    /** Fetches the search template an OpenSearch description offers, on [io]. */
+    suspend fun fetchSearch(description: HttpsUrl): Fetched<SearchTemplate> = withContext(io) { fetchSearch(transport, description) }
+
+    /** Puts [catalogue] on the list of Catalogues, or back on it, and saves at once. */
+    fun addCatalogue(catalogue: Catalogue) = changeCatalogues { it.withCatalogue(catalogue, now()) }
+
+    /** Takes the Catalogue at [url] off the list and saves at once; Books added from it stay on the Shelf. */
+    fun removeCatalogue(url: HttpsUrl) = changeCatalogues { it.withoutCatalogue(url, now()) }
+
+    private fun changeCatalogues(transform: (ReadingData) -> ReadingData) {
+        scope.launch {
+            loaded.await()
+            saver.change(transform)
+            saver.flush()
+            publish()
+        }
     }
 
     /**
@@ -203,7 +230,8 @@ class ShelfOwner(
                 DownloadResult.Done(finished.identifier)
             }
             is DownloadState.Failed -> {
-                if (finished.reason.isRetryable || transfer.replacing != null) transfers[source] = transfer.copy(state = TransferState.Failed(finished.reason))
+                val replacesRow = transfer.replacing?.let { saver.data.books[it]?.onShelf } == true
+                if (finished.reason.isRetryable || replacesRow) transfers[source] = transfer.copy(state = TransferState.Failed(finished.reason))
                 else transfers.remove(source)
                 DownloadResult.Failed(finished.reason)
             }
@@ -223,7 +251,10 @@ class ShelfOwner(
     }
 
     private fun publish() {
-        if (loaded.isCompleted) shown.value = shelfRows(saver.data, present, transfers.toMap())
+        if (!loaded.isCompleted) return
+        val snapshot = ShelfSnapshot(saver.data, present, transfers.toMap())
+        snapshots.value = snapshot
+        shown.value = shelfRows(snapshot.data, snapshot.present, snapshot.transfers)
     }
 
     /**
