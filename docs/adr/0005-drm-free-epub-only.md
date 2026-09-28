@@ -1,7 +1,7 @@
 # DRM-free EPUB only
 
 The Tool opens DRM-free EPUBs only. A copy-protected file is detected and explained ("This Book is
-copy-protected and can't be opened here", with a pointer to DRM-free sources) instead of failing as a parse
+copy-protected and can't be opened here", with a pointer to where to find DRM-free Books) instead of failing as a parse
 error. The Tool will never attempt to remove or bypass DRM. Kobo `.kepub.epub` files are ordinary EPUBs
 and open.
 
