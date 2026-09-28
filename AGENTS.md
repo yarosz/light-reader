@@ -3,8 +3,6 @@
 A LightOS tool: an eReader for DRM-free EPUBs on the Light Phone III, for any LP3 owner who chose the
 phone to read more deliberately. One clear capability, nothing else.
 
-- **Vocabulary:** `CONTEXT.md` is the glossary. Use its terms in code, UI copy, and docs; see "Domain
-  language" below.
 - **Architecture decisions:** `docs/adr/`. Read the relevant ADR before changing Catalogues, how a Place
   is stored, network behaviour, layout vs navigation units, DRM handling, or typography.
 - **Tunable values and typesetting rules:** `DESIGN.md` (type scale for the LP3's 480 dpi, page-break
@@ -12,6 +10,8 @@ phone to read more deliberately. One clear capability, nothing else.
 - **State and next work:** `LEDGER.md`. Read it before starting; update it before ending a session.
 
 ## Domain language
+
+`CONTEXT.md` is the glossary: use its terms in code, UI copy, and docs.
 
 - **In every PR:** a new domain concept enters `CONTEXT.md` in the same PR, or goes in
   `docs/domain-ignore.txt` as implementation or UI vocabulary (UI surfaces belong in `DESIGN.md`).
