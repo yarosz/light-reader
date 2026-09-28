@@ -70,7 +70,7 @@ class CataloguePagesTest {
         val page = { n: Int, next: String -> popular.copy(entries = List(n) { entry.copy(title = "Book $it") }, next = url(next)) }
         var listing = pageState(page(25, "https://books.example.org/p1"), PageSource.Root, url("https://books.example.org/p0")) as PageState.Listing
         var pages = 1
-        while (listing.next != null) {
+        while (listing.next != null && pages < 100) {
             listing = appendPage(listing, page(25, "https://books.example.org/p${pages + 1}"), listing.next!!)
             pages++
         }
