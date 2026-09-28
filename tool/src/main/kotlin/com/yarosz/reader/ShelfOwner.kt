@@ -76,7 +76,7 @@ class ShelfOwner(
 
     /** Deletes a killed process's partial downloads when first used, which is off the main thread. */
     private val downloader by lazy { Downloader(transport, filesDir) }
-    private val transfers = mutableMapOf<HttpsUrl, Transfer>()
+    private val downloads = mutableMapOf<HttpsUrl, Download>()
     private val running = mutableMapOf<HttpsUrl, Running>()
 
     /** Names of the Books' files that exist. */
@@ -126,7 +126,7 @@ class ShelfOwner(
      */
     fun download(source: HttpsUrl, title: String, author: String?, replacing: String? = null): Deferred<DownloadResult> {
         running[source]?.let { return it.result }
-        transfers[source] = Transfer(title, author, transfers[source]?.startedAt ?: now(), TransferState.Running, replacing)
+        downloads[source] = Download(title, author, downloads[source]?.startedAt ?: now(), Download.Status.Running, replacing)
         val result = CompletableDeferred<DownloadResult>()
         val job = scope.launch(start = CoroutineStart.LAZY) {
             loaded.await()
@@ -177,7 +177,7 @@ class ShelfOwner(
             is RowKey.Arriving -> cancel(key.source)
             is RowKey.Shelved -> {
                 val entry = saver.data.books[key.identifier] ?: return
-                transfers.filterValues { it.replacing == key.identifier }.keys.forEach(::cancel)
+                downloads.filterValues { it.replacing == key.identifier }.keys.forEach(::cancel)
                 saver.change { it.unshelve(key.identifier) }
                 val file = entry.file
                 if (file != null && saver.data.books.values.none { it.onShelf && it.file == file }) {
@@ -200,35 +200,35 @@ class ShelfOwner(
             return DownloadResult.Removed
         }
         running.remove(source)
-        val transfer = transfers.getValue(source)
-        val finished = when (fetched) {
+        val download = downloads.getValue(source)
+        val ended = when (fetched) {
             is Checked -> downloader.keep(fetched)
             is DownloadState.Failed -> fetched
         }
-        val result = when (finished) {
+        val result = when (ended) {
             is DownloadState.Done -> {
-                transfers.remove(source)
+                downloads.remove(source)
                 saver.change { data ->
-                    val moved = transfer.replacing?.let { data.moveBook(it, finished.identifier) } ?: data
-                    val title = transfer.replacing?.let { moved.books[finished.identifier]?.title } ?: transfer.title
+                    val moved = download.replacing?.let { data.moveBook(it, ended.identifier) } ?: data
+                    val title = download.replacing?.let { moved.books[ended.identifier]?.title } ?: download.title
                     moved.shelve(
-                        finished.identifier,
-                        title.ifBlank { finished.title },
-                        finished.file,
-                        finished.author ?: transfer.author,
+                        ended.identifier,
+                        title.ifBlank { ended.title },
+                        ended.file,
+                        ended.author ?: download.author,
                         source.value,
                         now(),
                     )
                 }
-                fileChanged(finished.file, exists = true)
+                fileChanged(ended.file, exists = true)
                 saver.flush()
-                DownloadResult.Done(finished.identifier)
+                DownloadResult.Done(ended.identifier)
             }
             is DownloadState.Failed -> {
-                val replacesRow = transfer.replacing?.let { saver.data.books[it]?.onShelf } == true
-                if (finished.reason.isRetryable || replacesRow) transfers[source] = transfer.copy(state = TransferState.Failed(finished.reason))
-                else transfers.remove(source)
-                DownloadResult.Failed(finished.reason)
+                val replacesRow = download.replacing?.let { saver.data.books[it]?.onShelf } == true
+                if (ended.reason.isRetryable || replacesRow) downloads[source] = download.copy(status = Download.Status.Failed(ended.reason))
+                else downloads.remove(source)
+                DownloadResult.Failed(ended.reason)
             }
         }
         publish()
@@ -237,7 +237,7 @@ class ShelfOwner(
 
     private fun cancel(source: HttpsUrl) {
         running.remove(source)?.job?.cancel()
-        transfers.remove(source)
+        downloads.remove(source)
     }
 
     private fun fileChanged(name: String, exists: Boolean) {
@@ -247,12 +247,12 @@ class ShelfOwner(
 
     private fun publish() {
         if (!loaded.isCompleted) return
-        snapshots.value = ShelfSnapshot(saver.data, present, transfers.toMap())
+        snapshots.value = ShelfSnapshot(saver.data, present, downloads.toMap())
     }
 
     /**
      * Dev hook for `scripts/perf.sh` and `scripts/ci.sh`: filesDir/dev-start opens [DEV_BOOK_FILE] at a
-     * chapter and offset, at the default font, with an optional window size (see [parseDevStart]).
+     * Spine item and offset, at the default font, with an optional window size (see [parseDevStart]).
      * Such a session neither reads nor saves the reading data. Only `adb shell run-as` can write that
      * file, and run-as works on debuggable builds only. A read error or garbage opens the Shelf.
      */

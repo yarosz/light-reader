@@ -32,12 +32,12 @@ class ReadingStoreTest {
     }
 
     private val alice = ReadingData(
-        books = mapOf("urn:alice" to BookEntry("Alice", "alice.epub", Place("chapter-1.xhtml", 3, 12, "Alice was", 100), finished = false, onShelf = true)),
+        books = mapOf("urn:alice" to Book("Alice", "alice.epub", Place("chapter-1.xhtml", 3, 12, "Alice was", 100), finished = false, onShelf = true)),
         settings = Settings(fontStep = 3),
     )
 
     private val snark = ReadingData(
-        books = mapOf("urn:snark" to BookEntry("The Hunting of the Snark", "snark.epub", null, finished = false, onShelf = true)),
+        books = mapOf("urn:snark" to Book("The Hunting of the Snark", "snark.epub", null, finished = false, onShelf = true)),
     )
 
     @Test
@@ -224,13 +224,13 @@ class ReadingStoreTest {
 
     @Test
     fun `a Place whose snippet would split a surrogate pair survives the file byte for byte`() {
-        val chapter = Chapter("c", "", listOf(Block(BlockKind.Paragraph, "x".repeat(44) + "😀" + "y".repeat(20))))
-        val place = chapter.placeOf(5, 1)
+        val spineItem = SpineItem("c", "", listOf(Block(BlockKind.Paragraph, "x".repeat(44) + "😀" + "y".repeat(20))))
+        val place = spineItem.placeOf(5, 1)
         assertEquals(39, place.snippet.length)
         val store = ReadingStore(dir)
         store.save { ReadingData().shelve("id", "", "b.epub").withPlace("id", place) }
         val loaded = store.load().books.getValue("id").place
         assertEquals(place, loaded)
-        assertEquals(Position(0, 5), Book("id", "", listOf(chapter)).resolve(loaded!!))
+        assertEquals(SpinePoint(0, 5), OpenBook("id", "", listOf(spineItem)).resolve(loaded!!))
     }
 }

@@ -15,7 +15,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Logcat tag for layout timings; `scripts/perf.sh` parses these lines. */
+/**
+ * Logcat tag for layout timings; `scripts/perf.sh` parses these lines, so the key `chapters=` stays
+ * as it is (it counts Spine items).
+ */
 private const val PERF_TAG = "ReaderPerf"
 
 /** How long page turns and font changes settle before the reading data is saved. */
@@ -39,11 +42,11 @@ class ReaderViewModel(
      */
     internal val saver = if (start == null) owner.saver else ReadingSaver(viewModelScope, io, SAVE_DEBOUNCE_MS, { }) { }
 
-    val book = MutableStateFlow<Book?>(null)
+    val book = MutableStateFlow<OpenBook?>(null)
     val status = MutableStateFlow("Opening…")
 
     /** The Place: the top of the page being read. Relayouts never rewrite it, so font changes can't drift. */
-    val position = MutableStateFlow(Position(0, 0))
+    val spinePoint = MutableStateFlow(SpinePoint(0, 0))
     val fontStep = MutableStateFlow(DEFAULT_FONT_STEP)
 
     /** The Page to draw and the pass whose layouts draw it; null until the view binds a [Typesetter]. */
@@ -69,28 +72,28 @@ class ReaderViewModel(
             runCatching { withContext(io) { parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension) } }
                 .onSuccess { opened ->
                     val parseMs = ms(System.nanoTime() - parseStart)
-                    val largest = opened.chapters.indices.maxByOrNull { opened.chapters[it].text.length }
+                    val largest = opened.spineItems.indices.maxByOrNull { opened.spineItems[it].text.length }
                     if (largest != null) {
-                        Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
-                            "largestChars=${opened.chapters[largest].text.length} parseMs=$parseMs")
+                        Log.i(PERF_TAG, "book chapters=${opened.spineItems.size} largest=$largest " +
+                            "largestChars=${opened.spineItems[largest].text.length} parseMs=$parseMs")
                     }
                     val now = System.currentTimeMillis()
                     val title = saver.data.books[opened.identifier]?.title?.takeIf { it.isNotBlank() } ?: opened.title
                     saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = now) }
                     if (start == null) fontStep.value = saver.data.settings.fontStep.coerceIn(FONT_SIZES.indices)
-                    if (start != null && opened.chapters.isNotEmpty()) {
-                        val chapter = start.chapter.coerceIn(opened.chapters.indices)
+                    if (start != null && opened.spineItems.isNotEmpty()) {
+                        val item = start.item.coerceIn(opened.spineItems.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
-                        position.value = Position(chapter, start.offset.coerceIn(0, opened.chapters[chapter].text.length))
-                        val ends = windows(opened.chapters[chapter], windowChars).joinToString(",") { it.end.toString() }
-                        Log.i(PERF_TAG, "windows chapter=$chapter windowChars=$windowChars ends=$ends")
+                        spinePoint.value = SpinePoint(item, start.offset.coerceIn(0, opened.spineItems[item].text.length))
+                        val ends = windows(opened.spineItems[item], windowChars).joinToString(",") { it.end.toString() }
+                        Log.i(PERF_TAG, "windows item=$item windowChars=$windowChars ends=$ends")
                     } else {
                         val place = saver.data.books[opened.identifier]?.place
-                        place?.let(opened::resolve)?.let { position.value = it }
+                        place?.let(opened::resolve)?.let { spinePoint.value = it }
                         // Opening counts as reading: the first Page starts at the Place, so a Book opened but never paged sorts as in progress.
-                        if (place == null && opened.chapters.isNotEmpty()) {
-                            val (chapter, offset) = position.value
-                            saver.change { it.withPlace(opened.identifier, opened.chapters[chapter].placeOf(offset, now)) }
+                        if (place == null && opened.spineItems.isNotEmpty()) {
+                            val (item, char) = spinePoint.value
+                            saver.change { it.withPlace(opened.identifier, opened.spineItems[item].placeOf(char, now)) }
                         }
                     }
                     book.value = opened
@@ -110,10 +113,10 @@ class ReaderViewModel(
 
     /** The view's column and measurer. Each binding lays the book out afresh at the Place. */
     fun bind(typesetter: Typesetter) {
-        val chapters = book.value?.chapters ?: return
+        val spineItems = book.value?.spineItems ?: return
         this.typesetter = typesetter
         prefetching?.cancel()
-        reading = Reading(chapters, measure = { pass, window -> measure(typesetter, pass, window, sync = true) }, linesOf = { it.lines }, windowChars = windowChars)
+        reading = Reading(spineItems, measure = { pass, window -> measure(typesetter, pass, window, sync = true) }, linesOf = { it.lines }, windowChars = windowChars)
         open(if (frame.value == null) "open" else "relayout")
     }
 
@@ -148,15 +151,15 @@ class ReaderViewModel(
     /** A pass at the Place (a cached one when it holds the Place's Page) at the current font and column. */
     private fun open(reason: String) {
         val typesetter = typesetter ?: return
-        val (chapter, offset) = position.value
-        show(reason) { it.open(chapter, offset, typesetter.key(fontStep.value)) }
+        val (item, char) = spinePoint.value
+        show(reason) { it.open(item, char, typesetter.key(fontStep.value)) }
     }
 
     private fun turn(step: (Reading<WindowLayout>) -> Shown<WindowLayout>?) {
-        val shown = show("chapter", step) ?: return
-        position.value = Position(shown.pass.chapterIndex, shown.page.start)
+        val shown = show("turn", step) ?: return
+        spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
         val identifier = book.value?.identifier ?: return
-        val place = shown.pass.chapter.placeOf(shown.page.start, System.currentTimeMillis())
+        val place = shown.pass.spineItem.placeOf(shown.page.start, System.currentTimeMillis())
         saver.change { it.withPlace(identifier, place) }
     }
 
@@ -178,7 +181,7 @@ class ReaderViewModel(
         val pass = shown.pass
         if (pass !== before) prefetching?.cancel()
         if (reading.passesStarted != started) {
-            Log.i(PERF_TAG, "pass reason=$reason chapter=${pass.chapterIndex} chars=${pass.length} font=${FONT_SIZES[pass.key.fontStep]} " +
+            Log.i(PERF_TAG, "pass reason=$reason item=${pass.item} chars=${pass.length} font=${FONT_SIZES[pass.key.fontStep]} " +
                 "windows=${pass.windows.size} syncWindows=$syncWindows firstPageMs=${ms(elapsed)}")
         }
         prefetch()
@@ -208,9 +211,9 @@ class ReaderViewModel(
 
     private fun measure(typesetter: Typesetter, pass: Pass<WindowLayout>, window: Int, sync: Boolean): WindowLayout {
         val start = System.nanoTime()
-        val layout = typesetter.measure(pass.chapter, pass.windows[window], pass.key.fontStep)
+        val layout = typesetter.measure(pass.spineItem, pass.windows[window], pass.key.fontStep)
         if (sync) syncWindows++
-        Log.i(PERF_TAG, "window pass=${pass.id} chapter=${pass.chapterIndex} index=$window " +
+        Log.i(PERF_TAG, "window pass=${pass.id} item=${pass.item} index=$window " +
             "chars=${pass.windows[window].let { it.end - it.start }} measureMs=${ms(System.nanoTime() - start)} sync=$sync")
         return layout
     }

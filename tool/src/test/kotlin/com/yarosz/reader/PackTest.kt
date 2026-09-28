@@ -9,23 +9,23 @@ import kotlin.test.assertTrue
 
 /**
  * Property tests of packing pages outward from an anchor across measured windows (ADR 0007). Each runs
- * against thousands of random [FakeChapter]s cut into windows of a random size, so pages span one, two,
+ * against thousands of random [FakeSpineItem]s cut into windows of a random size, so pages span one, two,
  * or many windows. The examples at the end pin the seam, stop, and withholding behaviour on small fixtures.
  */
 class PackTest {
 
-    private class Case(val chapter: FakeChapter, val lines: List<LineMetrics>, val windows: List<Window>, val cut: List<List<LineMetrics>>, val height: Float) {
-        val length get() = chapter.length
+    private class Case(val spineItem: FakeSpineItem, val lines: List<LineMetrics>, val windows: List<Window>, val cut: List<List<LineMetrics>>, val height: Float) {
+        val length get() = spineItem.length
     }
 
     private fun randomCase(rnd: Random, wholePixels: Boolean = true): Case {
-        val chapter = FakeChapter.random(rnd)
-        val lines = chapter.layout(randomFont(rnd), rnd, wholePixels)
-        val windows = windows(chapter.chapter, rnd.nextInt(1, 6_000))
-        return Case(chapter, lines, windows, chapter.cut(lines, windows, rnd), randomPageHeight(rnd))
+        val spineItem = FakeSpineItem.random(rnd)
+        val lines = spineItem.layout(randomFont(rnd), rnd, wholePixels)
+        val windows = windows(spineItem.spineItem, rnd.nextInt(1, 6_000))
+        return Case(spineItem, lines, windows, spineItem.cut(lines, windows, rnd), randomPageHeight(rnd))
     }
 
-    /** The chapter's ends, past its end, a line start, or any offset, since a Place from another layout can fall mid-line. */
+    /** The Spine item's ends, past its end, a line start, or any offset, since a Place from another layout can fall mid-line. */
     private fun randomAnchor(rnd: Random, case: Case): Int = when (rnd.nextInt(5)) {
         0 -> 0
         1 -> case.length
@@ -41,7 +41,7 @@ class PackTest {
     private fun lineCount(case: Case, page: Page) = case.lines.count { it.start >= page.start && it.start < page.end }
 
     @Test
-    fun `with every window measured, pages tile the chapter on line starts and the anchor's page starts at its line`() = forAll { rnd ->
+    fun `with every window measured, pages tile the Spine item on line starts and the anchor's page starts at its line`() = forAll { rnd ->
         val case = randomCase(rnd)
         val anchor = randomAnchor(rnd, case)
         val packed = pack(case.windows, case.cut, anchor, case.height)
@@ -86,10 +86,10 @@ class PackTest {
     /**
      * Two checks: the split matches a single-window pack of the same lines, and the forward pages match
      * the oracle. The first is exact only because the fixture's pixels are whole numbers (the product never
-     * lays out a whole chapter, so a one-ulp seam difference there would not be a product fault).
+     * lays out a whole Spine item, so a one-ulp seam difference there would not be a product fault).
      */
     @Test
-    fun `the window split changes no page, and forward pages match the whole-chapter pagination from the anchor line`() = forAll { rnd ->
+    fun `the window split changes no page, and forward pages match the whole-Spine-item pagination from the anchor line`() = forAll { rnd ->
         val case = randomCase(rnd)
         val anchor = randomAnchor(rnd, case)
         val split = pack(case.windows, case.cut, anchor, case.height)
@@ -154,7 +154,7 @@ class PackTest {
      * Per Page: a forward Page ends on a legal line and a backward Page starts below one, unless the guard
      * fired. That is also the boundary form: between consecutive forward Pages (a, b) the break is legal
      * unless the guard fired for a, and between consecutive backward Pages unless it fired for b. Exempt
-     * are the last forward Page, which ends where the chapter does, and the break at the anchor, which
+     * are the last forward Page, which ends where the Spine item does, and the break at the anchor, which
      * the anchor fixes.
      */
     @Test
@@ -199,7 +199,7 @@ class PackTest {
     }
 
     @Test
-    fun `pageIndexFor maps every offset to the page holding it, and the chapter's end to the last page`() = forAll { rnd ->
+    fun `pageIndexFor maps every offset to the page holding it, and the Spine item's end to the last page`() = forAll { rnd ->
         val case = randomCase(rnd)
         val pages = pack(case.windows, case.cut, randomAnchor(rnd, case), case.height).pages
         repeat(20) {
@@ -215,7 +215,7 @@ class PackTest {
         val case = randomCase(rnd)
         val pagesBefore = pack(case.windows, case.cut, 0, case.height).pages
         val anchor = pagesBefore[rnd.nextInt(pagesBefore.size)].start
-        val relaid = case.chapter.cut(case.chapter.layout(randomFont(rnd), rnd), case.windows, rnd)
+        val relaid = case.spineItem.cut(case.spineItem.layout(randomFont(rnd), rnd), case.windows, rnd)
         val after = pack(case.windows, relaid, anchor, case.height)
         val shown = after.pages[pageIndexFor(after.pages, anchor)]
         assertEquals(after.anchorPage, shown)
@@ -246,7 +246,7 @@ class PackTest {
         PackedPages(before, fromAnchor, needBefore, needAfter)
 
     @Test
-    fun `an empty chapter packs to nothing, with nothing to come`() {
+    fun `an empty Spine item packs to nothing, with nothing to come`() {
         assertEquals(result(emptyList(), emptyList()), pack(emptyList(), emptyList(), 0, 100f))
     }
 
@@ -278,7 +278,7 @@ class PackTest {
     }
 
     @Test
-    fun `an anchor at or past the chapter's end packs everything backward, so the last page is full`() {
+    fun `an anchor at or past the Spine item's end packs everything backward, so the last page is full`() {
         val (windows, lines) = windowed(8, 8)
         val packed = pack(windows, lines, 160, 100f)
         assertEquals(

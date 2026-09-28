@@ -65,9 +65,9 @@ class Typesetter(private val measurer: TextMeasurer, private val captionColor: C
 
     fun key(fontStep: Int) = LayoutKey(fontStep, widthPx, pageHeightPx)
 
-    fun measure(chapter: Chapter, window: Window, fontStep: Int): WindowLayout {
+    fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
         val style = readingStyle(fontStep)
-        val layout = measurer.measure(chapter.annotate(window, style, captionColor), style, constraints = Constraints(maxWidth = widthPx))
+        val layout = measurer.measure(spineItem.annotate(window, style, captionColor), style, constraints = Constraints(maxWidth = widthPx))
         val lines = List(layout.lineCount) { i ->
             val start = window.start + layout.getLineStart(i)
             val next = if (i < layout.lineCount - 1) window.start + layout.getLineStart(i + 1) else window.end
@@ -75,8 +75,8 @@ class Typesetter(private val measurer: TextMeasurer, private val captionColor: C
                 start = start,
                 top = layout.getLineTop(i),
                 bottom = layout.getLineBottom(i),
-                endsAtBreak = endsAtBreak(chapter.text, next),
-                heading = chapter.kindAt(start) == BlockKind.Heading,
+                endsAtBreak = endsAtBreak(spineItem.text, next),
+                heading = spineItem.kindAt(start) == BlockKind.Heading,
             )
         }
         return WindowLayout(layout, lines)
@@ -95,11 +95,11 @@ fun warmUpMeasurer(measurer: TextMeasurer) {
 }
 
 /**
- * A window's blocks as styled paragraphs over [Chapter.windowText]: each block its own paragraph with
+ * A window's blocks as styled paragraphs over [SpineItem.windowText]: each block its own paragraph with
  * its kind's style, emphasis spans, and a first-line indent only where [indentsFirstLine] says. A
  * paragraph style covers its block's trailing separator, so the paragraph break falls exactly there.
  */
-private fun Chapter.annotate(window: Window, base: TextStyle, captionColor: Color): AnnotatedString =
+private fun SpineItem.annotate(window: Window, base: TextStyle, captionColor: Color): AnnotatedString =
     buildAnnotatedString {
         append(windowText(window))
         for (i in window.firstBlock..window.lastBlock) {

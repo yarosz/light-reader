@@ -3,14 +3,14 @@ package com.yarosz.reader
 /** Windows measured in the background on each side of the one being read (ADR 0007's neighbours). */
 const val PREFETCH_WINDOWS = 2
 
-/** Chapters whose pass stays cached, so turning back into one shows the Pages the reader saw (see [backwardLanding]). */
+/** Spine items whose pass stays cached, so turning back into one shows the Pages the reader saw (see [backwardLanding]). */
 const val CACHED_PASSES = 4
 
 /** What a layout depends on besides its text: the type size and the column. Any change starts a new pass. */
 data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
 
 /**
- * One layout pass (ADR 0007): a chapter's windows at one [LayoutKey], measured outward from [anchor]
+ * One layout pass (ADR 0007): a Spine item's windows at one [LayoutKey], measured outward from [anchor]
  * and re-packed as each window lands. [M] is a measured window as the platform keeps it, its layout
  * for drawing and its lines for packing; the pass reads only the lines, through [linesOf]. A Page once
  * packed never changes (see [pack]), so turning back shows the Page just read. [id] is for logs: it
@@ -18,8 +18,8 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  */
 class Pass<M>(
     val id: Int,
-    val chapterIndex: Int,
-    val chapter: Chapter,
+    val item: Int,
+    val spineItem: SpineItem,
     val key: LayoutKey,
     val windows: List<Window>,
     val anchor: Int,
@@ -27,7 +27,7 @@ class Pass<M>(
 ) {
     private val measured = MutableList<M?>(windows.size) { null }
 
-    val length: Int = chapter.text.length
+    val length: Int = spineItem.text.length
 
     var packed: PackedPages = repack()
         private set
@@ -52,7 +52,7 @@ class Pass<M>(
         else -> pages[pageIndexFor(pages, offset)]
     }
 
-    /** The window to measure next so that [pageAt] can find [offset]; null when it already can, or never will (an empty chapter). */
+    /** The window to measure next so that [pageAt] can find [offset]; null when it already can, or never will (an empty Spine item). */
     fun neededFor(offset: Int): Int? = when {
         pages.isEmpty() -> packed.needAfter ?: packed.needBefore
         offset < pages.first().start -> packed.needBefore
@@ -73,18 +73,18 @@ class Pass<M>(
 /** The Page on screen and the pass it came from. */
 data class Shown<M>(val pass: Pass<M>, val page: Page)
 
-/** Where turning back into a chapter lands (see [backwardLanding]). */
+/** Where turning back into a Spine item lands (see [backwardLanding]). */
 sealed interface Landing {
     /** On [page], the last Page the reader saw there, from a pass still cached. */
     data class Cached(val page: Page) : Landing
 
-    /** On the last Page of a new pass anchored at [anchor], the chapter's end. */
+    /** On the last Page of a new pass anchored at [anchor], the Spine item's end. */
     data class Fresh(val anchor: Int) : Landing
 }
 
 /**
- * Turning back past a chapter's first Page shows the last Page the reader already saw in the chapter
- * before, when that chapter's pass is [cached] at the same [key] and reached the chapter's end
+ * Turning back past a Spine item's first Page shows the last Page the reader already saw in the Spine item
+ * before, when that Spine item's pass is [cached] at the same [key] and reached the Spine item's end
  * ([length]); otherwise the last Page of a fresh pass packed backward from the end under the mirrored
  * page-break rules (ADR 0007, DESIGN.md).
  */
@@ -94,14 +94,14 @@ fun backwardLanding(cached: Pass<*>?, key: LayoutKey, length: Int): Landing {
 }
 
 /**
- * The reading session's layout state: the passes of recently read chapters at the current [LayoutKey],
+ * The reading session's layout state: the passes of recently read Spine items at the current [LayoutKey],
  * the Page being shown, and which Page follows or precedes it. Measuring is injected so this stays
  * pure: [measure] runs synchronously when a Page can't show without it, and [prefetchTarget] names the
- * window worth measuring in the background. Passes are cached per chapter, most recently shown last,
+ * window worth measuring in the background. Passes are cached per Spine item, most recently shown last,
  * and dropped on a key change or beyond [CACHED_PASSES].
  */
 class Reading<M>(
-    private val chapters: List<Chapter>,
+    private val spineItems: List<SpineItem>,
     private val measure: (Pass<M>, Int) -> M,
     private val linesOf: (M) -> List<LineMetrics>,
     private val windowChars: Int = WINDOW_CHARS,
@@ -112,29 +112,29 @@ class Reading<M>(
         private set
     private var shown: Shown<M>? = null
 
-    /** Shows the Page holding [offset] in chapter [chapterIndex] at [key]: from a cached pass with that Page, else a new pass anchored there. */
-    fun open(chapterIndex: Int, offset: Int, key: LayoutKey): Shown<M> {
+    /** Shows the Page holding [offset] in Spine item [item] at [key]: from a cached pass with that Page, else a new pass anchored there. */
+    fun open(item: Int, offset: Int, key: LayoutKey): Shown<M> {
         passes.values.removeAll { it.key != key }
-        return enter(chapterIndex, offset, key)
+        return enter(item, offset, key)
     }
 
-    /** The Page after the shown one, the next chapter's first past a chapter's end; null at the book's end. */
+    /** The Page after the shown one, the next Spine item's first past a Spine item's end; null at the book's end. */
     fun next(): Shown<M>? {
         val (pass, page) = shown ?: return null
         return when {
             page.end < pass.length -> turnTo(pass, page.end)
-            pass.chapterIndex + 1 < chapters.size -> enter(pass.chapterIndex + 1, 0, pass.key)
+            pass.item + 1 < spineItems.size -> enter(pass.item + 1, 0, pass.key)
             else -> null
         }
     }
 
-    /** The Page before the shown one, into the previous chapter per [backwardLanding]; null at the book's start. */
+    /** The Page before the shown one, into the previous Spine item per [backwardLanding]; null at the book's start. */
     fun previous(): Shown<M>? {
         val (pass, page) = shown ?: return null
         if (page.start > 0) return turnTo(pass, page.start - 1)
-        if (pass.chapterIndex == 0) return null
-        val before = pass.chapterIndex - 1
-        return when (val landing = backwardLanding(passes[before], pass.key, chapters[before].text.length)) {
+        if (pass.item == 0) return null
+        val before = pass.item - 1
+        return when (val landing = backwardLanding(passes[before], pass.key, spineItems[before].text.length)) {
             is Landing.Cached -> enter(before, landing.page.start, pass.key)
             is Landing.Fresh -> enter(before, landing.anchor, pass.key)
         }
@@ -146,11 +146,11 @@ class Reading<M>(
         return pass.prefetchFor(page.start, PREFETCH_WINDOWS)?.let { pass to it }
     }
 
-    private fun enter(chapterIndex: Int, offset: Int, key: LayoutKey): Shown<M> {
-        val chapter = chapters[chapterIndex]
-        val pass = passes.remove(chapterIndex)?.takeIf { it.pageAt(offset) != null }
-            ?: Pass(passesStarted++, chapterIndex, chapter, key, windows(chapter, windowChars), offset, linesOf)
-        passes[chapterIndex] = pass
+    private fun enter(item: Int, offset: Int, key: LayoutKey): Shown<M> {
+        val spineItem = spineItems[item]
+        val pass = passes.remove(item)?.takeIf { it.pageAt(offset) != null }
+            ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars), offset, linesOf)
+        passes[item] = pass
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())
         return turnTo(pass, offset)
     }
@@ -159,7 +159,7 @@ class Reading<M>(
     private fun turnTo(pass: Pass<M>, offset: Int): Shown<M> {
         var page = pass.pageAt(offset)
         while (page == null) {
-            val window = pass.neededFor(offset) ?: error("chapter ${pass.chapterIndex} has no Page holding $offset")
+            val window = pass.neededFor(offset) ?: error("Spine item ${pass.item} has no Page holding $offset")
             pass.record(window, measure(pass, window))
             page = pass.pageAt(offset)
         }

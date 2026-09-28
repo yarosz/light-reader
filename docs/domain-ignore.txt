@@ -2,11 +2,6 @@
 # One name per line, matched exactly. Domain terms go in CONTEXT.md instead; UI surfaces are described
 # in DESIGN.md. See AGENTS.md "Domain language".
 
-# Renamed in the pre-N4 refactor (LEDGER.md). That PR deletes this group.
-Transfer
-TransferState
-BookEntry
-
 # Reading data and its storage
 ReadingData
 ReadingSaver
@@ -15,6 +10,7 @@ CorruptReadingData
 Settings
 
 # Layout and pagination
+SpinePoint
 Band
 Landing
 LayoutKey
@@ -29,6 +25,8 @@ Shown
 uncharacteristically
 
 # EPUB and XML parsing
+OpenBook
+SpineRef
 Package
 ManifestItem
 Encrypted
@@ -98,7 +96,7 @@ Standard Ebooks: new releases
 Project Gutenberg
 file missing
 file missing · tap to download again
-${shown.pass.chapterIndex + 1}/${book.chapters.size}
+${shown.pass.item + 1}/${book.spineItems.size}
 This book has no text.
 
 # Doc headings and labels
@@ -122,6 +120,7 @@ Reading texture
 Revisit if
 
 # Possible domain terms, left for the next domain pass (not defined in CONTEXT.md yet)
+Download
 Downloads
 
 # N3c: Catalogue screens and their state. The *Screen names follow the SDK's LightScreen; "screen" is

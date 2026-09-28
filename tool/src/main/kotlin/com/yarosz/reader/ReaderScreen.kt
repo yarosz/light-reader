@@ -71,7 +71,7 @@ class ReaderScreen(
                 val opened = book
                 when {
                     opened == null -> LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
-                    opened.chapters.isEmpty() -> LightText(text = "This book has no text.", variant = LightTextVariant.Copy, lighten = true)
+                    opened.spineItems.isEmpty() -> LightText(text = "This book has no text.", variant = LightTextVariant.Copy, lighten = true)
                     else -> Reader(opened, measurer)
                 }
             }
@@ -79,7 +79,7 @@ class ReaderScreen(
     }
 
     @Composable
-    private fun Reader(book: Book, measurer: TextMeasurer) {
+    private fun Reader(book: OpenBook, measurer: TextMeasurer) {
         val frame by viewModel.frame.collectAsState()
         val colors = LightThemeTokens.colors
         val footerHeight = 64.dp
@@ -99,7 +99,7 @@ class ReaderScreen(
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .semantics { contentDescription = shown.pass.chapter.text.substring(shown.page.start, shown.page.end) }
+                        .semantics { contentDescription = shown.pass.spineItem.text.substring(shown.page.start, shown.page.end) }
                         .pointerInput(Unit) {
                             detectTapGestures { tap ->
                                 if (tap.x < size.width / 3f) viewModel.previousPage() else viewModel.nextPage()
@@ -119,7 +119,7 @@ class ReaderScreen(
                         modifier = Modifier.lightClickable { viewModel.changeFont(-1) }.padding(8.dp),
                     )
                     LightText(
-                        text = "${shown.pass.chapterIndex + 1}/${book.chapters.size}",
+                        text = "${shown.pass.item + 1}/${book.spineItems.size}",
                         variant = LightTextVariant.Detail,
                         lighten = true,
                     )

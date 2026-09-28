@@ -23,14 +23,14 @@ private const val TAG = "Reader"
  */
 const val CURRENT_SCHEMA = 1
 
-/** Characters of chapter text kept with a Place so it can be re-found after offsets shift (ADR 0002). */
+/** Characters of Spine item text kept with a Place so it can be re-found after offsets shift (ADR 0002). */
 const val SNIPPET_CHARS = 40
 
-/** Where the reader is, in memory: a chapter index and a character offset into [Chapter.text]. */
-data class Position(val chapter: Int, val offset: Int)
+/** Where the reader is, in memory: [item] indexes the Book's Spine items, and [char] is an offset into that one's [SpineItem.text]. */
+data class SpinePoint(val item: Int, val char: Int)
 
 /**
- * A Place as stored (ADR 0002): the Spine item, the block within its Chapter, the offset within that
+ * A Place as stored (ADR 0002): the Spine item, the block within it, the offset within that
  * block, and the first [SNIPPET_CHARS] characters of text there. [updatedAt] is epoch millis; the
  * newer Place wins a [merge]. Relayout never rewrites a Place; only turning a Page does.
  */
@@ -51,7 +51,7 @@ data class Place(
  * null for a Book that didn't come from a Catalogue. [addedAt] is when it was last put on the Shelf,
  * epoch millis; null in a file from before the Shelf, which sorts as oldest.
  */
-data class BookEntry(
+data class Book(
     val title: String,
     val file: String?,
     val place: Place?,
@@ -92,7 +92,7 @@ data class CatalogueRecord(
  */
 data class ReadingData(
     val schemaVersion: Int = CURRENT_SCHEMA,
-    val books: Map<String, BookEntry> = emptyMap(),
+    val books: Map<String, Book> = emptyMap(),
     val settings: Settings = Settings(),
     val catalogues: Map<CatalogueKey, CatalogueRecord> = emptyMap(),
     val extras: Map<String, JsonElement> = emptyMap(),
@@ -103,7 +103,7 @@ fun ReadingData.storedTitle(file: String): String? = books.values.firstOrNull { 
 
 /**
  * Puts the Book on the Shelf, adding its entry when it has none, with [title] and [file] current. A
- * null [author] or [source] keeps the one stored. [now] becomes [BookEntry.addedAt] when the Book
+ * null [author] or [source] keeps the one stored. [now] becomes [Book.addedAt] when the Book
  * wasn't on the Shelf; a Book already there keeps its date. Its Place is always kept.
  */
 fun ReadingData.shelve(
@@ -114,7 +114,7 @@ fun ReadingData.shelve(
     source: String? = null,
     now: Long? = null,
 ): ReadingData {
-    val old = books[identifier] ?: BookEntry(title = title, file = file, place = null, finished = false, onShelf = false)
+    val old = books[identifier] ?: Book(title = title, file = file, place = null, finished = false, onShelf = false)
     val entry = old.copy(
         title = title,
         file = file,
@@ -165,11 +165,11 @@ fun ReadingData.withPlace(identifier: String, place: Place): ReadingData {
 }
 
 /**
- * The Place at [textOffset], clamped to the chapter. A separating '\n' belongs to the block before it,
- * as in [Chapter.kindAt]. The snippet ends on a code-point boundary: a split surrogate pair would not
+ * The Place at [textOffset], clamped to the Spine item. A separating '\n' belongs to the block before it,
+ * as in [SpineItem.kindAt]. The snippet ends on a code-point boundary: a split surrogate pair would not
  * survive UTF-8.
  */
-fun Chapter.placeOf(textOffset: Int, now: Long): Place {
+fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
     val at = textOffset.coerceIn(0, text.length)
     val found = blockStarts.binarySearch(at)
     val block = (if (found >= 0) found else -found - 2).coerceAtLeast(0)
@@ -187,23 +187,23 @@ fun Chapter.placeOf(textOffset: Int, now: Long): Place {
 /**
  * Finds [place] in this Book: at its block and offset when the snippet still matches there, else at
  * the snippet's occurrence nearest that spot (a new edition or parser change shifted the text), else
- * at the start of its block, or of its chapter when the block is gone. Null only when no chapter has
+ * at the start of its block, or of its Spine item when the block is gone. Null only when no Spine item has
  * the Place's Spine item.
  */
-fun Book.resolve(place: Place): Position? {
-    val index = chapters.indexOfFirst { it.spineId == place.spineId }.takeIf { it >= 0 } ?: return null
-    val text = chapters[index].text
-    val blockStart = chapters[index].blockStarts.getOrNull(place.block)
+fun OpenBook.resolve(place: Place): SpinePoint? {
+    val index = spineItems.indexOfFirst { it.spineId == place.spineId }.takeIf { it >= 0 } ?: return null
+    val text = spineItems[index].text
+    val blockStart = spineItems[index].blockStarts.getOrNull(place.block)
     val expected = blockStart?.plus(place.offset)?.takeIf { it in 0..text.length }
-    if (expected != null && text.startsWith(place.snippet, expected)) return Position(index, expected)
+    if (expected != null && text.startsWith(place.snippet, expected)) return SpinePoint(index, expected)
     if (place.snippet.isNotEmpty()) {
         val anchor = expected ?: blockStart ?: 0
         val nearest = generateSequence(text.indexOf(place.snippet).takeIf { it >= 0 }) { from ->
             text.indexOf(place.snippet, from + 1).takeIf { it >= 0 }
         }.minByOrNull { abs(it - anchor) }
-        if (nearest != null) return Position(index, nearest)
+        if (nearest != null) return SpinePoint(index, nearest)
     }
-    return Position(index, blockStart ?: 0)
+    return SpinePoint(index, blockStart ?: 0)
 }
 
 /**
@@ -238,14 +238,14 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
 )
 
 /**
- * The newer Place wins, and brings its [BookEntry.finished] with it: a missing Place counts as oldest
- * and a tie goes to [mine]. [BookEntry.file], [BookEntry.onShelf] and [BookEntry.addedAt] come from
+ * The newer Place wins, and brings its [Book.finished] with it: a missing Place counts as oldest
+ * and a tie goes to [mine]. [Book.file], [Book.onShelf] and [Book.addedAt] come from
  * [mine], because this process owns the files. The title is [mine]'s unless blank; the author and
  * source are [mine]'s unless null. Unknown fields come from both, [mine] winning a clash.
  */
-private fun mergeEntry(disk: BookEntry, mine: BookEntry): BookEntry {
+private fun mergeEntry(disk: Book, mine: Book): Book {
     val reading = if (disk.placeTime > mine.placeTime) disk else mine
-    return BookEntry(
+    return Book(
         title = mine.title.ifBlank { disk.title },
         file = mine.file,
         place = reading.place,
@@ -277,7 +277,7 @@ private val RECORD_ORDER = compareBy<CatalogueRecord> { it.updatedAt }
     .thenBy(nullsFirst()) { it.url?.value }
 
 /** When the Book's Place was recorded; a Book with no Place counts as oldest. */
-private val BookEntry.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
+private val Book.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
 
 private val prettyJson = Json { prettyPrint = true }
 
@@ -316,7 +316,7 @@ fun ReadingData.encode(): String = prettyJson.encodeToString(
     ),
 )
 
-private fun BookEntry.toJson() = jsonObject(
+private fun Book.toJson() = jsonObject(
     ENTRY_FIELDS,
     extras,
     "title" to JsonPrimitive(title),
@@ -383,7 +383,7 @@ private fun catalogueRecords(records: JsonObject): Map<CatalogueKey, CatalogueRe
         read + (key to (read[key]?.let { mergeRecord(it, record) } ?: record))
     }
 
-private fun JsonObject.toEntry(id: String) = BookEntry(
+private fun JsonObject.toEntry(id: String) = Book(
     title = string("title").orEmpty(),
     file = bookFile(id),
     place = obj("place")?.let {
@@ -413,7 +413,7 @@ private fun JsonObject.bookFile(id: String): String? {
 }
 
 /**
- * Whether [name] names a file directly inside filesDir, as [BookEntry.file] must: a removal deletes
+ * Whether [name] names a file directly inside filesDir, as [Book.file] must: a removal deletes
  * that file, so a path separator, "." or ".." could reach outside it.
  */
 private fun isPlainFileName(name: String) =

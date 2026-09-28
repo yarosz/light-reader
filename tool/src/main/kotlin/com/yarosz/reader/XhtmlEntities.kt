@@ -4,7 +4,7 @@ import java.io.InputStream
 
 /**
  * XHTML 1.0's named character entities (its lat1, symbol, and special sets: 253 names) and the code
- * point each names. An EPUB2 chapter uses them under an XHTML DOCTYPE whose DTD is never read, so no
+ * point each names. An EPUB2 Spine item uses them under an XHTML DOCTYPE whose DTD is never read, so no
  * parser knows them: [XhtmlEntityStream] rewrites each as its numeric reference. Generated from
  * Python's `html.entities.name2codepoint` (HTML 4.01's same 252) plus `apos`.
  */

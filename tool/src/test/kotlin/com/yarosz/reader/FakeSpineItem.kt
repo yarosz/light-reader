@@ -4,17 +4,17 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
- * A chapter of random blocks, laid out by a simulated measurer: each block broken into lines by a
+ * A Spine item of random blocks, laid out by a simulated measurer: each block broken into lines by a
  * font-dependent width, some lines ending mid-word (hyphenated), and a mid-word line tending to be
  * followed by another (cascades). That is all the packer consumes; the real Compose layout feeds it the
  * same shape of data. Pixel values are whole numbers unless asked otherwise, so heights summed across
  * seams stay exact.
  */
-internal class FakeChapter(val chapter: Chapter) {
-    val length get() = chapter.text.length
+internal class FakeSpineItem(val spineItem: SpineItem) {
+    val length get() = spineItem.text.length
 
     /**
-     * The whole chapter as one layout, y from 0. Line breaking restarts at each block, so a window's lines
+     * The whole Spine item as one layout, y from 0. Line breaking restarts at each block, so a window's lines
      * are a slice of this. [wholePixels] rounds every line height, as the default fixture expects.
      */
     fun layout(fontSize: Float, rnd: Random, wholePixels: Boolean = true): List<LineMetrics> {
@@ -25,8 +25,8 @@ internal class FakeChapter(val chapter: Chapter) {
         val lines = mutableListOf<LineMetrics>()
         var y = 0f
         var midWord = false
-        chapter.blocks.forEachIndexed { i, block ->
-            var offset = chapter.blockStarts[i]
+        spineItem.blocks.forEachIndexed { i, block ->
+            var offset = spineItem.blockStarts[i]
             var remaining = block.text.length
             val heading = block.kind == BlockKind.Heading
             do {
@@ -55,7 +55,7 @@ internal class FakeChapter(val chapter: Chapter) {
 
     companion object {
         /** Up to 60 blocks of 1 to 1,500 characters (the parser drops blank ones); the first is a heading and about one in ten of the rest. */
-        fun random(rnd: Random) = FakeChapter(Chapter("spine", "", List(rnd.nextInt(1, 60)) { i ->
+        fun random(rnd: Random) = FakeSpineItem(SpineItem("spine", "", List(rnd.nextInt(1, 60)) { i ->
             val kind = if (i == 0 || rnd.nextDouble() < 0.1) BlockKind.Heading else BlockKind.Paragraph
             Block(kind, "x".repeat(rnd.nextInt(1, 1_500)))
         }))
@@ -96,7 +96,7 @@ internal fun greedyFirst(lines: List<LineMetrics>, last: Int, height: Float): In
 
 internal fun LineMetrics.legal() = endsAtBreak && !heading
 
-/** A Page may start at line [s] when the line above it may end a Page; the chapter's first line always may. */
+/** A Page may start at line [s] when the line above it may end a Page; the Spine item's first line always may. */
 internal fun List<LineMetrics>.legalStart(s: Int) = s == 0 || this[s - 1].legal()
 
 internal fun LineMetrics.filled(top: Float, height: Float) = bottom - top >= MIN_PAGE_FILL * height

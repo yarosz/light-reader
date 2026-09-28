@@ -7,12 +7,12 @@ import kotlin.test.assertNull
 class DevStartTest {
 
     @Test
-    fun `a chapter alone opens at its start with the default windows`() {
+    fun `a Spine item alone opens at its start with the default windows`() {
         assertEquals(DevStart(7), parseDevStart("7\n"))
     }
 
     @Test
-    fun `an offset and a window size follow the chapter`() {
+    fun `an offset and a window size follow the Spine item`() {
         assertEquals(DevStart(7, 11_850), parseDevStart("7 11850"))
         assertEquals(DevStart(7, 0, 8_000), parseDevStart("  7\t0  8000 \n"))
     }

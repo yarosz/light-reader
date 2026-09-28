@@ -142,7 +142,7 @@ class CatalogueViewModelTest {
     fun `a removed Book is added back with its Place, and a permanent failure adding it back leaves no row`() {
         val place = Place("c0", 0, 5, "was a", 10)
         ReadingStore(dir).save {
-            ReadingData(books = mapOf("http://www.gutenberg.org/1342" to BookEntry("Pride and Prejudice", null, place, false, onShelf = false, source = noImages.value)))
+            ReadingData(books = mapOf("http://www.gutenberg.org/1342" to Book("Pride and Prejudice", null, place, false, onShelf = false, source = noImages.value)))
         }
         answers[noImages.value] = Answer(body = "not an epub".toByteArray())
         val book = openBook()

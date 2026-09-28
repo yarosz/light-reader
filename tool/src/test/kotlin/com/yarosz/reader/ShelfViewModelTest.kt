@@ -68,15 +68,15 @@ class ShelfViewModelTest {
             settle()
         }
 
-    private fun seed(vararg books: Pair<String, BookEntry>) {
+    private fun seed(vararg books: Pair<String, Book>) {
         ReadingStore(dir).save { ReadingData(books = mapOf(*books)) }
         books.forEach { (_, entry) -> entry.file?.let { File(dir, it).writeText("epub") } }
     }
 
-    private fun store(vararg books: Pair<String, BookEntry>) = ReadingStore(dir).save { ReadingData(books = mapOf(*books)) }
+    private fun store(vararg books: Pair<String, Book>) = ReadingStore(dir).save { ReadingData(books = mapOf(*books)) }
 
     private fun entry(title: String, place: Place? = null, source: String? = null, file: String? = "$title.epub") =
-        BookEntry(title, file, place, finished = false, onShelf = true, source = source)
+        Book(title, file, place, finished = false, onShelf = true, source = source)
 
     private fun ShelfViewModel.row(title: String) = snapshot.value!!.rows.single { it.title == title }
 
@@ -153,7 +153,7 @@ class ShelfViewModelTest {
         assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy night (Catalogue)", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.snapshot.value?.rows)
         vm.onAppPause()
         val added = stored().books.getValue("urn:uuid:storm")
-        assertEquals(BookEntry("Stormy night (Catalogue)", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 5_000), added)
+        assertEquals(Book("Stormy night (Catalogue)", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 5_000), added)
     }
 
     @Test
@@ -240,7 +240,7 @@ class ShelfViewModelTest {
         assertEquals(listOf("Stored Title", "Other"), vm.titles())
         vm.onAppPause()
         val books = stored().books
-        assertEquals(BookEntry("Stored Title", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 7), books.getValue("urn:uuid:storm"))
+        assertEquals(Book("Stored Title", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 7), books.getValue("urn:uuid:storm"))
         assertFalse(books.getValue("urn:uuid:old-conversion").onShelf)
     }
 
@@ -257,7 +257,7 @@ class ShelfViewModelTest {
         assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "On the Shelf", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.snapshot.value?.rows)
         vm.onAppPause()
         val books = stored().books
-        assertEquals(BookEntry("On the Shelf", stormFile, newer, false, true, "Edward Bulwer-Lytton", link.value, 3), books.getValue("urn:uuid:storm"))
+        assertEquals(Book("On the Shelf", stormFile, newer, false, true, "Edward Bulwer-Lytton", link.value, 3), books.getValue("urn:uuid:storm"))
         assertFalse(books.getValue("urn:uuid:old-conversion").onShelf)
     }
 

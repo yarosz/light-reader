@@ -61,8 +61,8 @@ class ReaderViewModelTest {
         val book = assertNotNull(vm.book.value)
         val entry = ReadingStore(dir).load().books.getValue(book.identifier)
         val place = assertNotNull(entry.place)
-        assertEquals(book.chapters[0].placeOf(0, place.updatedAt), place)
-        assertEquals(BookEntry(book.title, "alice.epub", place, finished = false, onShelf = true, author = "Lewis Carroll"), entry.copy(addedAt = null))
+        assertEquals(book.spineItems[0].placeOf(0, place.updatedAt), place)
+        assertEquals(Book(book.title, "alice.epub", place, finished = false, onShelf = true, author = "Lewis Carroll"), entry.copy(addedAt = null))
         assertEquals("Lewis Carroll", shelfRows(ReadingStore(dir).load(), setOf("alice.epub"), emptyMap()).single().detail)
     }
 
@@ -107,23 +107,23 @@ class ReaderViewModelTest {
         val vm = reader(DevStart(2))
         vm.openBook()
         settle()
-        assertEquals(Position(2, 0), vm.position.value)
+        assertEquals(SpinePoint(2, 0), vm.spinePoint.value)
         assertEquals(DEFAULT_FONT_STEP, vm.fontStep.value)
     }
 
     @Test
     fun `opening a Book lands on its stored Place`() {
         val book = parseEpub(File(dir, "alice.epub"))
-        val chapter = book.chapters[3]
-        val offset = chapter.text.length / 2
+        val spineItem = book.spineItems[3]
+        val offset = spineItem.text.length / 2
         ReadingStore(dir).save {
-            ReadingData().shelve(book.identifier, book.title, "alice.epub").withPlace(book.identifier, chapter.placeOf(offset, 1))
+            ReadingData().shelve(book.identifier, book.title, "alice.epub").withPlace(book.identifier, spineItem.placeOf(offset, 1))
         }
         val stored = ReadingStore(dir).load().books.getValue(book.identifier).place
         val vm = reader()
         vm.openBook()
         settle()
-        assertEquals(Position(3, offset), vm.position.value)
+        assertEquals(SpinePoint(3, offset), vm.spinePoint.value)
         assertEquals(stored, ReadingStore(dir).load().books.getValue(book.identifier).place)
     }
 

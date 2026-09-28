@@ -16,11 +16,11 @@ class EpubTest {
     private val book = parseEpub(File("src/test/fixtures/alice.epub"))
 
     @Test
-    fun `keeps only the twelve chapters of body matter`() {
+    fun `keeps only the twelve Spine items of body matter`() {
         assertEquals("Alice’s Adventures in Wonderland", book.title)
-        assertEquals(12, book.chapters.size)
-        assertEquals("I: Down the Rabbit-Hole", book.chapters[0].title)
-        assertEquals("XII: Alice’s Evidence", book.chapters[11].title)
+        assertEquals(12, book.spineItems.size)
+        assertEquals("I: Down the Rabbit-Hole", book.spineItems[0].title)
+        assertEquals("XII: Alice’s Evidence", book.spineItems[11].title)
     }
 
     @Test
@@ -46,8 +46,8 @@ class EpubTest {
     }
 
     @Test
-    fun `each chapter names the Spine item it came from`() {
-        assertEquals((1..12).map { "chapter-$it.xhtml" }, book.chapters.map { it.spineId })
+    fun `each Spine item keeps its idref from the Spine`() {
+        assertEquals((1..12).map { "chapter-$it.xhtml" }, book.spineItems.map { it.spineId })
     }
 
     @Test
@@ -70,8 +70,8 @@ class EpubTest {
     @Test
     fun `a Book with no identifier keeps its hash across re-downloads, and changes with its text, not its title`() {
         val dir = createTempDirectory("epub").toFile()
-        fun identify(name: String, title: String, chapters: List<String>) =
-            parseEpub(File(dir, name).writeEpub(epubFiles(identifier = null, title = title, chapters = chapters))).identifier
+        fun identify(name: String, title: String, spineItems: List<String>) =
+            parseEpub(File(dir, name).writeEpub(epubFiles(identifier = null, title = title, spineItems = spineItems))).identifier
         try {
             val first = identify("a.epub", "Stories", listOf("Once upon a time.", "The end."))
             assertEquals(first, identify("b.epub", "Stories", listOf("Once upon a time.", "The end.")))
@@ -93,7 +93,7 @@ class EpubTest {
         val pkg = ZipFile(File("src/test/fixtures/alice.epub")).use { readPackage(it, "ignored") }
         assertEquals(book.identifier, pkg.identifier)
         assertEquals(book.title, pkg.title)
-        assertEquals(SpineItem("chapter-1.xhtml", "epub/text/chapter-1.xhtml"), pkg.spine.first { it.idref == "chapter-1.xhtml" })
+        assertEquals(SpineRef("chapter-1.xhtml", "epub/text/chapter-1.xhtml"), pkg.spine.first { it.idref == "chapter-1.xhtml" })
     }
 
     @Test
@@ -122,7 +122,7 @@ class EpubTest {
                 "OEBPS/100%.xhtml" to "<html><body><p>B</p></body></html>",
                 "Text/c.xhtml" to "<html><body><p>C</p></body></html>",
             )
-            assertEquals(listOf("A", "B", "C"), parseEpub(File(dir, "paths.epub").writeEpub(files)).chapters.map { it.text })
+            assertEquals(listOf("A", "B", "C"), parseEpub(File(dir, "paths.epub").writeEpub(files)).spineItems.map { it.text })
         } finally {
             dir.deleteRecursively()
         }
@@ -138,7 +138,7 @@ class EpubTest {
             assertEquals("blank", parseEpub(blank).title)
             val missing = File(dir, "missing.epub").writeEpub(epubFiles().filterKeys { it != "OEBPS/c0.xhtml" })
             assertFailsWith<IllegalStateException> { ZipFile(missing).use { readPackage(it, "missing") } }
-            val empty = File(dir, "empty.epub").writeEpub(epubFiles(chapters = emptyList()))
+            val empty = File(dir, "empty.epub").writeEpub(epubFiles(spineItems = emptyList()))
             assertFailsWith<IllegalStateException> { ZipFile(empty).use { readPackage(it, "empty") } }
             val bare = File(dir, "bare.epub").writeEpub(mapOf("mimetype" to "application/epub+zip"))
             assertFailsWith<IllegalStateException> { ZipFile(bare).use { readPackage(it, "bare") } }
@@ -148,8 +148,8 @@ class EpubTest {
     }
 
     @Test
-    fun `chapter opens with its heading then the first paragraph`() {
-        val blocks = book.chapters[0].blocks
+    fun `a Spine item opens with its heading then the first paragraph`() {
+        val blocks = book.spineItems[0].blocks
         assertEquals(Block(BlockKind.Heading, "I: Down the Rabbit-Hole"), blocks[0])
         assertEquals(BlockKind.Paragraph, blocks[1].kind)
         assertTrue(blocks[1].text.startsWith("Alice was beginning to get very tired"))
@@ -157,7 +157,7 @@ class EpubTest {
 
     @Test
     fun `emphasis spans point at the emphasised words`() {
-        val para = book.chapters[0].blocks.first { it.text.startsWith("There was nothing so") }
+        val para = book.spineItems[0].blocks.first { it.text.startsWith("There was nothing so") }
         val span = para.spans.first()
         assertEquals(Emphasis.Italic, span.emphasis)
         assertEquals("very", para.text.substring(span.start, span.end))
@@ -165,7 +165,7 @@ class EpubTest {
 
     @Test
     fun `poems keep their line breaks, one block per stanza`() {
-        val blocks = book.chapters[1].blocks
+        val blocks = book.spineItems[1].blocks
         val first = blocks.indexOfFirst { it.kind == BlockKind.Verse && "crocodile" in it.text }
         assertEquals(
             listOf("“How doth the little crocodile", "Improve his shining tail,", "And pour the waters of the Nile", "On every golden scale!"),
@@ -178,14 +178,14 @@ class EpubTest {
 
     @Test
     fun `illustrations become captions from their alt text`() {
-        assertTrue(book.chapters[0].blocks.any {
+        assertTrue(book.spineItems[0].blocks.any {
             it.kind == BlockKind.Caption && it.text.startsWith("A white rabbit wearing a waistcoat")
         })
     }
 
     @Test
     fun `text is clean of invisible characters and doubled whitespace`() {
-        book.chapters.flatMap { it.blocks }.forEach { block ->
+        book.spineItems.flatMap { it.blocks }.forEach { block ->
             assertFalse('\uFEFF' in block.text, "zero-width space in ${block.text.take(40)}")
             assertFalse("  " in block.text, "double space in ${block.text.take(40)}")
             assertEquals(block.text.trim(), block.text)
@@ -193,11 +193,11 @@ class EpubTest {
     }
 
     @Test
-    fun `block offsets index into the joined chapter text`() {
-        book.chapters.forEach { chapter ->
-            chapter.blocks.forEachIndexed { i, block ->
-                val start = chapter.blockStarts[i]
-                assertEquals(block.text, chapter.text.substring(start, start + block.text.length))
+    fun `block offsets index into the joined Spine item text`() {
+        book.spineItems.forEach { spineItem ->
+            spineItem.blocks.forEachIndexed { i, block ->
+                val start = spineItem.blockStarts[i]
+                assertEquals(block.text, spineItem.text.substring(start, start + block.text.length))
             }
         }
     }

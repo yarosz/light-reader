@@ -35,7 +35,7 @@ class UntrustedEpubTest {
         val files = epubFiles(title = "Before&s;After").withDoctype(opf, """<!DOCTYPE package [<!ENTITY s SYSTEM "${secret.toURI()}">]>""")
         val book = parseEpub(epub(files))
         assertEquals("BeforeAfter", book.title)
-        assertFalse("SECRET" in book.chapters.single().text)
+        assertFalse("SECRET" in book.spineItems.single().text)
     }
 
     @Test
@@ -59,25 +59,25 @@ class UntrustedEpubTest {
     }
 
     @Test
-    fun `an EPUB2 chapter with the XHTML 1_1 DOCTYPE parses offline`() {
-        val files = epubFiles(chapters = listOf("Chapter text.")).withDoctype(
+    fun `an EPUB2 Spine item with the XHTML 1_1 DOCTYPE parses offline`() {
+        val files = epubFiles(spineItems = listOf("Chapter text.")).withDoctype(
             "OEBPS/c0.xhtml",
             """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">""",
         )
         val book = withNoNetwork { parseEpub(epub(files)) }
-        assertEquals("Chapter text.", book.chapters.single().text)
+        assertEquals("Chapter text.", book.spineItems.single().text)
     }
 
     @Test
-    fun `an EPUB2 chapter's named entities read as their characters, so words around them stay apart`() {
-        val files = epubFiles(chapters = listOf("Mr.&nbsp;Darcy&mdash;caf&eacute;")).withDoctype(
+    fun `an EPUB2 Spine item's named entities read as their characters, so words around them stay apart`() {
+        val files = epubFiles(spineItems = listOf("Mr.&nbsp;Darcy&mdash;caf&eacute;")).withDoctype(
             "OEBPS/c0.xhtml",
             """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">""",
         )
-        val numeric = epubFiles(chapters = listOf("Mr.&#160;Darcy&#8212;caf&#233;"))
+        val numeric = epubFiles(spineItems = listOf("Mr.&#160;Darcy&#8212;caf&#233;"))
         val book = withNoNetwork { parseEpub(epub(files)) }
-        assertEquals(parseEpub(epub(numeric)).chapters.single().text, book.chapters.single().text)
-        assertEquals("Mr.\u00A0Darcy\u2014café", book.chapters.single().text)
+        assertEquals(parseEpub(epub(numeric)).spineItems.single().text, book.spineItems.single().text)
+        assertEquals("Mr.\u00A0Darcy\u2014café", book.spineItems.single().text)
     }
 
     @Test
@@ -87,14 +87,14 @@ class UntrustedEpubTest {
     }
 
     @Test
-    fun `a package or chapter that decompresses past its cap fails`() {
+    fun `a package or Spine item that decompresses past its cap fails`() {
         val padding = " ".repeat(MAX_PACKAGE_XML_BYTES.toInt())
         val bigPackage = epubFiles().let { it + (opf to it.getValue(opf).replace("<manifest>", "$padding<manifest>")) }
         assertFailsWith<TooLargeException> { ZipFile(epub(bigPackage)).use { readPackage(it, "t") } }
 
-        val bigChapter = epubFiles(chapters = listOf("x")).let {
-            it + ("OEBPS/c0.xhtml" to it.getValue("OEBPS/c0.xhtml").replace("<body>", "<body>" + " ".repeat(MAX_CHAPTER_BYTES.toInt())))
+        val bigSpineItem = epubFiles(spineItems = listOf("x")).let {
+            it + ("OEBPS/c0.xhtml" to it.getValue("OEBPS/c0.xhtml").replace("<body>", "<body>" + " ".repeat(MAX_SPINE_ITEM_BYTES.toInt())))
         }
-        assertFailsWith<TooLargeException> { parseEpub(epub(bigChapter)) }
+        assertFailsWith<TooLargeException> { parseEpub(epub(bigSpineItem)) }
     }
 }

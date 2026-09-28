@@ -1,6 +1,6 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done; next is the pre-N4 rename PR, then N4 (Chapters + Progress)
+STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, and the code renamed to the glossary; next is N4 (Chapters + Progress)
 LAST SESSION: 2026-09-28
 
 ## v1 user flow
@@ -28,9 +28,10 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | R3 | CI gate (#1) | Actions `build` (unit tests + builder simulation on a fresh runner) required on every PR; weekly `sdk-main` job; `mise run ci` posts `signoff/emulator` and `signoff/lp3` from a font round trip on each device |
 | R4 | Release docs (#2) | `RELEASING.md`, `SECURITY.md`, `CONTRIBUTING.md`, issue template, LP3 screenshots in `docs/screenshots/` |
 | #3 | Phone builds bind to LightOS (#4) | `serverPackage = "com.lightos"` committed (Light builds releases from it); `scripts/emulator-build.sh` swaps in the emulator's package for emulator builds only; a unit test and `light-build.sh` guard the committed line; `signoff/lp3` green on the fix |
-| P | Paginator v2 (#6–#9) | Page-end rules in both directions, 480 dpi type scale, portrait lock; 10 K windows packed from the Place (ADR 0007). LP3, Pride and Prejudice 165 K-character chapter, P90: open 111 ms, font change 122 ms (was 1,940 / 870); seam-adjacent open 194 ms. `mise run perf` reproduces it. Parser follow-ups #10, #11 |
+| P | Paginator v2 (#6–#9) | Page-end rules in both directions, 480 dpi type scale, portrait lock; 10 K windows packed from the Place (ADR 0007). LP3, Pride and Prejudice 165 K-character Spine item, P90: open 111 ms, font change 122 ms (was 1,940 / 870); seam-adjacent open 194 ms. `mise run perf` reproduces it. Parser follow-ups #10, #11 |
 | N2 | Reading data store | `reading-data.json` per ADR 0002 (Place = Spine item, block, offset, snippet; Books keyed by `dc:identifier`), atomic replace with a separate `.bak`, a `.corrupt` copy of an unparseable file, debounced saves plus a flush on pause, merge tests; 105 unit tests, 19 mutations caught. Emulator and LP3: kill and relaunch lands on the same Page, the font step persists, a corrupt file opens at the `.bak` Place; emulator: main's build over it and back keeps the Place, a schemaVersion 2 file keeps its unknown fields |
 | N3 | Shelf + Catalogues (#15, #16, #17, #19) | One Atom parser (OPDS, OpenSearch), https only with typed http:// tried once, redirects followed in code, every XML document through one untrusted-XML parser with size caps; foreground downloads into filesDir owned by the process's `ShelfOwner`, copy-protected EPUBs refused; the Shelf (order, Edit, missing files), the Catalogue list, pages with search and "More", Book detail matched by source, Add a Catalogue, every failure's D14/D15 copy (`DESIGN.md` "Shelf", "Catalogues"); an additive `catalogues` field in `reading-data.json`; 310 unit tests. Emulator: a Gutenberg Book (Pride and Prejudice) and a Standard Ebooks Book downloaded, showed on the Shelf, and each reopened at its own Place offline after a force-stop |
+| G | Rename to the glossary (pre-N4) (#20) | Behaviour-preserving renames so the code says what `CONTEXT.md` says (`SpineItem`, `SpinePoint`, `Book`; `SpineRef` and `OpenBook` are parser names; `Download` waits for the pre-N4 domain pass); `reading-data.json` keys and the log lines `scripts/perf.sh` reads unchanged; 310 unit tests, as before; `scripts/domain-drift.sh` 0 unresolved |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
@@ -62,10 +63,10 @@ Ordered. Each item ends on its _done-when_.
   live on retail; at the first Light-signed build, the sentinel check in `RELEASING.md`. **Tool id:
   `com.yarosz.reader`**, permanent from first publish.
 - **N2 follow-ups.** With N3, and required before any edition switch: a Place must re-find its
-  snippet in other Chapters when it isn't in the same-id Chapter, not only when the Spine item is
+  snippet in other Spine items when it isn't in the same-id Spine item, not only when the Spine item is
   gone. Gutenberg's two editions of a Book share `dc:identifier` (`http://www.gutenberg.org/1342`)
   but not their Spines (16 against 9 items), and reuse idrefs such as `item5` for different text, so
-  a same-id Chapter can hold other text entirely. (Done in N3's pure core: a Book with no
+  a same-id Spine item can hold other text entirely. (Done in N3's pure core: a Book with no
   `dc:identifier` is hashed over its Spine documents' CRC-32 and length, pinned by a test; with no
   `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: the end page's
   "Back to Shelf" sets Finished, and turning back or jumping away from the end clears it. At the
@@ -76,13 +77,18 @@ Ordered. Each item ends on its _done-when_.
   change, whichever lands first. A connect timeout on a typed http:// address reads NoHttps only on a
   VALIDATED network, which the SDK can't report today, so it is Unreachable; revisit if
   `LightConnectivity` gains validation.
-- **Rename to the glossary (pre-N4 refactor PR).** Behaviour-preserving renames so the code says what
-  `CONTEXT.md` says: `Chapter` → `SpineItem` (and the package reader's `SpineItem` → `SpineRef`);
-  `Position` → `SpinePoint(item, char)`; `Transfer`/`TransferState` → `Download` with a nested
-  `Status`; `DownloadState` cleanup (`progress` → `fraction`, drop unused states); `Epub.kt`'s `Book`
-  → `OpenBook` and `BookEntry` → `Book`; `ShelfOwner`'s local `finished` → `ended`; the docs' chapter
-  wording where it means a Spine item. _Done when:_ the "renamed in the pre-N4 refactor" group in
-  `docs/domain-ignore.txt` is gone and `scripts/domain-drift.sh` reports 0 unresolved.
+- **Pre-N4 domain pass (AGENTS.md "Domain language").** Settle these parked questions:
+  - `Download`: is it a domain term? Resolve its clash with `RowTap.Download` and decide where it
+    lives (`Shelf.kt` today, not `Download.kt`).
+  - `DownloadState.Finished` against the glossary's Finished.
+  - Reading session.
+  - A Catalogue's page (`CataloguePage`) against Page.
+  - "file" in row copy.
+  - The `entry` helpers and locals that name a stored Book (`toEntry`, `mergeEntry`, `entry`), now that "Catalogue entry" is the only entry.
+  - `Pass.item` (an index) beside `Pass.spineItem`.
+  - `char` against `offset` for character indices (`SpinePoint`, `Reading.open`, `DevStart`). The `reading-data.json` key `offset` stays.
+
+  _Done when:_ `scripts/domain-drift.sh` reports 0 and the merged commit is tagged `domain-pass/n4`.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,

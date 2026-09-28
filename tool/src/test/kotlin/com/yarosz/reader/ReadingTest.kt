@@ -10,24 +10,24 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
- * The reading session over fake chapters: opening at a Place, turning pages within and across chapters,
+ * The reading session over fake Spine items: opening at a Place, turning pages within and across Spine items,
  * font changes, the cache rule, the backward-crossing decision, and what gets measured when.
  */
 class ReadingTest {
 
     private val key = LayoutKey(fontStep = 1, widthPx = 1_000, pageHeightPx = 300)
 
-    /** [count] fake chapters measured by [FakeChapter]'s simulated layout, one window at a time, counting each measure the session asks for. */
+    /** [count] fake Spine items measured by [FakeSpineItem]'s simulated layout, one window at a time, counting each measure the session asks for. */
     private class Fixture(seed: Int, count: Int, windowChars: Int) {
-        val fakes = Random(seed).let { rnd -> List(count) { FakeChapter.random(rnd) } }
-        val chapters = fakes.map { it.chapter }
+        val fakes = Random(seed).let { rnd -> List(count) { FakeSpineItem.random(rnd) } }
+        val spineItems = fakes.map { it.spineItem }
         var measures = 0
         private val cut = HashMap<Pair<Int, LayoutKey>, List<List<LineMetrics>>>()
-        val reading = Reading<List<LineMetrics>>(chapters, measure = { pass, window -> measures++; linesOf(pass)[window] }, linesOf = { it }, windowChars = windowChars)
+        val reading = Reading<List<LineMetrics>>(spineItems, measure = { pass, window -> measures++; linesOf(pass)[window] }, linesOf = { it }, windowChars = windowChars)
 
-        fun linesOf(pass: Pass<List<LineMetrics>>) = cut.getOrPut(pass.chapterIndex to pass.key) {
-            val rnd = Random(pass.chapterIndex * 31 + pass.key.fontStep)
-            fakes[pass.chapterIndex].cut(fakes[pass.chapterIndex].layout(FONT_SIZES[pass.key.fontStep], rnd), pass.windows, rnd)
+        fun linesOf(pass: Pass<List<LineMetrics>>) = cut.getOrPut(pass.item to pass.key) {
+            val rnd = Random(pass.item * 31 + pass.key.fontStep)
+            fakes[pass.item].cut(fakes[pass.item].layout(FONT_SIZES[pass.key.fontStep], rnd), pass.windows, rnd)
         }
     }
 
@@ -38,7 +38,7 @@ class ReadingTest {
         repeat(300) { seed ->
             val book = Fixture(seed, count = 1, windowChars = 3_000)
             val rnd = Random(seed)
-            val length = book.chapters[0].text.length
+            val length = book.spineItems[0].text.length
             val offset = if (rnd.nextBoolean()) rnd.nextInt(0, length + 1) else length
             val shown = book.reading.open(0, offset, key)
             val page = shown.page
@@ -60,14 +60,14 @@ class ReadingTest {
             forward.zipWithNext { a, b ->
                 if (a.pass === b.pass) assertEquals(a.page.end, b.page.start)
                 else {
-                    assertEquals(a.pass.chapterIndex + 1, b.pass.chapterIndex)
+                    assertEquals(a.pass.item + 1, b.pass.item)
                     assertEquals(a.pass.length, a.page.end)
                     assertEquals(0, b.page.start)
                 }
             }
             assertEquals(0, forward.first().page.start)
-            assertEquals(book.chapters.last().text.length, forward.last().page.end)
-            assertEquals(book.chapters.indices.toList(), forward.map { it.pass.chapterIndex }.distinct())
+            assertEquals(book.spineItems.last().text.length, forward.last().page.end)
+            assertEquals(book.spineItems.indices.toList(), forward.map { it.pass.item }.distinct())
 
             val measuresBefore = book.measures
             val backward = generateSequence(book.reading.previous()) { book.reading.previous() }.toList()
@@ -78,12 +78,12 @@ class ReadingTest {
     }
 
     @Test
-    fun `turning back into a chapter never read lands on its last Page, packed backward from the end`() {
+    fun `turning back into a Spine item never read lands on its last Page, packed backward from the end`() {
         val book = Fixture(seed = 7, count = 2, windowChars = 3_000)
         book.reading.open(1, 0, key)
         val shown = book.reading.previous()!!
-        assertEquals(0, shown.pass.chapterIndex)
-        assertEquals(book.chapters[0].text.length, shown.page.end)
+        assertEquals(0, shown.pass.item)
+        assertEquals(book.spineItems[0].text.length, shown.page.end)
         assertEquals(shown.page, shown.pass.pages.last())
         assertTrue(shown.page.start < shown.page.end)
         book.reading.next()!!
@@ -94,7 +94,7 @@ class ReadingTest {
     fun `a font change is a new pass holding the Place, and drops the cached passes so turning back packs afresh`() {
         val book = Fixture(seed = 3, count = 2, windowChars = 3_000)
         var shown = book.reading.open(0, 0, key)
-        while (shown.pass.chapterIndex == 0) shown = book.reading.next()!!
+        while (shown.pass.item == 0) shown = book.reading.next()!!
         val firstPass = shown.pass
         val place = shown.page.start
         val bigger = key.copy(fontStep = 3)
@@ -105,16 +105,16 @@ class ReadingTest {
 
         val measures = book.measures
         val back = book.reading.previous()!!
-        assertEquals(0, back.pass.chapterIndex)
+        assertEquals(0, back.pass.item)
         assertEquals(bigger, back.pass.key)
-        assertEquals(book.chapters[0].text.length, back.page.end)
+        assertEquals(book.spineItems[0].text.length, back.page.end)
         assertTrue(book.measures > measures, "a fresh pass measures")
     }
 
     @Test
     fun `background targets cover two windows past the Page first, then two before, and follow the reader`() {
-        val book = (0..200).asSequence().map { Fixture(it, count = 1, windowChars = 1_500) }.first { windows(it.chapters[0], 1_500).size >= 8 }
-        val shown = book.reading.open(0, book.chapters[0].text.length / 2, key)
+        val book = (0..200).asSequence().map { Fixture(it, count = 1, windowChars = 1_500) }.first { windows(it.spineItems[0], 1_500).size >= 8 }
+        val shown = book.reading.open(0, book.spineItems[0].text.length / 2, key)
         val pass = shown.pass
         val at = windowOf(shown)
         val targets = generateSequence {
@@ -147,10 +147,10 @@ class ReadingTest {
     }
 
     @Test
-    fun `backwardLanding reuses a cached pass only at the same key and only once it reached the chapter's end`() {
-        val chapter = Chapter("spine", "", listOf(Block(BlockKind.Paragraph, "x".repeat(500)), Block(BlockKind.Paragraph, "x".repeat(50))))
-        val length = chapter.text.length
-        fun pass(key: LayoutKey, windowChars: Int) = Pass<List<LineMetrics>>(0, 0, chapter, key, windows(chapter, windowChars), 0) { it }
+    fun `backwardLanding reuses a cached pass only at the same key and only once it reached the Spine item's end`() {
+        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Paragraph, "x".repeat(500)), Block(BlockKind.Paragraph, "x".repeat(50))))
+        val length = spineItem.text.length
+        fun pass(key: LayoutKey, windowChars: Int) = Pass<List<LineMetrics>>(0, 0, spineItem, key, windows(spineItem, windowChars), 0) { it }
         fun tenCharLines(window: Window) = List((window.end - window.start) / 10) { i ->
             LineMetrics(window.start + i * 10, i * 10f, i * 10f + 10f, endsAtBreak = true, heading = false)
         }
@@ -166,8 +166,8 @@ class ReadingTest {
 
     @Test
     fun `record keeps a window's first layout, so a late background measure can't change packed Pages`() {
-        val chapter = Chapter("spine", "", listOf(Block(BlockKind.Paragraph, "x".repeat(500))))
-        val pass = Pass<List<LineMetrics>>(0, 0, chapter, key, windows(chapter, 1_000), 0) { it }
+        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Paragraph, "x".repeat(500))))
+        val pass = Pass<List<LineMetrics>>(0, 0, spineItem, key, windows(spineItem, 1_000), 0) { it }
         fun lines(chars: Int) = List(500 / chars) { i -> LineMetrics(i * chars, i * 10f, i * 10f + 10f, endsAtBreak = true, heading = false) }
         val first = lines(10)
         pass.record(0, first)

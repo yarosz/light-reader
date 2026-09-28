@@ -32,11 +32,9 @@ private const val PART_SUFFIX = ".part"
 
 /** One download as the UI shows it. */
 sealed interface DownloadState {
-    data object Idle : DownloadState
-
     /** [received] bytes so far, of [total] when the server said how many. */
     data class Downloading(val received: Long, val total: Long?) : DownloadState {
-        val progress: Float? get() = total?.takeIf { it > 0 }?.let { (received.toFloat() / it).coerceIn(0f, 1f) }
+        val fraction: Float? get() = total?.takeIf { it > 0 }?.let { (received.toFloat() / it).coerceIn(0f, 1f) }
     }
 
     sealed interface Finished : DownloadState
