@@ -138,26 +138,32 @@ data_hash() {  # serial -> sha256 of files/reading-data.json, or "none" when the
 install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at chapter 1 and the
                         # default font, and saves nothing, so A+ A+ A- A- always cycles and the device's
                         # reading data is left as it was (data_before, checked by shelf_check). A device
-                        # with no alice.epub gets the test fixture, removed again on exit.
+                        # with no alice.epub gets the test fixture, removed again on exit. The fixture is
+                        # pushed under a temp name and renamed, and the device recorded before the push,
+                        # so a push cut short never leaves a partial alice.epub that a later run accepts.
   dev_started="$dev_started $1"
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
     && data_before=$(data_hash "$1") && [ -n "$data_before" ] \
     && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 0 > files/dev-start'" \
     && { "$adb" -s "$1" shell run-as $pkg test -f files/alice.epub \
-      || { "$adb" -s "$1" shell run-as $pkg sh -c "'cat > files/alice.epub'" <tool/src/test/fixtures/alice.epub \
-        && pushed_alice="$pushed_alice $1"; }; } \
+      || { pushed_alice="$pushed_alice $1" \
+        && "$adb" -s "$1" shell run-as $pkg sh -c "'cat > files/alice.epub.ci && mv files/alice.epub.ci files/alice.epub'" \
+          <tool/src/test/fixtures/alice.epub; }; } \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
 shelf_check() {  # serial: after the round trip, the reading data must be byte-identical (Home pauses the
-                 # Reader, which flushes any save), and a launch without dev-start must render the Shelf
+                 # Reader, which flushes any save), and a launch without dev-start must render the Shelf:
+                 # a "shelf rows=" line logged after this run's marker, so an earlier launch's can't pass
+  local mark="ci-shelf-check-$$-$RANDOM-$(date +%s)"
   "$adb" -s "$1" shell input keyevent KEYCODE_HOME >/dev/null 2>&1
   sleep 2
   [ "$(data_hash "$1")" = "$data_before" ] || { echo "the dev-start session changed files/reading-data.json"; return 1; }
   "$adb" -s "$1" shell run-as $pkg rm -f files/dev-start && "$adb" -s "$1" shell am force-stop $pkg \
-    && "$adb" -s "$1" logcat -c && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1 \
-    || { echo "could not launch without dev-start"; return 1; }
+    || { echo "could not stop the Reader to relaunch it without dev-start"; return 1; }
+  "$adb" -s "$1" shell log -p i -t Reader "$mark" || { echo "could not write the logcat marker"; return 1; }
+  "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1 || { echo "could not launch without dev-start"; return 1; }
   for _ in $(seq 1 30); do
-    "$adb" -s "$1" logcat -d -s Reader:I | grep -q 'shelf rows=' && return 0
+    "$adb" -s "$1" logcat -d -s Reader:I | sed -n "/$mark/,\$p" | grep -q 'shelf rows=' && return 0
     sleep 1
   done
   echo "the Shelf never rendered"
@@ -171,7 +177,8 @@ clear_starts() {  # on any exit: a dev-start left behind would open every later 
     "$adb" -s "$s" shell am force-stop $pkg || echo "ci: could not stop $pkg on $s" >&2
   done
   for s in $pushed_alice; do
-    "$adb" -s "$s" shell run-as $pkg rm -f files/alice.epub || echo "ci: could not remove the Alice fixture on $s" >&2
+    "$adb" -s "$s" shell run-as $pkg rm -f files/alice.epub files/alice.epub.ci \
+      || echo "ci: could not remove the Alice fixture on $s" >&2
   done
 }
 dev_started=""
