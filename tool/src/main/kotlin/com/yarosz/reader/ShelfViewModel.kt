@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
  * hidden then, and a confirmation whose row is gone (a download that arrived under its Book's
  * identifier, or failed) is cleared.
  */
-class ShelfViewModel(internal val owner: ShelfOwner, private val phoneOnline: PhoneOnline) : LightViewModel<Unit>() {
+class ShelfViewModel(internal val owner: ShelfOwner) : LightViewModel<Unit>() {
     /** What the Shelf knows; the screen shows its [ShelfSnapshot.rows]. Null until the reading data is loaded. */
     val snapshot: StateFlow<ShelfSnapshot?> = owner.snapshot
     val mode = MutableStateFlow<ShelfMode>(ShelfMode.Browsing)
@@ -39,7 +39,7 @@ class ShelfViewModel(internal val owner: ShelfOwner, private val phoneOnline: Ph
 
     /** See [ShelfOwner.download]. */
     fun download(source: HttpsUrl, title: String, author: String?, replacing: String? = null): Deferred<DownloadResult> =
-        owner.download(source, title, author, phoneOnline, replacing)
+        owner.download(source, title, author, replacing)
 
     /** A row's "tap to retry" or "tap to download again". */
     fun download(tap: RowTap.Download) = download(tap.source, tap.title, tap.author, tap.replacing)

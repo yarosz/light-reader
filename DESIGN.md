@@ -161,8 +161,9 @@ Removing the last one leaves Edit.
 placeholder "https://…", then "Add". Tapping the field opens the SDK's text editor with the LP3
 keyboard, whose button is also "Add". An address with no scheme is taken as https://; http:// is
 tried once as https://, and a server with no HTTPS reads as NoHttps: a refused connection or a
-failed handshake, or a connect timeout while the phone reports it is online (offline, or when the
-phone can't say, a timeout stays Unreachable). The feed is fetched before
+failed handshake. A connect timeout stays Unreachable (see the note under the failure copy). The
+Catalogue is stored as https://, so once added it is never "tried as https" again: a later refused
+connection is Unreachable, with Retry. The feed is fetched before
 anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. The
 name is the feed's title, else its host. An address already on the list reads "This Catalogue is
 already in your list." A failure that trying again can't fix hides "Add" until the address changes;
@@ -236,3 +237,9 @@ N5; until then it shows its one line.
 | NotAnEpub | "This file isn't an EPUB the Reader can open." | no |
 | CopyProtected | "This Book is copy-protected and can't be opened here." | no |
 | DiskError | "There isn't enough space on your phone to add this Book." | yes |
+
+A timeout on a typed http:// address is NoHttps only on a validated network: a server that drops
+connections to port 443 times out, but so does a network with no internet. The SDK's
+`LightConnectivity` reports only whether the network claims internet, not whether Android validated
+it, and asking Android directly needs a Context, which a Light Tool can't hold. So the Tool can't
+tell, and every connect timeout reads as Unreachable, with Retry.

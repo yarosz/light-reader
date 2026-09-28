@@ -148,8 +148,6 @@ PageState
 # N3c: storage and network plumbing
 CatalogueKey
 CatalogueRecord
-ConnectTimeoutException
-PhoneOnline
 
 # N3c: UI copy (DESIGN.md "Catalogues"). Standard Ebooks is a name, not "ebook"; the failure line is
 # about a download's file before it is a Book; "works" here is a verb, not a Book.

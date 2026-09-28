@@ -92,7 +92,7 @@ class HttpsTransportTest {
     }
 
     @Test
-    fun `a timeout while connecting is a connect timeout, and one while reading stays a read timeout`() {
+    fun `a timeout while connecting or while reading reaches the caller as a socket timeout`() {
         class Stalled(private val connecting: Boolean) : HttpURLConnection(URL("https://books.example.org/")) {
             override fun connect() {
                 if (connecting) throw SocketTimeoutException("failed to connect after 15000ms")
@@ -104,7 +104,7 @@ class HttpsTransportTest {
 
             override fun usingProxy() = false
         }
-        assertFailsWith<ConnectTimeoutException> { HttpsTransport { Stalled(connecting = true) }.get(url("/a")) }
+        assertFailsWith<SocketTimeoutException> { HttpsTransport { Stalled(connecting = true) }.get(url("/a")) }
         assertFailsWith<SocketTimeoutException> { HttpsTransport { Stalled(connecting = false) }.get(url("/a")) }
     }
 }

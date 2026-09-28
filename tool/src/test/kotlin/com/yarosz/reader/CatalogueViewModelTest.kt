@@ -81,7 +81,7 @@ class CatalogueViewModelTest {
         settle()
     }
 
-    private fun page(source: PageSource, catalogue: Catalogue = GUTENBERG) = CataloguePageViewModel(owner(), catalogue, source, PHONE_CANT_SAY).also { settle() }
+    private fun page(source: PageSource, catalogue: Catalogue = GUTENBERG) = CataloguePageViewModel(owner(), catalogue, source).also { settle() }
 
     private fun openBook(): CataloguePageViewModel {
         val list = page(PageSource.Feed(url("https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads"), popularEntry()))
@@ -199,7 +199,7 @@ class CatalogueViewModelTest {
     @Test
     fun `a page left while it loads drops the late answer and keeps its state`() {
         val store = ViewModelStore()
-        val root = held(store) { CataloguePageViewModel(owner(), GUTENBERG, PageSource.Root, PHONE_CANT_SAY) }
+        val root = held(store) { CataloguePageViewModel(owner(), GUTENBERG, PageSource.Root) }
         assertEquals(PageState.Loading, root.state.value)
         store.clear()
         settle()
@@ -221,7 +221,7 @@ class CatalogueViewModelTest {
 
     @Test
     fun `adding a Catalogue fetches it, names it by its title, and saves it at once`() {
-        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val add = AddCatalogueViewModel(owner())
         add.typed("books.example.org/opds")
         settle()
         assertEquals(AddStatus.Added, add.status.value)
@@ -231,7 +231,7 @@ class CatalogueViewModelTest {
     @Test
     fun `an address that isn't a Catalogue, or one already listed, isn't added`() {
         answers[home.value] = Answer(body = "<html><body>hello</body></html>".toByteArray())
-        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val add = AddCatalogueViewModel(owner())
         add.typed("https://books.example.org/opds")
         settle()
         assertEquals(AddStatus.Failed(FailureCopy(COPY_UNREADABLE, retry = false)), add.status.value)
@@ -243,23 +243,19 @@ class CatalogueViewModelTest {
     @Test
     fun `an http address that has no https says so`() {
         answers["https://plain.example.org/opds"] = Answer(connectFailure = java.net.ConnectException("refused"))
-        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val add = AddCatalogueViewModel(owner())
         add.typed("http://plain.example.org/opds")
         settle()
         assertEquals(FailureCopy(COPY_NO_HTTPS, retry = false), (add.status.value as AddStatus.Failed).copy)
     }
 
     @Test
-    fun `an http address that times out has no https only while the phone reports it is online`() {
-        answers["https://slow.example.org/opds"] = Answer(connectFailure = ConnectTimeoutException(java.net.SocketTimeoutException("connect timed out")))
-        val online = AddCatalogueViewModel(owner()) { true }
-        online.typed("http://slow.example.org/opds")
+    fun `an http address that times out can't be reached, and offers Retry`() {
+        answers["https://slow.example.org/opds"] = Answer(connectFailure = java.net.SocketTimeoutException("failed to connect after 15000ms"))
+        val add = AddCatalogueViewModel(owner())
+        add.typed("http://slow.example.org/opds")
         settle()
-        assertEquals(FailureCopy(COPY_NO_HTTPS, retry = false), (online.status.value as AddStatus.Failed).copy)
-        val unknown = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
-        unknown.typed("http://slow.example.org/opds")
-        settle()
-        assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), (unknown.status.value as AddStatus.Failed).copy)
+        assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), (add.status.value as AddStatus.Failed).copy)
     }
 
     @Test
@@ -273,7 +269,7 @@ class CatalogueViewModelTest {
         settle()
         assertEquals(listOf(STANDARD_EBOOKS_NEW_RELEASES), list.catalogues.value!!.map { it.catalogue })
         assertEquals(listOf(GUTENBERG), stored().removedShipped())
-        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val add = AddCatalogueViewModel(owner())
         settle()
         assertEquals(listOf(GUTENBERG), add.removedShipped.value)
         add.addBack(GUTENBERG)
@@ -284,7 +280,7 @@ class CatalogueViewModelTest {
 
     @Test
     fun `a new address while one is being checked ends that check, so its answer can't land or add anything`() {
-        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val add = AddCatalogueViewModel(owner())
         add.typed("books.example.org/opds")
         assertEquals(AddStatus.Checking, add.status.value)
         add.typed("ftp://books.example.org/opds")
@@ -297,14 +293,14 @@ class CatalogueViewModelTest {
     fun `typing over an address being checked checks the new one, and clearing the address resets to Idle`() {
         answers.remove(home.value)
         answers["https://club.example.net/opds"] = Answer(body = """<feed xmlns="http://www.w3.org/2005/Atom"><title>Book club</title></feed>""".toByteArray())
-        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val add = AddCatalogueViewModel(owner())
         add.typed("books.example.org/opds")
         add.typed("club.example.net/opds")
         settle()
         assertEquals(AddStatus.Added, add.status.value)
         assertEquals(listOf("Book club"), stored().catalogueList().drop(SHIPPED_CATALOGUES.size).map { it.catalogue.name })
 
-        val again = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val again = AddCatalogueViewModel(owner())
         again.typed("books.example.org/opds")
         settle()
         assertIs<AddStatus.Failed>(again.status.value)
@@ -316,7 +312,7 @@ class CatalogueViewModelTest {
     @Test
     fun `leaving Add a Catalogue while it checks adds nothing`() {
         val store = ViewModelStore()
-        val add = held(store) { AddCatalogueViewModel(owner(), PHONE_CANT_SAY) }
+        val add = held(store) { AddCatalogueViewModel(owner()) }
         add.typed("books.example.org/opds")
         store.clear()
         settle()
@@ -327,7 +323,7 @@ class CatalogueViewModelTest {
     fun `Add back by its row and by typing its address do the same, and both return to the list`() {
         val removed = { owner().removeCatalogue(GUTENBERG.url).also { settle() } }
         removed()
-        val byRow = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val byRow = AddCatalogueViewModel(owner())
         byRow.addBack(GUTENBERG)
         settle()
         val afterRow = stored().catalogues
@@ -335,7 +331,7 @@ class CatalogueViewModelTest {
 
         clock += 10
         removed()
-        val byAddress = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        val byAddress = AddCatalogueViewModel(owner())
         byAddress.typed("www.gutenberg.org/ebooks.opds")
         settle()
         assertEquals(AddStatus.Added, byAddress.status.value)

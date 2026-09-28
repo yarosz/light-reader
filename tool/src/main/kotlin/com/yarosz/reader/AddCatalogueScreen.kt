@@ -40,7 +40,7 @@ sealed interface AddStatus {
  * status is always the current address's: a new address ends a check still running for the old one,
  * so its answer can't land on the new address or add a Catalogue the reader typed over.
  */
-class AddCatalogueViewModel(private val owner: ShelfOwner, private val phoneOnline: PhoneOnline) : LightViewModel<Unit>() {
+class AddCatalogueViewModel(private val owner: ShelfOwner) : LightViewModel<Unit>() {
     val address = MutableStateFlow("")
     val status = MutableStateFlow<AddStatus>(AddStatus.Idle)
     val removedShipped: StateFlow<List<Catalogue>> =
@@ -73,7 +73,7 @@ class AddCatalogueViewModel(private val owner: ShelfOwner, private val phoneOnli
             is AddPlan.Fetch -> {
                 status.value = AddStatus.Checking
                 checking = viewModelScope.launch {
-                    status.value = when (val fetched = owner.fetchPage(plan.url, phoneOnline)) {
+                    status.value = when (val fetched = owner.fetchPage(plan.url)) {
                         is Fetched.Ok -> AddStatus.Added.also { owner.addCatalogue(catalogueFrom(fetched.value, plan.url)) }
                         is Fetched.Failed -> AddStatus.Failed(feedFailureCopy(fetched.reason, isShipped(plan.url)))
                     }
@@ -101,7 +101,7 @@ class AddCatalogueScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit
     override val viewModelClass: Class<AddCatalogueViewModel>
         get() = AddCatalogueViewModel::class.java
 
-    override fun createViewModel() = AddCatalogueViewModel(ShelfOwner.of(lightContext.filesDir), lightContext::phoneOnline)
+    override fun createViewModel() = AddCatalogueViewModel(ShelfOwner.of(lightContext.filesDir))
 
     @Composable
     override fun Content() {

@@ -90,10 +90,9 @@ class Downloader(
     fun download(
         url: HttpsUrl,
         fallbackTitle: String,
-        phoneOnline: PhoneOnline = PHONE_CANT_SAY,
         onProgress: (DownloadState.Downloading) -> Unit,
     ): DownloadState.Finished =
-        when (val fetched = fetch(url, fallbackTitle, phoneOnline, onProgress)) {
+        when (val fetched = fetch(url, fallbackTitle, onProgress)) {
             is Checked -> keep(fetched)
             is DownloadState.Failed -> fetched
         }
@@ -103,13 +102,13 @@ class Downloader(
      * calling thread, which blocks. [fallbackTitle] (the Catalogue entry's title) titles a Book whose
      * package has none. [onProgress] may throw to cancel, such as a coroutine's CancellationException;
      * the temp file is then deleted and the exception propagates. Only a [Checked] result keeps its
-     * temp file. [phoneOnline] is asked only when the server can't be reached (see [unreachable]).
+     * temp file.
      */
-    fun fetch(url: HttpsUrl, fallbackTitle: String, phoneOnline: PhoneOnline = PHONE_CANT_SAY, onProgress: (DownloadState.Downloading) -> Unit): Fetch {
+    fun fetch(url: HttpsUrl, fallbackTitle: String, onProgress: (DownloadState.Downloading) -> Unit): Fetch {
         val response = try {
             transport.get(url)
         } catch (e: IOException) {
-            return DownloadState.Failed(unreachable(url, e, phoneOnline()))
+            return DownloadState.Failed(unreachable(url, e))
         }
         val temp = try {
             File.createTempFile(PART_PREFIX, PART_SUFFIX, dir)

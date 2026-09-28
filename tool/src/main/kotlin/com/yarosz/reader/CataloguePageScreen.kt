@@ -34,7 +34,6 @@ class CataloguePageViewModel(
     private val owner: ShelfOwner,
     val catalogue: Catalogue,
     val source: PageSource,
-    private val phoneOnline: PhoneOnline,
 ) : LightViewModel<Unit>() {
     val state = MutableStateFlow<PageState>(if (source is PageSource.Entry) PageState.Book(listOf(source.entry)) else PageState.Loading)
     val shipped = isShipped(catalogue.url)
@@ -60,7 +59,7 @@ class CataloguePageViewModel(
         loading = viewModelScope.launch {
             state.value = when (val url = pageUrl()) {
                 is Fetched.Failed -> PageState.Failed(url.reason)
-                is Fetched.Ok -> when (val fetched = owner.fetchPage(url.value, phoneOnline)) {
+                is Fetched.Ok -> when (val fetched = owner.fetchPage(url.value)) {
                     is Fetched.Ok -> pageState(fetched.value, source, url.value)
                     is Fetched.Failed -> PageState.Failed(fetched.reason)
                 }
@@ -80,7 +79,7 @@ class CataloguePageViewModel(
     }
 
     private suspend fun searchTemplate(search: CatalogueSearch): Fetched<SearchTemplate> = when (search) {
-        is CatalogueSearch.Description -> owner.fetchSearch(search.url, phoneOnline)
+        is CatalogueSearch.Description -> owner.fetchSearch(search.url)
         is CatalogueSearch.Ready -> Fetched.Ok(search.template)
     }
 
@@ -92,7 +91,7 @@ class CataloguePageViewModel(
         state.value = listing.copy(more = More.Loading)
         viewModelScope.launch {
             val current = state.value as? PageState.Listing ?: return@launch
-            state.value = when (val fetched = owner.fetchPage(next, phoneOnline)) {
+            state.value = when (val fetched = owner.fetchPage(next)) {
                 is Fetched.Ok -> appendPage(current, fetched.value, next)
                 is Fetched.Failed -> current.copy(more = More.Failed(fetched.reason))
             }
@@ -103,7 +102,7 @@ class CataloguePageViewModel(
     fun download(action: DetailAction.Download) {
         val entries = (state.value as? PageState.Book)?.entries ?: return
         failure.value = null
-        val result = owner.download(action.link.url, entries.first().title, detailAuthor(entries), phoneOnline, action.replacing)
+        val result = owner.download(action.link.url, entries.first().title, detailAuthor(entries), action.replacing)
         viewModelScope.launch {
             (result.await() as? DownloadResult.Failed)?.let { failure.value = it.reason }
         }
@@ -119,7 +118,7 @@ class CataloguePageScreen(
     override val viewModelClass: Class<CataloguePageViewModel>
         get() = CataloguePageViewModel::class.java
 
-    override fun createViewModel() = CataloguePageViewModel(ShelfOwner.of(lightContext.filesDir), catalogue, source, lightContext::phoneOnline)
+    override fun createViewModel() = CataloguePageViewModel(ShelfOwner.of(lightContext.filesDir), catalogue, source)
 
     @Composable
     override fun Content() {
