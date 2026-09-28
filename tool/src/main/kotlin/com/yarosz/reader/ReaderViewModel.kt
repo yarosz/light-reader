@@ -22,16 +22,23 @@ private const val PERF_TAG = "ReaderPerf"
 const val SAVE_DEBOUNCE_MS = 1_000L
 
 /**
- * Reads the Book in [file]. [saver] is the Shelf's, so the Reader's Places and font step reach the
- * same reading data the Shelf shows. [start] is a dev-start session's Place (see [DEV_BOOK_FILE]),
- * opened at the default font. [io] is where the Book is opened; tests pass one they control.
+ * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font step
+ * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
+ * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened; tests pass one
+ * they control.
  */
 class ReaderViewModel(
     private val file: File,
-    private val saver: ReadingSaver,
+    private val owner: ShelfOwner,
     private val start: DevStart? = null,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : LightViewModel<Unit>() {
+    /**
+     * The owner's saver, or in a dev-start session one that starts empty and writes nothing, so perf
+     * and CI runs leave the device's reading data as they found it.
+     */
+    internal val saver = if (start == null) owner.saver else ReadingSaver(viewModelScope, io, SAVE_DEBOUNCE_MS, { }) { }
+
     val book = MutableStateFlow<Book?>(null)
     val status = MutableStateFlow("Opening…")
 
@@ -56,6 +63,7 @@ class ReaderViewModel(
     internal fun openBook() {
         if (book.value != null || loading?.isActive == true) return
         loading = viewModelScope.launch {
+            owner.awaitLoaded()
             val stored = saver.data
             runCatching { withContext(io) { parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension) } }
                 .onSuccess { opened ->
@@ -64,7 +72,9 @@ class ReaderViewModel(
                         Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
                             "largestChars=${opened.chapters[largest].text.length}")
                     }
-                    saver.change { it.shelve(opened.identifier, opened.title, file.name, opened.author, now = System.currentTimeMillis()) }
+                    val now = System.currentTimeMillis()
+                    val title = saver.data.books[opened.identifier]?.title?.takeIf { it.isNotBlank() } ?: opened.title
+                    saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = now) }
                     if (start == null) fontStep.value = saver.data.settings.fontStep.coerceIn(FONT_SIZES.indices)
                     if (start != null && opened.chapters.isNotEmpty()) {
                         val chapter = start.chapter.coerceIn(opened.chapters.indices)
@@ -73,7 +83,13 @@ class ReaderViewModel(
                         val ends = windows(opened.chapters[chapter], windowChars).joinToString(",") { it.end.toString() }
                         Log.i(PERF_TAG, "windows chapter=$chapter windowChars=$windowChars ends=$ends")
                     } else {
-                        saver.data.books[opened.identifier]?.place?.let(opened::resolve)?.let { position.value = it }
+                        val place = saver.data.books[opened.identifier]?.place
+                        place?.let(opened::resolve)?.let { position.value = it }
+                        // Opening counts as reading: the first Page starts at the Place, so a Book opened but never paged sorts as in progress.
+                        if (place == null && opened.chapters.isNotEmpty()) {
+                            val (chapter, offset) = position.value
+                            saver.change { it.withPlace(opened.identifier, opened.chapters[chapter].placeOf(offset, now)) }
+                        }
                     }
                     book.value = opened
                 }

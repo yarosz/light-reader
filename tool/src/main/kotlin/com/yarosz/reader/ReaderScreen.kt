@@ -41,18 +41,17 @@ import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
 
-/** Reads the Book in [file], opened from the Shelf; back returns there. See [ReaderViewModel] for [saver] and [start]. */
+/** Reads the Book in [file], opened from the Shelf; back returns there. See [ReaderViewModel] for [start]. */
 class ReaderScreen(
     sealedActivity: SealedLightActivity,
     private val file: File,
-    private val saver: ReadingSaver,
     private val start: DevStart? = null,
 ) : LightScreen<Unit, ReaderViewModel>(sealedActivity) {
 
     override val viewModelClass: Class<ReaderViewModel>
         get() = ReaderViewModel::class.java
 
-    override fun createViewModel() = ReaderViewModel(file, saver, start)
+    override fun createViewModel() = ReaderViewModel(file, ShelfOwner.of(lightContext.filesDir), start)
 
     @Composable
     override fun Content() {

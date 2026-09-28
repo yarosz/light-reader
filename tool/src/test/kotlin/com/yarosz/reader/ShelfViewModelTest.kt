@@ -7,8 +7,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -52,8 +51,12 @@ class ShelfViewModelTest {
         io.scheduler.advanceUntilIdle()
     }
 
-    private fun shelf(transport: Transport = FakeTransport(mapOf(link.value to Answer(body = storm)))): ShelfViewModel =
-        ShelfViewModel(dir, io, transport) { clock }.also {
+    private fun serving(body: ByteArray = storm) = FakeTransport(mapOf(link.value to Answer(body = body)))
+
+    private fun owner(transport: Transport) = ShelfOwner.of(dir) { ShelfOwner(dir, io, transport) { clock } }
+
+    private fun shelf(transport: Transport = serving()): ShelfViewModel =
+        ShelfViewModel(owner(transport)).also {
             it.refresh()
             settle()
         }
@@ -63,6 +66,8 @@ class ShelfViewModelTest {
         books.forEach { (_, entry) -> entry.file?.let { File(dir, it).writeText("epub") } }
     }
 
+    private fun store(vararg books: Pair<String, BookEntry>) = ReadingStore(dir).save { ReadingData(books = mapOf(*books)) }
+
     private fun entry(title: String, place: Place? = null, source: String? = null, file: String? = "$title.epub") =
         BookEntry(title, file, place, finished = false, onShelf = true, source = source)
 
@@ -70,27 +75,29 @@ class ShelfViewModelTest {
 
     private fun ShelfViewModel.titles() = rows.value!!.map { it.title }
 
+    private fun ShelfViewModel.downloadAgain(title: String) = download(row(title).tap as RowTap.Download)
+
     private fun <T> Deferred<T>.done(): T = getCompleted()
 
     private fun stored() = ReadingStore(dir).load()
+
+    private fun leftovers() = dir.list()!!.filter { it.endsWith(".epub") || it.endsWith(".part") }
 
     @Test
     fun `an empty Shelf has no rows, and Edit can't start on it`() {
         val vm = shelf()
         assertEquals(emptyList(), vm.rows.value)
         vm.toggleEdit()
-        vm.refresh()
-        settle()
         assertEquals(ShelfMode.Browsing, vm.mode.value)
     }
 
     @Test
-    fun `a tap opens the Book's file, and never while editing`() {
+    fun `a Book whose file is here opens it, and Edit toggles back to browsing`() {
         seed("urn:a" to entry("A"))
         val vm = shelf()
-        assertEquals(File(dir, "A.epub"), vm.tap(vm.row("A")))
+        assertEquals(RowTap.Open("A.epub"), vm.row("A").tap)
         vm.toggleEdit()
-        assertNull(vm.tap(vm.row("A")))
+        assertEquals(ShelfMode.Editing(), vm.mode.value)
         vm.toggleEdit()
         assertEquals(ShelfMode.Browsing, vm.mode.value)
     }
@@ -125,25 +132,25 @@ class ShelfViewModelTest {
     }
 
     @Test
-    fun `a download adds the Book with its source, author and date, and keeps a Place it had`() {
+    fun `a download adds the Book under its Catalogue title with its source, author and date, and keeps a Place it had`() {
         val place = Place("c1", 0, 3, "snippet", 10)
-        ReadingStore(dir).save { ReadingData(books = mapOf("urn:uuid:storm" to entry("Stormy Night", place, file = null).copy(onShelf = false))) }
+        store("urn:uuid:storm" to entry("Stormy Night", place, file = null).copy(onShelf = false))
         val vm = shelf()
         assertEquals(emptyList(), vm.rows.value)
         clock = 5_000
-        val download = vm.download(link, "From the Catalogue", "Catalogue Author")
-        assertEquals(listOf(ShelfRow(RowKey.Arriving(link), "From the Catalogue", ROW_DOWNLOADING, RowTap.None)), vm.rows.value)
-        assertEquals(download, vm.download(link, "again", null))
+        val download = vm.download(link, "Stormy night (Catalogue)", "Catalogue Author")
+        assertEquals(listOf(ShelfRow(RowKey.Arriving(link), "Stormy night (Catalogue)", ROW_DOWNLOADING, RowTap.None)), vm.rows.value)
+        assertSame(download, vm.download(link, "again", null))
         settle()
-        assertIs<DownloadState.Done>(download.done())
-        assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy Night", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.rows.value)
+        assertEquals(DownloadResult.Done("urn:uuid:storm"), download.done())
+        assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy night (Catalogue)", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.rows.value)
         vm.onAppPause()
         val added = stored().books.getValue("urn:uuid:storm")
-        assertEquals(BookEntry("Stormy Night", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 5_000), added)
+        assertEquals(BookEntry("Stormy night (Catalogue)", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 5_000), added)
     }
 
     @Test
-    fun `a retryable failure stays as a row that retries, and a permanent one adds nothing`() {
+    fun `a retryable failure stays as a row that retries, and a permanent one from a Catalogue adds nothing`() {
         val broken = HttpsUrl.parse("https://books.example.org/broken.epub")!!
         val protected = HttpsUrl.parse("https://books.example.org/protected.epub")!!
         val offline = HttpsUrl.parse("https://books.example.org/offline.epub")!!
@@ -158,14 +165,14 @@ class ShelfViewModelTest {
         val notAnEpub = vm.download(broken, "Broken", null)
         val copyProtected = vm.download(protected, "Protected", null)
         settle()
-        assertEquals(DownloadState.Failed(HttpError(503)), failed.done())
-        assertEquals(DownloadState.Failed(Unreachable), unreachable.done())
-        assertEquals(DownloadState.Failed(NotAnEpub), notAnEpub.done())
-        assertEquals(DownloadState.Failed(CopyProtected), copyProtected.done())
+        assertEquals(DownloadResult.Failed(HttpError(503)), failed.done())
+        assertEquals(DownloadResult.Failed(Unreachable), unreachable.done())
+        assertEquals(DownloadResult.Failed(NotAnEpub), notAnEpub.done())
+        assertEquals(DownloadResult.Failed(CopyProtected), copyProtected.done())
         assertEquals(setOf("Stormy Night", "Offline"), vm.titles().toSet())
         assertEquals(ROW_DOWNLOAD_FAILED, vm.row("Stormy Night").detail)
         assertEquals(RowTap.Download(link, "Stormy Night", null), vm.row("Stormy Night").tap)
-        assertTrue(dir.list()!!.none { it.endsWith(".epub") })
+        assertEquals(emptyList(), leftovers())
     }
 
     @Test
@@ -175,7 +182,7 @@ class ShelfViewModelTest {
         vm.download(link, "Stormy Night", null)
         settle()
         answers[link.value] = Answer(body = storm)
-        assertNull(vm.tap(vm.row("Stormy Night")))
+        vm.downloadAgain("Stormy Night")
         assertEquals(ROW_DOWNLOADING, vm.row("Stormy Night").detail)
         settle()
         assertEquals(listOf(RowTap.Open(stormFile)), vm.rows.value!!.map { it.tap })
@@ -184,11 +191,11 @@ class ShelfViewModelTest {
     @Test
     fun `a missing file with a source downloads again from it and keeps the Place`() {
         val place = Place("c1", 0, 3, "snippet", 10)
-        ReadingStore(dir).save { ReadingData(books = mapOf("urn:uuid:storm" to entry("Stormy Night", place, source = link.value, file = stormFile))) }
-        val transport = FakeTransport(mapOf(link.value to Answer(body = storm)))
+        store("urn:uuid:storm" to entry("Stormy Night", place, source = link.value, file = stormFile))
+        val transport = serving()
         val vm = shelf(transport)
         assertEquals(ROW_FILE_MISSING_SOURCE, vm.row("Stormy Night").detail)
-        assertNull(vm.tap(vm.row("Stormy Night")))
+        vm.downloadAgain("Stormy Night")
         assertEquals(ROW_DOWNLOADING, vm.row("Stormy Night").detail)
         settle()
         assertEquals(listOf(link), transport.asked)
@@ -199,61 +206,166 @@ class ShelfViewModelTest {
     }
 
     @Test
-    fun `a missing file with no source can only be removed`() {
-        ReadingStore(dir).save { ReadingData(books = mapOf("urn:a" to entry("A"))) }
-        val transport = FakeTransport(emptyMap())
-        val vm = shelf(transport)
-        assertEquals(ShelfRow(RowKey.Shelved("urn:a"), "A", ROW_FILE_MISSING, RowTap.None), vm.row("A"))
-        assertNull(vm.tap(vm.row("A")))
+    fun `a Book downloaded again under a new identifier keeps its row, title, Place and date`() {
+        val place = Place("c1", 0, 3, "snippet", 10)
+        store(
+            "urn:uuid:old-conversion" to entry("Stored Title", place, source = link.value, file = bookFileName("urn:uuid:old-conversion")).copy(addedAt = 7),
+            "urn:other" to entry("Other", source = link.value, file = null),
+        )
+        val vm = shelf()
+        val download = vm.downloadAgain("Stored Title")
+        assertEquals(mapOf("Stored Title" to ROW_DOWNLOADING, "Other" to ROW_FILE_MISSING_SOURCE), vm.rows.value!!.associate { it.title to it.detail })
         settle()
-        assertEquals(emptyList(), transport.asked)
+        assertEquals(DownloadResult.Done("urn:uuid:storm"), download.done())
+        assertEquals(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stored Title", "Edward Bulwer-Lytton", RowTap.Open(stormFile)), vm.row("Stored Title"))
+        assertEquals(listOf("Stored Title", "Other"), vm.titles())
+        vm.onAppPause()
+        val books = stored().books
+        assertEquals(BookEntry("Stored Title", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 7), books.getValue("urn:uuid:storm"))
+        assertFalse(books.getValue("urn:uuid:old-conversion").onShelf)
+    }
+
+    @Test
+    fun `a permanent failure downloading a missing file again stays on its row, which can only be removed`() {
+        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        val vm = shelf(serving("<html>moved</html>".toByteArray()))
+        val download = vm.downloadAgain("Stormy Night")
+        settle()
+        assertEquals(DownloadResult.Failed(NotAnEpub), download.done())
+        assertEquals(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy Night", ROW_CANT_DOWNLOAD_NOT_AN_EPUB, RowTap.None), vm.row("Stormy Night"))
+        vm.toggleEdit()
+        vm.remove(RowKey.Shelved("urn:uuid:storm"))
+        assertEquals(emptyList(), vm.rows.value)
+    }
+
+    @Test
+    fun `a missing file with no source can only be removed`() {
+        store("urn:a" to entry("A"))
+        val vm = shelf(FakeTransport(emptyMap()))
+        assertEquals(ShelfRow(RowKey.Shelved("urn:a"), "A", ROW_FILE_MISSING, RowTap.None), vm.row("A"))
         vm.toggleEdit()
         vm.remove(RowKey.Shelved("urn:a"))
         assertEquals(emptyList(), vm.rows.value)
     }
 
     @Test
-    fun `removing a Book mid-download cancels it, and nothing lands`() {
-        ReadingStore(dir).save { ReadingData(books = mapOf("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))) }
+    fun `removing a Book mid-download ends it as removed, never cancelled, and nothing lands`() {
+        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
         lateinit var vm: ShelfViewModel
         val transport = Transport { url ->
             vm.remove(RowKey.Shelved("urn:uuid:storm"))
-            FakeTransport(mapOf(link.value to Answer(body = storm))).get(url)
+            serving().get(url)
         }
         vm = shelf(transport)
-        val download = vm.download(link, "Stormy Night", null)
+        val download = vm.downloadAgain("Stormy Night")
         settle()
-        assertTrue(download.isCancelled)
+        assertFalse(download.isCancelled)
+        assertEquals(DownloadResult.Removed, download.done())
         assertEquals(emptyList(), vm.rows.value)
-        assertTrue(dir.list()!!.none { it.endsWith(".epub") || it.endsWith(".part") }, dir.list()!!.toList().toString())
+        assertEquals(emptyList(), leftovers())
     }
 
     @Test
-    fun `removing a download that hasn't arrived cancels it before it asks the network`() {
-        val transport = FakeTransport(mapOf(link.value to Answer(body = storm)))
+    fun `removing a download that hasn't arrived ends it before it asks the network`() {
+        val transport = serving()
         val vm = shelf(transport)
         val download = vm.download(link, "Stormy Night", null)
-        main.scheduler.runCurrent()
         vm.remove(RowKey.Arriving(link))
         settle()
-        assertTrue(download.isCancelled)
+        assertEquals(DownloadResult.Removed, download.done())
         assertEquals(emptyList(), transport.asked)
         assertEquals(emptyList(), vm.rows.value)
         assertFalse(File(dir, stormFile).exists())
     }
 
     @Test
-    fun `a dev-start file asks to open the dev Book, with a saver that writes nothing`() {
-        ReadingStore(dir).save { ReadingData(settings = Settings(fontStep = 3)) }
-        val before = File(dir, "reading-data.json").readText()
+    fun `a removal after the body arrived but before the main thread lands it leaves no file`() {
+        val place = Place("c1", 0, 3, "snippet", 10)
+        store("urn:uuid:storm" to entry("Stormy Night", place, source = link.value, file = stormFile))
+        val vm = shelf()
+        val download = vm.downloadAgain("Stormy Night")
+        main.scheduler.runCurrent()
+        io.scheduler.advanceUntilIdle()
+        vm.toggleEdit()
+        vm.remove(RowKey.Shelved("urn:uuid:storm"))
+        settle()
+        assertEquals(DownloadResult.Removed, download.done())
+        assertEquals(emptyList(), leftovers())
+        assertEquals(emptyList(), vm.rows.value)
+        vm.onAppPause()
+        assertEquals(entry("Stormy Night", place, source = link.value, file = null).copy(onShelf = false), stored().books.getValue("urn:uuid:storm"))
+    }
+
+    @Test
+    fun `a download removed after its body arrived and then added again lands once, from the second download`() {
+        val vm = shelf()
+        val first = vm.download(link, "Stormy Night", null)
+        main.scheduler.runCurrent()
+        io.scheduler.advanceUntilIdle()
+        vm.remove(RowKey.Arriving(link))
+        val second = vm.download(link, "Stormy Night", null)
+        settle()
+        assertEquals(DownloadResult.Removed, first.done())
+        assertEquals(DownloadResult.Done("urn:uuid:storm"), second.done())
+        assertEquals(listOf(RowTap.Open(stormFile)), vm.rows.value!!.map { it.tap })
+        assertEquals(listOf(stormFile), leftovers())
+    }
+
+    @Test
+    fun `a file check that started before a download landed doesn't hide the Book it landed`() {
+        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        val vm = shelf()
+        vm.downloadAgain("Stormy Night")
+        main.scheduler.runCurrent()
+        vm.refresh()
+        main.scheduler.runCurrent()
+        settle()
+        assertEquals(RowTap.Open(stormFile), vm.row("Stormy Night").tap)
+    }
+
+    @Test
+    fun `a pending confirmation on a download is cleared when the download arrives`() {
+        val vm = shelf()
+        vm.download(link, "Stormy Night", null)
+        vm.toggleEdit()
+        vm.askToRemove(RowKey.Arriving(link))
+        settle()
+        assertEquals(listOf(RowKey.Shelved("urn:uuid:storm")), vm.rows.value!!.map { it.key })
+        assertEquals(ShelfMode.Editing(), vm.mode.value)
+    }
+
+    @Test
+    fun `a download started before the Shelf loaded lands on the loaded reading data`() {
+        seed("urn:a" to entry("A"))
+        val vm = ShelfViewModel(owner(serving()))
+        val download = vm.download(link, "Stormy Night", null)
+        settle()
+        vm.refresh()
+        settle()
+        assertEquals(DownloadResult.Done("urn:uuid:storm"), download.done())
+        assertEquals(setOf("A", "Stormy Night"), vm.titles().toSet())
+        vm.onAppPause()
+        assertEquals(setOf("urn:a", "urn:uuid:storm"), stored().books.keys)
+    }
+
+    @Test
+    fun `two Shelves in one process share one owner, so a removal in one isn't undone by the other's flush`() {
+        seed("urn:a" to entry("A"), "urn:b" to entry("B"))
+        val first = shelf()
+        val second = ShelfViewModel(ShelfOwner.of(File(dir, ".")) { error("a second owner for the same directory") })
+        assertSame(first.owner, second.owner)
+        first.toggleEdit()
+        first.remove(RowKey.Shelved("urn:a"))
+        second.onAppPause()
+        settle()
+        assertEquals(listOf("B"), second.titles())
+        assertFalse(stored().books.getValue("urn:a").onShelf)
+    }
+
+    @Test
+    fun `a dev-start file asks to open the dev Book`() {
         File(dir, "dev-start").writeText("2 10\n")
         val vm = shelf()
         assertEquals(DevStart(2, 10), vm.devStart.value)
-        val saver = vm.devSaver()
-        assertEquals(ReadingData(), saver.data)
-        saver.change { it.copy(settings = Settings(fontStep = 4)) }
-        saver.flush()
-        settle()
-        assertEquals(before, File(dir, "reading-data.json").readText())
     }
 }
