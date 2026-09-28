@@ -52,6 +52,12 @@ class ShelfViewModelTest {
         io.scheduler.advanceUntilIdle()
     }
 
+    /** Runs what is ready without moving the main thread's clock, so no debounced save fires. */
+    private fun settleWithoutTime() = repeat(6) {
+        main.scheduler.runCurrent()
+        io.scheduler.advanceUntilIdle()
+    }
+
     private fun serving(body: ByteArray = storm) = FakeTransport(mapOf(link.value to Answer(body = body)))
 
     private fun owner(transport: Transport) = ShelfOwner.of(dir) { ShelfOwner(dir, io, transport) { clock } }
@@ -148,6 +154,18 @@ class ShelfViewModelTest {
         vm.onAppPause()
         val added = stored().books.getValue("urn:uuid:storm")
         assertEquals(BookEntry("Stormy night (Catalogue)", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 5_000), added)
+    }
+
+    @Test
+    fun `a landed download and a removal are on disk at once, with no wait for the save debounce`() {
+        val vm = shelf()
+        vm.download(link, "Stormy Night", null)
+        settleWithoutTime()
+        assertEquals(RowTap.Open(stormFile), vm.row("Stormy Night").tap)
+        assertTrue(stored().books.getValue("urn:uuid:storm").onShelf)
+        vm.toggleEdit()
+        vm.remove(RowKey.Shelved("urn:uuid:storm"))
+        assertFalse(stored().books.getValue("urn:uuid:storm").onShelf)
     }
 
     @Test

@@ -51,7 +51,9 @@ sealed interface DownloadResult {
  * State changes happen on the main thread, and so does every change to a Book's file name (a
  * download landing, a removal deleting): they are then ordered, so a removal can't delete a Book
  * that a download landed after it, and a download that lost its row never leaves a file behind.
- * Those are single renames and deletes; the downloads themselves run on [io]. [transport] and [now]
+ * Those are single renames and deletes; the downloads themselves run on [io]. A landing and a
+ * removal also save the reading data at once rather than after the debounce: they are rare, and a
+ * screen on top of the Shelf may never see the pause that would flush them. [transport] and [now]
  * exist for tests.
  */
 class ShelfOwner(
@@ -160,6 +162,7 @@ class ShelfOwner(
                     File(filesDir, file).deleteOrLog()
                     fileChanged(file, exists = false)
                 }
+                saver.flush()
             }
         }
         publish()
@@ -196,6 +199,7 @@ class ShelfOwner(
                     )
                 }
                 fileChanged(finished.file, exists = true)
+                saver.flush()
                 DownloadResult.Done(finished.identifier)
             }
             is DownloadState.Failed -> {
