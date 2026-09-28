@@ -116,13 +116,12 @@ Ordered. Each item ends on its _done-when_.
   characters that isn't a "Key: value" pair, which gives Gutenberg's list rows their authors (the
   summary stays for the detail page). `bestDownload` answers only for one Book's page: null unless
   every entry has the same title.
-  N3c notes for the advisor:
-  - A Catalogue entry matches a Book when any acquisition link on the entry's page equals the Book's
-    source. The detail page then shows "On your Shelf" (opens it), or offers Add to Shelf when the
-    file is missing or the Book was removed, keeping its Place and passing `replacing`. With no
-    match it downloads, and the identifier merge happens on landing.
-  - A removed shipped Catalogue is offered again under "Add a Catalogue", by name. Whether a
-    Catalogue is shipped is decided by its URL.
+  N3c's screens, labels and copy (the Catalogue list, a Book's detail page and whether it is already
+  on the Shelf, Add a Catalogue, restoring removed shipped Catalogues) are specified in DESIGN.md
+  under "Catalogues", which N3c adds. That section is the one place they live. Two engineering
+  notes: a Catalogue entry matches a Book when any acquisition link on the entry's page equals the
+  Book's source, passing `replacing` so the Place is kept; and whether a Catalogue is shipped is
+  decided by its URL.
 - **Rename to the glossary (pre-N4 refactor PR).** Behaviour-preserving renames so the code says what
   `CONTEXT.md` says: `Chapter` → `SpineItem` (and the package reader's `SpineItem` → `SpineRef`);
   `Position` → `SpinePoint(item, char)`; `Transfer`/`TransferState` → `Download` with a nested
