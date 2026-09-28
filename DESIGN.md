@@ -52,6 +52,12 @@ A paragraph gets a first-line indent only when it follows another paragraph (Sta
 convention); the first paragraph after a heading, caption or verse, or a chapter's first block, starts
 flush, judged on block kinds, never on window boundaries.
 
+## Copy
+
+Copy capitalises Book, Shelf and Catalogue; "place" is lowercase; chapter is lowercase in running copy
+and capitalised only in a "Chapter N" title; Edition, Spine item and Place-as-a-term never appear in
+copy.
+
 ## Shelf
 
 The Tool's first screen: the Books on this phone. Product rulings from the advisor (2026-09-27); copy

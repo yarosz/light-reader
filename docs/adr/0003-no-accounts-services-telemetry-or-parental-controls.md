@@ -2,7 +2,7 @@
 
 The Tool has no accounts and no maintainer-hosted service, and it sends no telemetry. It makes network
 calls only to fetch a Catalogue and download a Book. Reading works fully offline. There are no parental
-controls, PINs, or locked sources. Curation works by removing Catalogues (including the shipped ones) and
+controls, PINs, or locked Catalogues. Curation works by removing Catalogues (including the shipped ones) and
 adding your own. Moving reading data between phones works by export/import of a local file, not by sync.
 
 These are trust promises to people who chose a Light Phone to escape attention-harvesting software, and a

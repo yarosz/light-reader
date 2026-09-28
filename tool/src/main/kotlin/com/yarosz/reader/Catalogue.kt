@@ -2,7 +2,7 @@ package com.yarosz.reader
 
 import java.util.Locale
 
-/** A source of Books: a name and the Atom feed it starts at (ADR 0001). */
+/** A Catalogue: a name and the Atom feed it starts at (ADR 0001). */
 data class Catalogue(val name: String, val url: HttpsUrl)
 
 val GUTENBERG = Catalogue("Project Gutenberg", HttpsUrl.parse("https://www.gutenberg.org/ebooks.opds/")!!)

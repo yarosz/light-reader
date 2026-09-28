@@ -186,6 +186,9 @@ pushed_alice=""
 data_before=""
 trap clear_starts EXIT
 
+# Advisory (AGENTS.md "Domain language"): never fails the run.
+n=$(scripts/domain-drift.sh 2>/dev/null | tail -1 | grep -oE '^[0-9]+'); note "domain drift: ${n:-?} unresolved"
+
 # --- signoff/emulator
 if [ "$docs_only" = 1 ]; then
   note "emulator: not applicable (docs-only change)"
@@ -202,8 +205,12 @@ else
   lb=$(grep '^light-build:' "$lblog"); rm -f "$lblog"
   note "Light-builder simulation (lightbuilder prepare + unsigned minified release): ${lb#light-build: }"
 
-  emu=$("$adb" devices | awk '/^emulator-[0-9]+\tdevice/{print $1; exit}')
-  [ -n "$emu" ] || fail_ctx emulator "no emulator running (mise run emu)"
+  # Other Tools run their own emulators on this machine, so pick Reader's by AVD name, not by position.
+  avd=${READER_AVD:-LightPhone3}
+  emu=$("$adb" devices | awk '/^emulator-[0-9]+\tdevice/{print $1}' | while read -r s; do
+    [ "$("$adb" -s "$s" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$avd" ] && echo "$s"; done)
+  [ -n "$emu" ] || fail_ctx emulator "no emulator running AVD $avd (mise run emu)"
+  [ "$(wc -l <<<"$emu")" -eq 1 ] || fail_ctx emulator "several emulators run AVD $avd ($(echo $emu)); stop the extra one"
   # Android letterboxes a portrait-locked app whose area is shorter than wide (DESIGN.md); the LP3
   # gives 1080x1168, so an emulator that differs lays out Pages no phone shows.
   disp=$("$adb" -s "$emu" shell dumpsys window displays | grep -m1 ' app=' | tr -d '\r')
