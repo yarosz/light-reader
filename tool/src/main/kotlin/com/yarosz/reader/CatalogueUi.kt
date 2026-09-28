@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import com.thelightphone.sdk.ui.LightBarButton
@@ -30,8 +31,8 @@ import com.thelightphone.sdk.ui.designVerticalPxToSp
 import com.thelightphone.sdk.ui.gridUnitsAsDp
 import com.thelightphone.sdk.ui.lightClickable
 
-/** A title's line height in ems: tighter than Copy's 1.5, so a wrapped title's second line sits close to its first. */
-private const val TITLE_LINE_HEIGHT = 1.2f
+/** A title's or a failure's line height in ems: tighter than Copy's 1.5, so a wrapped second line sits close to its first. */
+private const val TIGHT_LINE_HEIGHT = 1.2f
 
 /** The padding of every list row: the Shelf's, the Catalogue list's and a Catalogue page's. */
 @Composable
@@ -60,19 +61,23 @@ fun BackScreen(title: String, onBack: () -> Unit, right: LightBarButton? = null,
 /** A Book's (or a Catalogue's) title, verbatim, on at most [maxLines] lines. */
 @Composable
 fun BookTitle(text: String, maxLines: Int = 2) {
-    val copy = LightThemeTokens.typography.copy
-    BasicText(
-        text = text,
-        style = copy.copy(
-            color = LightThemeTokens.colors.content,
-            fontSize = copy.fontSize.value.designVerticalPxToSp(),
-            lineHeight = (copy.fontSize.value * TITLE_LINE_HEIGHT).designVerticalPxToSp(),
-            lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
-        ),
-        maxLines = maxLines,
-        overflow = TextOverflow.Ellipsis,
-    )
+    BasicText(text = text, style = tight(LightThemeTokens.typography.copy), maxLines = maxLines, overflow = TextOverflow.Ellipsis)
 }
+
+/** Why adding a Catalogue failed: body text (the SDK's Paragraph size), set tight, so it reads as a message rather than a row. */
+@Composable
+fun FailureText(text: String, modifier: Modifier = Modifier) {
+    BasicText(text = text, style = tight(LightThemeTokens.typography.paragraph), modifier = modifier)
+}
+
+/** [style] in the content colour at [TIGHT_LINE_HEIGHT], its design px sizes scaled as LightText scales them. */
+@Composable
+private fun tight(style: TextStyle): TextStyle = style.copy(
+    color = LightThemeTokens.colors.content,
+    fontSize = style.fontSize.value.designVerticalPxToSp(),
+    lineHeight = (style.fontSize.value * TIGHT_LINE_HEIGHT).designVerticalPxToSp(),
+    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+)
 
 /** One line of secondary text. */
 @Composable

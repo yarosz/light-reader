@@ -166,7 +166,8 @@ Catalogue is stored as https://, so once added it is never "tried as https" agai
 connection is Unreachable, with Retry. The feed is fetched before
 anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. The
 name is the feed's title, else its host. An address already on the list reads "This Catalogue is
-already in your list." A failure that trying again can't fix hides "Add" until the address changes;
+already in your list." A failure shows below the field in body text (the SDK's Paragraph size) at
+line height 1.2, smaller than the rows. A failure that trying again can't fix hides "Add" until the address changes;
 one that can reads "Retry". Only when a shipped Catalogue has been removed, one row per removed
 Catalogue follows the field: "Add back Project Gutenberg", "Add back Standard Ebooks: new releases".
 One tap adds it back, with no confirmation. Typing a removed shipped Catalogue's address adds it back

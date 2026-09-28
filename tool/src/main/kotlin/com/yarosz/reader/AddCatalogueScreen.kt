@@ -11,9 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SealedLightActivity
-import com.thelightphone.sdk.ui.LightText
 import com.thelightphone.sdk.ui.LightTextField
-import com.thelightphone.sdk.ui.LightTextVariant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -123,7 +121,7 @@ class AddCatalogueScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit
             )
             when (val shown = status) {
                 AddStatus.Checking -> SecondaryLine(PAGE_LOADING, rowPadding())
-                is AddStatus.Failed -> LightText(text = shown.copy.text, variant = LightTextVariant.Copy, modifier = rowPadding())
+                is AddStatus.Failed -> FailureText(shown.copy.text, rowPadding())
                 AddStatus.Idle, AddStatus.Added -> Unit
             }
             val failedForGood = (status as? AddStatus.Failed)?.copy?.retry == false
