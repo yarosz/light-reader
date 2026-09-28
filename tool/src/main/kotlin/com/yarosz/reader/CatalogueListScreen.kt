@@ -28,14 +28,17 @@ import kotlinx.coroutines.launch
  * report of the phone's network, followed while the list is open, so "You're offline. Your Shelf
  * still works." comes and goes as the connection does. Offline means the phone reports no internet
  * connection; when it can't report (the flow fails), the line isn't shown, so it never claims what
- * the phone didn't say.
+ * the phone didn't say. The report is followed only while the screen collects [offline], and for
+ * [UNSUBSCRIBED_GRACE_MS] after: the SDK's flow holds a system network callback, and LightOS never
+ * clears an old screen's view model when it relaunches the activity (ADR 0008), so following it for
+ * the view model's life would leave one callback per relaunch.
  */
 class CatalogueListViewModel(private val owner: ShelfOwner, networkStatus: Flow<NetworkStatus>) : LightViewModel<Unit>() {
     val catalogues: StateFlow<List<ListedCatalogue>?> =
         owner.snapshot.map { it?.data?.catalogueList() }.stateIn(viewModelScope, SharingStarted.Eagerly, owner.snapshot.value?.data?.catalogueList())
     val mode = MutableStateFlow<CatalogueListMode>(CatalogueListMode.Browsing)
     val offline: StateFlow<Boolean> =
-        networkStatus.map { !it.isConnected }.catch { emit(false) }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        networkStatus.map { !it.isConnected }.catch { emit(false) }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(UNSUBSCRIBED_GRACE_MS), false)
 
     init {
         viewModelScope.launch {
@@ -74,6 +77,9 @@ class CatalogueListViewModel(private val owner: ShelfOwner, networkStatus: Flow<
         cancelRemove()
     }
 }
+
+/** How long [CatalogueListViewModel.offline] keeps following the network after its screen stops collecting, which rides out a recomposition. */
+const val UNSUBSCRIBED_GRACE_MS = 5_000L
 
 /**
  * "Add a Book": each Catalogue by name (one the reader added has its host below), then "Add a

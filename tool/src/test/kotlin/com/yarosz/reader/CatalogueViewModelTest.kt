@@ -12,11 +12,17 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
@@ -348,10 +354,14 @@ class CatalogueViewModelTest {
         assertEquals(CatalogueListMode.Browsing, list.mode.value)
     }
 
+    /** Collects [flow] on the main dispatcher as a screen does; cancel the job to leave. */
+    private fun shown(flow: Flow<*>): Job = CoroutineScope(main).launch { flow.collect {} }
+
     @Test
     fun `the offline line follows the phone's reports while the list is open`() {
         val status = MutableStateFlow(connected)
         val list = CatalogueListViewModel(owner(), status)
+        val screen = shown(list.offline)
         settle()
         assertEquals(false, list.offline.value)
         status.value = NetworkStatus(isConnected = false, isWifi = false, isMetered = false)
@@ -360,12 +370,41 @@ class CatalogueViewModelTest {
         status.value = connected
         settle()
         assertEquals(false, list.offline.value)
+        screen.cancel()
+    }
+
+    @Test
+    fun `the phone's network is followed only while the list is shown, so a left list holds no network callback`() {
+        var following = 0
+        val status = callbackFlow {
+            following++
+            trySend(connected)
+            awaitClose { following-- }
+        }
+        val list = CatalogueListViewModel(owner(), status)
+        settle()
+        assertEquals(0, following)
+        val screen = shown(list.offline)
+        settle()
+        assertEquals(1, following)
+        screen.cancel()
+        main.scheduler.advanceTimeBy(UNSUBSCRIBED_GRACE_MS - 1)
+        main.scheduler.runCurrent()
+        assertEquals(1, following, "a brief gap keeps following")
+        settle()
+        assertEquals(0, following)
+        val again = shown(list.offline)
+        settle()
+        assertEquals(1, following)
+        again.cancel()
     }
 
     @Test
     fun `when the phone can't report its network, the offline line isn't shown`() {
         val list = CatalogueListViewModel(owner(), flow { throw SecurityException("no ACCESS_NETWORK_STATE") })
+        val screen = shown(list.offline)
         settle()
         assertEquals(false, list.offline.value)
+        screen.cancel()
     }
 }
