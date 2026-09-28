@@ -1,7 +1,7 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2) and N2 (reading data store) done; N3 under way (pure core and Shelf done; next the Catalogue screens)
-RELEASE HOLD: Don't tag a release until N3c lands (Add is a label until then).
+STATUS: N1, the release path, P (Paginator v2) and N2 (reading data store) done; N3 code complete (pure core, Shelf, and the Catalogue screens in N3c, on review)
+RELEASE HOLD: Don't tag a release until N3c merges (Add is a label on main until then).
 LAST SESSION: 2026-09-27
 
 ## v1 user flow
@@ -97,9 +97,14 @@ Ordered. Each item ends on its _done-when_.
   after each round trip, and checks a plain launch renders the Shelf ("shelf rows=" in logcat).
   XHTML's named entities are rewritten as numeric references before parsing: Android's Expat drops
   an undeclared entity silently (seen on the emulator), where the JVM's parser reported it.
-  Next: the Catalogue screens (the list with the offline line, browse, search, detail with "Add to
-  Shelf" calling `ShelfViewModel.download`), with "Add" and "Add a Book" opening the list; the
-  downloading, failed and offline screenshots come with them.
+  Catalogue screens done (N3c, `DESIGN.md` "Catalogues"): the list (Edit removes any Catalogue,
+  "Add back" restores a shipped one, the offline line from the SDK's `LightConnectivity`), pages
+  with search (the SDK's LP3 keyboard editor) and "More", the Book detail page matched to the Shelf
+  by source, "Add a Catalogue" (fetched before saving, named by the feed's title), and every
+  failure's D14/D15 copy. User-added and removed Catalogues are an additive `catalogues` field in
+  `reading-data.json`, merged per URL by the newer change. D15 applied: UntrustedCertificate is
+  retryable. Emulator: a Gutenberg Book (Pride and Prejudice) and a Standard Ebooks Book downloaded,
+  showed on the Shelf, and each reopened at its own Place offline after a force-stop.
   Hardening done: every XML document (feeds, OpenSearch, container, OPF, encryption, chapters) goes
   through one untrusted-XML parser (`Xml.kt`: no external entity or DTD is ever read, DOCTYPEs still
   parse); caps on feeds (8 MB), one text construct (64 K characters), package XML (4 MB), chapters
@@ -122,7 +127,7 @@ Ordered. Each item ends on its _done-when_.
   (17/20/24.5/30/36 sp, default 20; one constants file); one-line first-run hint; keep the screen on
   while reading (release after 10 min without a turn); Page text in semantics; About screen (version,
   licenses incl. Literata OFL, copy-protected explainer + DRM-free sources, repo URL as text, the
-  ADR 0003 no-network sentence).
+  ADR 0003 no-network sentence). The detail page's CopyProtected line then points to About's list.
   _Done when:_ verified with `mise run ui`.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
