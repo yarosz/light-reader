@@ -58,18 +58,22 @@ class CataloguePageViewModel(
         if (source is PageSource.Entry || loading?.isActive == true) return
         state.value = PageState.Loading
         loading = viewModelScope.launch {
-            state.value = when (val fetched = fetch()) {
-                is Fetched.Ok -> pageState(fetched.value, source)
-                is Fetched.Failed -> PageState.Failed(fetched.reason)
+            state.value = when (val url = pageUrl()) {
+                is Fetched.Failed -> PageState.Failed(url.reason)
+                is Fetched.Ok -> when (val fetched = owner.fetchPage(url.value, phoneOnline)) {
+                    is Fetched.Ok -> pageState(fetched.value, source, url.value)
+                    is Fetched.Failed -> PageState.Failed(fetched.reason)
+                }
             }
         }
     }
 
-    private suspend fun fetch(): Fetched<CataloguePage> = when (source) {
-        PageSource.Root -> owner.fetchPage(catalogue.url, phoneOnline)
-        is PageSource.Feed -> owner.fetchPage(source.url, phoneOnline)
+    /** Where the page is: for a search, the results URL its template makes from the terms. */
+    private suspend fun pageUrl(): Fetched<HttpsUrl> = when (source) {
+        PageSource.Root -> Fetched.Ok(catalogue.url)
+        is PageSource.Feed -> Fetched.Ok(source.url)
         is PageSource.Search -> when (val template = searchTemplate(source.search)) {
-            is Fetched.Ok -> owner.fetchPage(template.value.url(source.terms), phoneOnline)
+            is Fetched.Ok -> Fetched.Ok(template.value.url(source.terms))
             is Fetched.Failed -> template
         }
         is PageSource.Entry -> error("an entry's page has nothing to fetch")
@@ -89,7 +93,7 @@ class CataloguePageViewModel(
         viewModelScope.launch {
             val current = state.value as? PageState.Listing ?: return@launch
             state.value = when (val fetched = owner.fetchPage(next, phoneOnline)) {
-                is Fetched.Ok -> appendPage(current, fetched.value)
+                is Fetched.Ok -> appendPage(current, fetched.value, next)
                 is Fetched.Failed -> current.copy(more = More.Failed(fetched.reason))
             }
         }

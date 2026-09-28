@@ -190,6 +190,8 @@ centre. Rows are text only: the title, then the byline (the author, else a short
 An entry with a download of its own opens its detail page; any other opens the feed it leads to, and
 a feed opened that way is a Book's detail page when all its entries are one Book's Editions
 (Gutenberg's Book pages). rel=next paging is a "More" row at the end, which appends the next page.
+"More" ends when the next page is one the list already fetched, and at 500 entries: the list
+composes every row, and past 20 of Gutenberg's pages search finds a Book faster.
 "loading…" in secondary text stands in while a page loads.
 
 **Search.** Shown only when the page offers one: a text-only field, its placeholder "Search all
