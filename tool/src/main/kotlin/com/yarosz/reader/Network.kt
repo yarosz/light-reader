@@ -29,6 +29,13 @@ class HttpsUrl private constructor(val value: String, val upgraded: Boolean) {
     override fun hashCode() = value.hashCode()
     override fun toString() = value
 
+    /**
+     * This URL no longer marked [upgraded]: what a stored Catalogue keeps. Having been typed as
+     * http:// describes the request that added it; a later request isn't an upgrade, and failing to
+     * reach it is Unreachable, with Retry.
+     */
+    val plain: HttpsUrl get() = if (upgraded) HttpsUrl(value, upgraded = false) else this
+
     companion object {
         /**
          * [raw] resolved against [base] when relative, with http:// rewritten to https://. Null for

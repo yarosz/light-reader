@@ -72,7 +72,10 @@ data class Settings(val fontStep: Int = DEFAULT_FONT_STEP, val extras: Map<Strin
  * record is what outlives a merge with a file that still has the removal. [updatedAt] is epoch
  * millis; the newer record wins a [merge]. [name] is null for a Catalogue the Tool ships with, which
  * takes its shipped name. [url] is where the Catalogue is fetched when that isn't its key's URL (an
- * address typed with a trailing slash), else null.
+ * address typed with a trailing slash or a capital in its host), else null. Decoding reads it from
+ * the record's `url` when that is a URL of the key's Catalogue, else from the key as the file wrote
+ * it when that isn't the key's URL, so an older file's slashed key keeps its address. It is never
+ * [HttpsUrl.upgraded] (see [HttpsUrl.plain]).
  */
 data class CatalogueRecord(
     val name: String?,
@@ -372,7 +375,7 @@ private fun catalogueRecords(records: JsonObject): Map<CatalogueKey, CatalogueRe
         val key = written.catalogueKey
         val record = CatalogueRecord(
             name = fields.string("name"),
-            url = fields.string("url")?.let { HttpsUrl.parse(it) }?.takeIf { it.catalogueKey == key } ?: written.takeIf { it != key.url },
+            url = (fields.string("url")?.let { HttpsUrl.parse(it) }?.takeIf { it.catalogueKey == key } ?: written.takeIf { it != key.url })?.plain,
             removed = fields.boolean("removed") ?: false,
             updatedAt = fields.long("updatedAt") ?: 0,
             extras = fields.unknown(CATALOGUE_FIELDS),

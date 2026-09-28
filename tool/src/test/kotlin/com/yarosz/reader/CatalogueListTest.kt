@@ -195,6 +195,25 @@ class CatalogueListTest {
     }
 
     @Test
+    fun `a Catalogue added from an http address is stored, and fetched, as not upgraded`() {
+        val typed = (ReadingData().planAdd("http://Books.example.org/opds/") as AddPlan.Fetch).url
+        assertTrue(typed.upgraded)
+        val added = ReadingData().withCatalogue(catalogueFrom(CataloguePage("Home books", emptyList(), null, null), typed), 1)
+        val decoded = decodeReadingData("""{"catalogues":{
+            "http://Books.example.org/opds/":{"name":"Home books","removed":false,"updatedAt":3},
+            "https://club.example.net/feed.xml":{"name":"Book club","url":"http://Club.example.net/feed.xml","removed":false,"updatedAt":4}
+        }}""").getOrThrow()
+        val refused = FakeTransport(mapOf(typed.value to Answer(connectFailure = java.net.ConnectException("refused"))))
+        listOf(added, decoded).forEach { data ->
+            val stored = data.catalogueList().first { it.catalogue.name == "Home books" }.catalogue.url
+            assertEquals("https://Books.example.org/opds/", stored.value)
+            assertFalse(stored.upgraded)
+            assertEquals(Fetched.Failed(Unreachable), fetchPage(refused, stored))
+        }
+        assertFalse(decoded.catalogueList().first { it.catalogue.name == "Book club" }.catalogue.url.upgraded)
+    }
+
+    @Test
     fun `an added Catalogue is named by its feed's title, else its host`() {
         val page = CataloguePage(" Home books ", emptyList(), null, null)
         assertEquals(Catalogue("Home books", home.url), catalogueFrom(page, home.url))

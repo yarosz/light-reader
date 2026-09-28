@@ -71,12 +71,12 @@ fun ReadingData.removedShipped(): List<Catalogue> = SHIPPED_CATALOGUES.filter { 
 
 /**
  * Puts [catalogue] on the list, or back on it. A shipped Catalogue keeps its shipped name and URL; one
- * the reader added keeps its own URL when that isn't its key's (see [CatalogueRecord.url]).
+ * the reader added keeps its own URL, as [HttpsUrl.plain], when that isn't its key's (see [CatalogueRecord.url]).
  */
 fun ReadingData.withCatalogue(catalogue: Catalogue, now: Long): ReadingData {
     val key = catalogue.url.catalogueKey
     val own = shippedAt(key) == null
-    return record(key, CatalogueRecord(catalogue.name.takeIf { own }, catalogue.url.takeIf { own && it != key.url }, removed = false, updatedAt = now))
+    return record(key, CatalogueRecord(catalogue.name.takeIf { own }, catalogue.url.plain.takeIf { own && it != key.url }, removed = false, updatedAt = now))
 }
 
 /** Takes the Catalogue at [url] off the list. Books added from it stay on the Shelf. */
@@ -136,8 +136,8 @@ fun ReadingData.planAdd(typed: String): AddPlan = when (val address = catalogueA
     }
 }
 
-/** The Catalogue a fetched [page] at [url] makes: named by the feed's title, else its host. */
-fun catalogueFrom(page: CataloguePage, url: HttpsUrl): Catalogue = Catalogue(page.title.trim().ifEmpty { url.host }, url)
+/** The Catalogue a fetched [page] at [url] makes: named by the feed's title, else its host, and at [url] as [HttpsUrl.plain]. */
+fun catalogueFrom(page: CataloguePage, url: HttpsUrl): Catalogue = Catalogue(page.title.trim().ifEmpty { url.host }, url.plain)
 
 /** Whether the Catalogue list is browsing or editing, and in Edit, which Catalogue is asking to confirm its removal. */
 sealed interface CatalogueListMode {
