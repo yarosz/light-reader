@@ -8,12 +8,15 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewModelScope
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.LightViewModel
+import com.thelightphone.sdk.NetworkStatus
 import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.SimpleLightScreen
 import com.thelightphone.sdk.ui.LightBarButton
 import com.thelightphone.sdk.ui.gridUnitsAsDp
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -21,15 +24,18 @@ import kotlinx.coroutines.launch
 
 /**
  * The list of Catalogues, opened by the Shelf's "Add" and "Add a Book": its view onto [owner], plus
- * whether the screen is editing and whether the phone is offline. [online] asks the phone whether it
- * has a network that can reach the internet; it is asked each time the list shows, which is when
- * "You're offline. Your Shelf still works." is decided.
+ * whether the screen is editing and whether the phone is offline. [networkStatus] is the SDK's
+ * report of the phone's network, followed while the list is open, so "You're offline. Your Shelf
+ * still works." comes and goes as the connection does. Offline means the phone reports no internet
+ * connection; when it can't report (the flow fails), the line isn't shown, so it never claims what
+ * the phone didn't say.
  */
-class CatalogueListViewModel(private val owner: ShelfOwner, private val online: () -> Boolean) : LightViewModel<Unit>() {
+class CatalogueListViewModel(private val owner: ShelfOwner, networkStatus: Flow<NetworkStatus>) : LightViewModel<Unit>() {
     val catalogues: StateFlow<List<ListedCatalogue>?> =
         owner.snapshot.map { it?.data?.catalogueList() }.stateIn(viewModelScope, SharingStarted.Eagerly, owner.snapshot.value?.data?.catalogueList())
     val mode = MutableStateFlow<CatalogueListMode>(CatalogueListMode.Browsing)
-    val offline = MutableStateFlow(false)
+    val offline: StateFlow<Boolean> =
+        networkStatus.map { !it.isConnected }.catch { emit(false) }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     init {
         viewModelScope.launch {
@@ -43,13 +49,8 @@ class CatalogueListViewModel(private val owner: ShelfOwner, private val online: 
         }
     }
 
-    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = checkConnection()
-
-    /** Asks the phone again whether it is online, and rechecks the Shelf's files. */
-    fun checkConnection() {
-        offline.value = !online()
-        owner.refresh()
-    }
+    /** Rechecks the Shelf's files, which the Catalogue pages match against. */
+    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = owner.refresh()
 
     /** Edit is hidden while the list is empty, so it can't start then. */
     fun toggleEdit() {
@@ -83,10 +84,7 @@ class CatalogueListScreen(sealedActivity: SealedLightActivity) : LightScreen<Uni
     override val viewModelClass: Class<CatalogueListViewModel>
         get() = CatalogueListViewModel::class.java
 
-    override fun createViewModel() = CatalogueListViewModel(ShelfOwner.of(lightContext.filesDir)) {
-        // Unknown counts as online: the offline line must never claim what the phone didn't say.
-        runCatching { lightContext.connectivity.currentStatus.isConnected }.getOrDefault(true)
-    }
+    override fun createViewModel() = CatalogueListViewModel(ShelfOwner.of(lightContext.filesDir), lightContext.connectivity.observeNetworkStatus())
 
     @Composable
     override fun Content() {

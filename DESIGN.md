@@ -119,8 +119,8 @@ relaunch the row reads "file missing · tap to download again" again, and a tap 
 
 **Offline.** Nothing changes on the Shelf, because everything there works offline: no rows are
 removed and nothing is greyed out. "You're offline. Your Shelf still works." is one line of
-secondary text at the top of the Catalogue list, shown when Add is tapped offline (see
-"Catalogues").
+secondary text at the top of the Catalogue list, shown while the phone reports no internet
+connection (see "Catalogues").
 
 **Missing file.** A Book whose file is gone reads "file missing · tap to download again", and the tap
 downloads it again from the Book's source, keeping its Place. If the download declares a different
@@ -146,10 +146,11 @@ second line ("books.example.org"); a shipped one has none. The last row is "Add 
 while browsing.
 
 **Offline.** "You're offline. Your Shelf still works." is one line of secondary text at the top of
-the list. The Tool asks the phone each time the list shows (the SDK's `LightConnectivity`, which
-needs the normal `ACCESS_NETWORK_STATE` permission): offline means no network that can reach the
-internet. When the phone can't say, the line is not shown, so it never claims more than the phone
-did. The last fetch's result isn't used: one unreachable server doesn't mean the phone is offline.
+the list, shown while the phone reports no internet connection. The list follows the SDK's
+`LightConnectivity` reports while it is open (which needs the normal `ACCESS_NETWORK_STATE`
+permission), so the line comes and goes with the connection. When the phone can't report, the line
+is not shown, so it never claims more than the phone did. The last fetch's result isn't used: one
+unreachable server doesn't mean the phone is offline.
 
 **Removing.** In Edit every row's trailing edge reads "Remove", in secondary text. Tapping it turns
 the row, inline, into the Catalogue's name, then "Remove this Catalogue? Books you added from it stay

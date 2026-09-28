@@ -3,6 +3,7 @@ package com.yarosz.reader
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
+import com.thelightphone.sdk.NetworkStatus
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
@@ -13,6 +14,9 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
@@ -37,6 +41,7 @@ class CatalogueViewModelTest {
     private val noImages = url("https://www.gutenberg.org/ebooks/1342.epub.noimages")
     private val pride = zipBytes(epubFiles(identifier = "http://www.gutenberg.org/1342", title = "Pride and Prejudice"))
     private val home = url("https://books.example.org/opds")
+    private val connected = NetworkStatus(isConnected = true, isWifi = true, isMetered = false)
 
     private val answers = mutableMapOf(
         GUTENBERG.url.value to Answer(body = fixture("gutenberg-root.xml")),
@@ -230,7 +235,7 @@ class CatalogueViewModelTest {
 
     @Test
     fun `removing a shipped Catalogue offers it back, and one tap adds it back`() {
-        val list = CatalogueListViewModel(owner()) { true }
+        val list = CatalogueListViewModel(owner(), flowOf(connected))
         settle()
         list.toggleEdit()
         list.askToRemove(GUTENBERG.url)
@@ -310,19 +315,34 @@ class CatalogueViewModelTest {
     }
 
     @Test
-    fun `removing every Catalogue leaves Edit, and the offline line follows what the phone says`() {
-        var online = true
-        val list = CatalogueListViewModel(owner()) { online }
+    fun `removing every Catalogue leaves Edit`() {
+        val list = CatalogueListViewModel(owner(), flowOf(connected))
         settle()
-        list.checkConnection()
-        assertEquals(false, list.offline.value)
-        online = false
-        list.checkConnection()
-        assertEquals(true, list.offline.value)
         list.toggleEdit()
         SHIPPED_CATALOGUES.forEach { list.remove(it.url) }
         settle()
         assertEquals(emptyList(), list.catalogues.value)
         assertEquals(CatalogueListMode.Browsing, list.mode.value)
+    }
+
+    @Test
+    fun `the offline line follows the phone's reports while the list is open`() {
+        val status = MutableStateFlow(connected)
+        val list = CatalogueListViewModel(owner(), status)
+        settle()
+        assertEquals(false, list.offline.value)
+        status.value = NetworkStatus(isConnected = false, isWifi = false, isMetered = false)
+        settle()
+        assertEquals(true, list.offline.value)
+        status.value = connected
+        settle()
+        assertEquals(false, list.offline.value)
+    }
+
+    @Test
+    fun `when the phone can't report its network, the offline line isn't shown`() {
+        val list = CatalogueListViewModel(owner(), flow { throw SecurityException("no ACCESS_NETWORK_STATE") })
+        settle()
+        assertEquals(false, list.offline.value)
     }
 }
