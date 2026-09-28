@@ -68,7 +68,9 @@ class CatalogueViewModelTest {
         io.scheduler.advanceUntilIdle()
     }
 
-    private fun owner() = ShelfOwner.of(dir) { ShelfOwner(dir, io, FakeTransport(answers)) { clock } }.also {
+    private val transport = FakeTransport(answers)
+
+    private fun owner() = ShelfOwner.of(dir) { ShelfOwner(dir, io, transport) { clock } }.also {
         it.refresh()
         settle()
     }
@@ -175,6 +177,27 @@ class CatalogueViewModelTest {
         val search = CatalogueSearch.Description(url("https://www.gutenberg.org/catalog/osd-books.xml"))
         val results = page(PageSource.Search(search, "austen"))
         assertEquals("Pride and Prejudice", (results.state.value as PageState.Listing).entries.first().title)
+    }
+
+    @Test
+    fun `search terms with reserved and non-ASCII characters reach the server encoded once, as one parameter`() {
+        val results = "https://m.gutenberg.org/ebooks/search.opds/?query=Tom%20%26%20Jerry%20%231%20%2B%20caf%C3%A9"
+        answers[results] = Answer(body = fixture("gutenberg-popular.xml"))
+        val search = CatalogueSearch.Description(url("https://www.gutenberg.org/catalog/osd-books.xml"))
+        val page = page(PageSource.Search(search, "Tom & Jerry #1 + café"))
+        assertIs<PageState.Listing>(page.state.value)
+        assertEquals(results, transport.asked.last().value)
+        assertEquals("Tom & Jerry #1 + café", pageTitle(GUTENBERG, page.source))
+    }
+
+    @Test
+    fun `a page left while it loads drops the late answer and keeps its state`() {
+        val store = ViewModelStore()
+        val root = held(store) { CataloguePageViewModel(owner(), GUTENBERG, PageSource.Root, PHONE_CANT_SAY) }
+        assertEquals(PageState.Loading, root.state.value)
+        store.clear()
+        settle()
+        assertEquals(PageState.Loading, root.state.value)
     }
 
     @Test
