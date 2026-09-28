@@ -111,6 +111,18 @@ fun ReadingData.unshelve(identifier: String): ReadingData {
 }
 
 /**
+ * Moves the Book at [from] to [to], as when downloading it again brings a package that declares a
+ * new identifier (Calibre mints one on every conversion): its Place, finished flag, date added,
+ * title, source and unknown fields go to [to], replacing any entry there. [from] stays behind off
+ * the Shelf with no file, the state a removal leaves, rather than being dropped: [merge] keeps
+ * every Book the file on disk has, so a dropped key would come back on the next save.
+ */
+fun ReadingData.moveBook(from: String, to: String): ReadingData {
+    val entry = books[from]?.takeIf { from != to } ?: return this
+    return copy(books = books + (to to entry) + (from to entry.copy(file = null, onShelf = false)))
+}
+
+/**
  * Records [place] for a Book already in [ReadingData.books]; an unknown Book is left out. Its
  * [Place.updatedAt] is kept later than the Book's previous Place, so a clock stepped backwards can't
  * make the newest Place lose a [merge].
@@ -254,8 +266,9 @@ private fun jsonObject(known: Set<String>, extras: Map<String, JsonElement>, var
 
 /**
  * Parses the file's text. A known field that is absent or null takes its default, which is what keeps
- * a file from a newer build readable. A known field of the wrong type is corruption and fails, as does
- * anything that isn't a JSON object at the top. Never throws.
+ * a file from a newer build readable. A known field of the wrong type is corruption and fails, as do
+ * a Book's file that isn't a plain name inside filesDir and anything that isn't a JSON object at the
+ * top. Never throws.
  */
 fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
     val root = Json.parseToJsonElement(text) as? JsonObject ?: corrupt("top level")
@@ -269,7 +282,7 @@ fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
 
 private fun JsonObject.toEntry() = BookEntry(
     title = string("title").orEmpty(),
-    file = string("file"),
+    file = string("file")?.also { if (!isPlainFileName(it)) corrupt("file") },
     place = obj("place")?.let {
         Place(
             spineId = it.string("spineId").orEmpty(),
@@ -287,6 +300,13 @@ private fun JsonObject.toEntry() = BookEntry(
     addedAt = long("addedAt"),
     extras = unknown(ENTRY_FIELDS),
 )
+
+/**
+ * Whether [name] names a file directly inside filesDir, as [BookEntry.file] must: a removal deletes
+ * that file, so a path separator, "." or ".." could reach outside it.
+ */
+private fun isPlainFileName(name: String) =
+    name.isNotEmpty() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }
 
 private class CorruptReadingData(field: String) : Exception("reading data: $field has the wrong type")
 

@@ -242,6 +242,30 @@ class ReadingDataTest {
     }
 
     @Test
+    fun `a stored file that isn't a plain name inside filesDir is corruption`() {
+        listOf("../reading-data.json", "a/b.epub", "/data/x.epub", "a\\b.epub", ".", "..", "", "a\u0000.epub").forEach { name ->
+            val text = ReadingData(books = mapOf("id" to entry(file = name))).encode()
+            assertTrue(decodeReadingData(text).isFailure, name)
+        }
+        assertEquals("..a.epub", decodeReadingData(ReadingData(books = mapOf("id" to entry(file = "..a.epub"))).encode()).getOrThrow().books.getValue("id").file)
+    }
+
+    @Test
+    fun `moving a Book takes its Place, date, title and fields to the new identifier and leaves the old one off the Shelf`() {
+        val old = entry(title = "Stored", place = place(updatedAt = 5), finished = true).copy(addedAt = 3, source = "https://books.example.org/a.epub", extras = mapOf("x" to JsonPrimitive(1)))
+        val data = data("urn:old" to old, "urn:other" to entry(title = "Other"))
+        val moved = data.moveBook("urn:old", "urn:new")
+        assertEquals(old, moved.books.getValue("urn:new"))
+        assertEquals(old.copy(file = null, onShelf = false), moved.books.getValue("urn:old"))
+        assertEquals(data.books.getValue("urn:other"), moved.books.getValue("urn:other"))
+        assertEquals(data, data.moveBook("urn:old", "urn:old"))
+        assertEquals(data, data.moveBook("urn:unknown", "urn:new"))
+        val merged = merge(data, moved)
+        assertEquals(false, merged.books.getValue("urn:old").onShelf)
+        assertEquals(true, merged.books.getValue("urn:new").onShelf)
+    }
+
+    @Test
     fun `a merge takes the author and source from mine unless mine has none`() {
         val disk = entry().copy(author = "Disk", source = "https://d.example.org/d.epub", addedAt = 1)
         val mine = entry().copy(author = null, source = "https://m.example.org/m.epub", addedAt = 2)
@@ -292,7 +316,7 @@ private fun randomPlace(rnd: Random) = Place(
 
 private fun randomEntry(rnd: Random) = BookEntry(
     title = randomString(rnd),
-    file = if (rnd.nextBoolean()) null else randomString(rnd) + ".epub",
+    file = if (rnd.nextBoolean()) null else randomString(rnd).filter { it != '/' && it != '\\' } + ".epub",
     place = if (rnd.nextBoolean()) null else randomPlace(rnd),
     finished = rnd.nextBoolean(),
     onShelf = rnd.nextBoolean(),

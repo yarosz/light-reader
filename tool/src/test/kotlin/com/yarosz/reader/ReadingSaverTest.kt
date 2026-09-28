@@ -3,6 +3,7 @@ package com.yarosz.reader
 import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -120,5 +121,13 @@ class ReadingSaverTest {
         advanceUntilIdle()
         assertEquals(listOf(shelved), store.saves)
         assertEquals(shelved, saver.data)
+    }
+
+    @Test
+    fun `loading after a change fails loudly instead of dropping the change`() = runTest {
+        val saver = saver()
+        saver.change { b }
+        assertFailsWith<IllegalStateException> { saver.loaded(a) }
+        assertEquals(b, saver.data)
     }
 }

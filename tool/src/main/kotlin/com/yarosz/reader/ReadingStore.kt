@@ -4,8 +4,12 @@ import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 private const val TAG = "Reader"
+
+/** One lock per canonical directory, shared by every [ReadingStore] in the process. */
+private val saveLocks = ConcurrentHashMap<String, Any>()
 
 /**
  * The reading data file in [dir], saved so that a kill at any moment leaves a readable file. A save
@@ -13,8 +17,9 @@ private const val TAG = "Reader"
  * readable main file is never absent. Before that, the previous main file's text becomes the backup
  * the same way (temp, sync, rename), but only when it parsed: a main file that doesn't parse is set
  * aside as `.corrupt` (one generation) and never replaces a good backup. Every save merges with the
- * file on disk (see [merge]). Credentials never go in this file. [rename] and [sync] exist so a test
- * can make one fail.
+ * file on disk (see [merge]). Saves are exclusive per directory across every ReadingStore in the
+ * process, because they share the temp files. Credentials never go in this file. [rename] and [sync]
+ * exist so a test can make one fail.
  */
 class ReadingStore(
     dir: File,
@@ -26,17 +31,17 @@ class ReadingStore(
     private val corrupt = File(dir, "reading-data.json.corrupt")
     private val temp = File(dir, "reading-data.json.tmp")
     private val backupTemp = File(dir, "reading-data.json.bak.tmp")
+    private val lock: Any = saveLocks.computeIfAbsent(dir.canonicalPath) { Any() }
 
     /** The main file, else the backup, else empty data. Never throws: an unreadable file counts as missing. */
     fun load(): ReadingData = read(main) ?: read(backup) ?: ReadingData()
 
     /**
-     * Merges [mine]'s data into the file on disk. [mine] runs under the store's lock, right before the
-     * write, so a save that started before a change still writes the changed data. Throws IOException
-     * when a write, sync, or rename fails; a main file that parsed is then as it was.
+     * Merges [mine]'s data into the file on disk. [mine] runs under the directory's lock, right before
+     * the write, so a save that started before a change still writes the changed data. Throws
+     * IOException when a write, sync, or rename fails; a main file that parsed is then as it was.
      */
-    @Synchronized
-    fun save(mine: () -> ReadingData) {
+    fun save(mine: () -> ReadingData): Unit = synchronized(lock) {
         val text = readText(main)
         val current = text?.let { decode(main, it) }
         if (text != null) {

@@ -3,12 +3,17 @@ package com.yarosz.reader
 import java.io.File
 import java.io.IOException
 import java.io.SyncFailedException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonPrimitive
 
 class ReadingStoreTest {
@@ -186,6 +191,25 @@ class ReadingStoreTest {
         assertFailsWith<IOException> { store.save { snark } }
         assertEquals(previous, main.readText())
         assertEquals(alice, store.load())
+    }
+
+    @Test
+    fun `two stores over one directory never save at the same time`() {
+        val inside = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val first = ReadingStore(dir, sync = { inside.countDown(); release.await() })
+        val secondSynced = AtomicBoolean(false)
+        val second = ReadingStore(File(dir, "."), sync = { secondSynced.set(true) })
+        val saving = thread { first.save { alice } }
+        assertTrue(inside.await(5, TimeUnit.SECONDS))
+        val waiting = thread { second.save { snark } }
+        waiting.join(300)
+        assertFalse(secondSynced.get(), "the second store saved while the first was mid-save")
+        release.countDown()
+        saving.join()
+        waiting.join()
+        assertEquals(merge(alice, snark), ReadingStore(dir).load())
+        assertFalse(temp.exists())
     }
 
     @Test

@@ -31,13 +31,20 @@ class ReadingSaver(
     private var saved: ReadingData = data
     private var pending: Job? = null
 
-    /** The file's data as loaded: the base the next changes are measured against. */
+    private var changed = false
+
+    /**
+     * The file's data as loaded: the base the next changes are measured against. Throws after a
+     * [change], because the loaded data would silently replace it.
+     */
     fun loaded(fromDisk: ReadingData) {
+        check(!changed) { "reading data loaded after a change" }
         saved = fromDisk
         data = fromDisk
     }
 
     fun change(transform: (ReadingData) -> ReadingData) {
+        changed = true
         data = transform(data)
         pending?.cancel()
         pending = scope.launch {
