@@ -6,10 +6,45 @@ import java.net.URI
 data class ListedCatalogue(val catalogue: Catalogue, val shipped: Boolean)
 
 /**
- * Whether the Tool ships with the Catalogue at [url]. Decided by the URL alone: a reader who types
- * Gutenberg's address has the shipped Catalogue, with its shipped name and copy.
+ * What a Catalogue URL is compared and stored by ([ReadingData.catalogues]): the host lowercased, the
+ * default port dropped, an empty path read as "/", one trailing slash on a longer path ignored, and
+ * the fragment, which never reaches the server, dropped. So "https://Books.example.org/opds/" and
+ * "https://books.example.org/opds" are one Catalogue. It only compares: a Catalogue is fetched at its
+ * own URL.
  */
-fun isShipped(url: HttpsUrl): Boolean = SHIPPED_CATALOGUES.any { it.url == url }
+@JvmInline
+value class CatalogueKey private constructor(val value: String) {
+    /** The key as a URL: a Catalogue whose record names no other [CatalogueRecord.url] is fetched here. */
+    val url: HttpsUrl get() = checkNotNull(HttpsUrl.parse(value)) { "a key is always a URL" }
+
+    companion object {
+        fun of(url: HttpsUrl): CatalogueKey {
+            val uri = URI(url.value)
+            val path = uri.rawPath.orEmpty().ifEmpty { "/" }.let { if (it.length > 1) it.removeSuffix("/") else it }
+            return CatalogueKey(
+                buildString {
+                    append("https://")
+                    uri.rawUserInfo?.let { append(it).append('@') }
+                    append(uri.host.lowercase())
+                    if (uri.port != -1 && uri.port != 443) append(':').append(uri.port)
+                    append(path)
+                    uri.rawQuery?.let { append('?').append(it) }
+                },
+            )
+        }
+    }
+}
+
+val HttpsUrl.catalogueKey: CatalogueKey get() = CatalogueKey.of(this)
+
+/**
+ * Whether the Tool ships with the Catalogue at [url]. Decided by the URL's [catalogueKey] alone: a
+ * reader who types Gutenberg's address, with or without its trailing slash, has the shipped
+ * Catalogue, with its shipped name and copy.
+ */
+fun isShipped(url: HttpsUrl): Boolean = shippedAt(url.catalogueKey) != null
+
+private fun shippedAt(key: CatalogueKey): Catalogue? = SHIPPED_CATALOGUES.firstOrNull { it.url.catalogueKey == key }
 
 /** The host, such as "books.example.org": the second line of a Catalogue the reader added. */
 val HttpsUrl.host: String get() = URI(value).host.orEmpty()
@@ -20,32 +55,41 @@ val HttpsUrl.host: String get() = URI(value).host.orEmpty()
  * host.
  */
 fun ReadingData.catalogueList(): List<ListedCatalogue> {
-    val shipped = SHIPPED_CATALOGUES.filter { catalogues[it.url.value]?.removed != true }.map { ListedCatalogue(it, shipped = true) }
+    val shipped = SHIPPED_CATALOGUES.filter { catalogues[it.url.catalogueKey]?.removed != true }.map { ListedCatalogue(it, shipped = true) }
     val added = catalogues.entries
-        .filter { (url, record) -> !record.removed && SHIPPED_CATALOGUES.none { it.url.value == url } }
+        .filter { (key, record) -> !record.removed && shippedAt(key) == null }
         .sortedBy { it.value.updatedAt }
-        .mapNotNull { (url, record) ->
-            HttpsUrl.parse(url)?.let { ListedCatalogue(Catalogue(record.name?.takeIf { it.isNotBlank() } ?: it.host, it), shipped = false) }
+        .map { (key, record) ->
+            val url = record.url ?: key.url
+            ListedCatalogue(Catalogue(record.name?.takeIf { it.isNotBlank() } ?: url.host, url), shipped = false)
         }
     return shipped + added
 }
 
 /** The Catalogues the Tool ships with that the reader removed, which "Add a Catalogue" offers to add back. */
-fun ReadingData.removedShipped(): List<Catalogue> = SHIPPED_CATALOGUES.filter { catalogues[it.url.value]?.removed == true }
+fun ReadingData.removedShipped(): List<Catalogue> = SHIPPED_CATALOGUES.filter { catalogues[it.url.catalogueKey]?.removed == true }
 
-/** Puts [catalogue] on the list, or back on it. A shipped Catalogue keeps its shipped name. */
-fun ReadingData.withCatalogue(catalogue: Catalogue, now: Long): ReadingData =
-    record(catalogue.url, CatalogueRecord(catalogue.name.takeUnless { isShipped(catalogue.url) }, removed = false, updatedAt = now))
+/**
+ * Puts [catalogue] on the list, or back on it. A shipped Catalogue keeps its shipped name and URL; one
+ * the reader added keeps its own URL when that isn't its key's (see [CatalogueRecord.url]).
+ */
+fun ReadingData.withCatalogue(catalogue: Catalogue, now: Long): ReadingData {
+    val key = catalogue.url.catalogueKey
+    val own = shippedAt(key) == null
+    return record(key, CatalogueRecord(catalogue.name.takeIf { own }, catalogue.url.takeIf { own && it != key.url }, removed = false, updatedAt = now))
+}
 
 /** Takes the Catalogue at [url] off the list. Books added from it stay on the Shelf. */
-fun ReadingData.withoutCatalogue(url: HttpsUrl, now: Long): ReadingData =
-    record(url, CatalogueRecord(catalogues[url.value]?.name, removed = true, updatedAt = now))
+fun ReadingData.withoutCatalogue(url: HttpsUrl, now: Long): ReadingData {
+    val old = catalogues[url.catalogueKey]
+    return record(url.catalogueKey, CatalogueRecord(old?.name, old?.url, removed = true, updatedAt = now))
+}
 
 /** Stores [record], later than the one it replaces (as [withPlace] does), so a clock stepped back can't lose a [merge]. */
-private fun ReadingData.record(url: HttpsUrl, record: CatalogueRecord): ReadingData {
-    val old = catalogues[url.value]
+private fun ReadingData.record(key: CatalogueKey, record: CatalogueRecord): ReadingData {
+    val old = catalogues[key]
     val updatedAt = old?.let { maxOf(record.updatedAt, it.updatedAt + 1) } ?: record.updatedAt
-    return copy(catalogues = catalogues + (url.value to record.copy(updatedAt = updatedAt, extras = old?.extras.orEmpty())))
+    return copy(catalogues = catalogues + (key to record.copy(updatedAt = updatedAt, extras = old?.extras.orEmpty())))
 }
 
 /**
@@ -82,9 +126,11 @@ fun ReadingData.planAdd(typed: String): AddPlan = when (val address = catalogueA
     is Fetched.Failed -> AddPlan.Invalid(address.reason)
     is Fetched.Ok -> {
         val url = address.value
+        val key = url.catalogueKey
+        val shipped = shippedAt(key)
         when {
-            catalogueList().any { it.catalogue.url == url } -> AddPlan.Duplicate
-            isShipped(url) -> AddPlan.AddBack(SHIPPED_CATALOGUES.first { it.url == url })
+            catalogueList().any { it.catalogue.url.catalogueKey == key } -> AddPlan.Duplicate
+            shipped != null -> AddPlan.AddBack(shipped)
             else -> AddPlan.Fetch(url)
         }
     }

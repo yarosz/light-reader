@@ -68,7 +68,7 @@ fun entryTarget(entry: CatalogueEntry): PageSource? = when {
 
 /** The search field's placeholder: Standard Ebooks' search covers all of it, not only the new releases (D14.3). */
 fun searchPlaceholder(catalogue: Catalogue): String =
-    if (catalogue.url == STANDARD_EBOOKS_NEW_RELEASES.url) SEARCH_STANDARD_EBOOKS else SEARCH
+    if (catalogue.url.catalogueKey == STANDARD_EBOOKS_NEW_RELEASES.url.catalogueKey) SEARCH_STANDARD_EBOOKS else SEARCH
 
 /** A Book's author on its detail page: the first Edition that names one, else the first entry's second line. */
 fun detailAuthor(entries: List<CatalogueEntry>): String? =

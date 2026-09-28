@@ -66,15 +66,17 @@ data class BookEntry(
 data class Settings(val fontStep: Int = DEFAULT_FONT_STEP, val extras: Map<String, JsonElement> = emptyMap())
 
 /**
- * The reader's last change to one Catalogue, keyed by its URL in [ReadingData.catalogues]: added
- * (with the [name] it shows under) or removed. A Catalogue the Tool ships with needs a record only
- * once the reader removes it, and keeps its record, with [removed] false, once added back: the
+ * The reader's last change to one Catalogue, keyed by its [CatalogueKey] in [ReadingData.catalogues]:
+ * added (with the [name] it shows under) or removed. A Catalogue the Tool ships with needs a record
+ * only once the reader removes it, and keeps its record, with [removed] false, once added back: the
  * record is what outlives a merge with a file that still has the removal. [updatedAt] is epoch
  * millis; the newer record wins a [merge]. [name] is null for a Catalogue the Tool ships with, which
- * takes its shipped name.
+ * takes its shipped name. [url] is where the Catalogue is fetched when that isn't its key's URL (an
+ * address typed with a trailing slash), else null.
  */
 data class CatalogueRecord(
     val name: String?,
+    val url: HttpsUrl?,
     val removed: Boolean,
     val updatedAt: Long,
     val extras: Map<String, JsonElement> = emptyMap(),
@@ -89,7 +91,7 @@ data class ReadingData(
     val schemaVersion: Int = CURRENT_SCHEMA,
     val books: Map<String, BookEntry> = emptyMap(),
     val settings: Settings = Settings(),
-    val catalogues: Map<String, CatalogueRecord> = emptyMap(),
+    val catalogues: Map<CatalogueKey, CatalogueRecord> = emptyMap(),
     val extras: Map<String, JsonElement> = emptyMap(),
 )
 
@@ -211,11 +213,9 @@ fun Book.resolve(place: Place): Position? {
  * - schemaVersion: the higher, so an older build never downgrades the file.
  * - books: both sides' Books. For a Book on both sides, see [mergeEntry].
  * - settings: fontStep from [mine]; unknown fields from both, [mine] winning a clash.
- * - catalogues: both sides' records; for a Catalogue on both sides, the newer record whole, a tie
- *   going to [mine]. A removal is a record too, so it survives a merge with a file that still lists
- *   the Catalogue, and adding it back later wins over the removal the same way. Order-independent,
- *   like the Place: the list is the reader's, not this process's, and a newer build or an imported
- *   file (N7) may have changed it.
+ * - catalogues: both sides' records; for a Catalogue on both sides, see [mergeRecord]. A removal is a
+ *   record too, so it survives a merge with a file that still lists the Catalogue, and adding it
+ *   back later wins over the removal the same way.
  * - unknown top-level fields: from both, [mine] winning a clash.
  */
 fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
@@ -226,10 +226,10 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
         if (d != null && m != null) mergeEntry(d, m) else m ?: d!!
     },
     settings = Settings(mine.settings.fontStep, disk.settings.extras + mine.settings.extras),
-    catalogues = (disk.catalogues.keys + mine.catalogues.keys).associateWith { url ->
-        val d = disk.catalogues[url]
-        val m = mine.catalogues[url]
-        if (d != null && m != null && d.updatedAt > m.updatedAt) d else m ?: d!!
+    catalogues = (disk.catalogues.keys + mine.catalogues.keys).associateWith { key ->
+        val d = disk.catalogues[key]
+        val m = mine.catalogues[key]
+        if (d != null && m != null) mergeRecord(d, m) else m ?: d!!
     },
     extras = disk.extras + mine.extras,
 )
@@ -255,6 +255,24 @@ private fun mergeEntry(disk: BookEntry, mine: BookEntry): BookEntry {
     )
 }
 
+/**
+ * The later record wins with its known fields, and the unknown fields come from both, the winner's
+ * taking a clash, as for a Book. Which record wins doesn't depend on the order of saves, because the
+ * list is the reader's, not this process's, and a newer build or an imported file (N7) may have
+ * changed it: the newer [CatalogueRecord.updatedAt] wins, and at a tie a removal beats an addition
+ * (one tap on "Add back" undoes a removal, while a lost removal brings back a Catalogue the reader
+ * dismissed), then the name and URL decide. Only records equal in every known field fall to [mine].
+ */
+internal fun mergeRecord(disk: CatalogueRecord, mine: CatalogueRecord): CatalogueRecord {
+    val (winner, loser) = if (RECORD_ORDER.compare(disk, mine) > 0) disk to mine else mine to disk
+    return winner.copy(extras = loser.extras + winner.extras)
+}
+
+private val RECORD_ORDER = compareBy<CatalogueRecord> { it.updatedAt }
+    .thenBy { it.removed }
+    .thenBy(nullsFirst()) { it.name }
+    .thenBy(nullsFirst()) { it.url?.value }
+
 /** When the Book's Place was recorded; a Book with no Place counts as oldest. */
 private val BookEntry.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
 
@@ -264,11 +282,11 @@ private val TOP_FIELDS = setOf("schemaVersion", "settings", "books", "catalogues
 private val SETTINGS_FIELDS = setOf("fontStep")
 private val ENTRY_FIELDS = setOf("title", "file", "place", "finished", "onShelf", "author", "source", "addedAt")
 private val PLACE_FIELDS = setOf("spineId", "block", "offset", "snippet", "updatedAt")
-private val CATALOGUE_FIELDS = setOf("name", "removed", "updatedAt")
+private val CATALOGUE_FIELDS = setOf("name", "url", "removed", "updatedAt")
 
 /**
- * The file's text. Absent Places, files, authors, sources, dates and names are omitted, and so is an
- * empty `catalogues`; unknown fields are written back as they came.
+ * The file's text. Absent Places, files, authors, sources, dates, names and URLs are omitted, and so
+ * is an empty `catalogues`; unknown fields are written back as they came.
  */
 fun ReadingData.encode(): String = prettyJson.encodeToString(
     JsonElement.serializer(),
@@ -280,11 +298,12 @@ fun ReadingData.encode(): String = prettyJson.encodeToString(
         "books" to JsonObject(books.mapValues { (_, entry) -> entry.toJson() }),
         "catalogues" to catalogues.takeIf { it.isNotEmpty() }?.let { records ->
             JsonObject(
-                records.mapValues { (_, record) ->
-                    jsonObject(
+                records.entries.associate { (key, record) ->
+                    key.value to jsonObject(
                         CATALOGUE_FIELDS,
                         record.extras,
                         "name" to record.name?.let(::JsonPrimitive),
+                        "url" to record.url?.let { JsonPrimitive(it.value) },
                         "removed" to JsonPrimitive(record.removed),
                         "updatedAt" to JsonPrimitive(record.updatedAt),
                     )
@@ -325,6 +344,10 @@ private fun jsonObject(known: Set<String>, extras: Map<String, JsonElement>, var
  * a file from a newer build readable. A known field of the wrong type is corruption and fails, as does
  * anything that isn't a JSON object at the top. A Book's file that isn't a plain name inside filesDir
  * reads as missing (null), so nothing outside filesDir is ever deleted and the other Books stay.
+ * A Catalogue is read under its [CatalogueKey], so a key written as http:// or with a trailing slash
+ * is the Catalogue the list shows and can remove; two keys for one Catalogue merge as a save does
+ * ([mergeRecord]). A key that isn't an http(s) URL reads as missing (logged), and the other
+ * Catalogues stay; a record's `url` that isn't a URL of its key's Catalogue reads as missing too.
  * Never throws.
  */
 fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
@@ -333,14 +356,29 @@ fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
         schemaVersion = root.int("schemaVersion") ?: CURRENT_SCHEMA,
         books = root.obj("books")?.mapValues { (id, entry) -> (entry as? JsonObject ?: corrupt("books.$id")).toEntry(id) }.orEmpty(),
         settings = root.obj("settings")?.let { Settings(it.int("fontStep") ?: DEFAULT_FONT_STEP, it.unknown(SETTINGS_FIELDS)) } ?: Settings(),
-        catalogues = root.obj("catalogues")?.mapValues { (url, record) ->
-            (record as? JsonObject ?: corrupt("catalogues.$url")).let {
-                CatalogueRecord(it.string("name"), it.boolean("removed") ?: false, it.long("updatedAt") ?: 0, it.unknown(CATALOGUE_FIELDS))
-            }
-        }.orEmpty(),
+        catalogues = root.obj("catalogues")?.let(::catalogueRecords).orEmpty(),
         extras = root.unknown(TOP_FIELDS),
     )
 }
+
+private fun catalogueRecords(records: JsonObject): Map<CatalogueKey, CatalogueRecord> =
+    records.entries.fold(emptyMap()) { read, (raw, value) ->
+        val fields = value as? JsonObject ?: corrupt("catalogues.$raw")
+        val written = HttpsUrl.parse(raw)
+        if (written == null) {
+            Log.w(TAG, "reading data: a catalogues key isn't an https URL; reading it as missing")
+            return@fold read
+        }
+        val key = written.catalogueKey
+        val record = CatalogueRecord(
+            name = fields.string("name"),
+            url = fields.string("url")?.let { HttpsUrl.parse(it) }?.takeIf { it.catalogueKey == key } ?: written.takeIf { it != key.url },
+            removed = fields.boolean("removed") ?: false,
+            updatedAt = fields.long("updatedAt") ?: 0,
+            extras = fields.unknown(CATALOGUE_FIELDS),
+        )
+        read + (key to (read[key]?.let { mergeRecord(it, record) } ?: record))
+    }
 
 private fun JsonObject.toEntry(id: String) = BookEntry(
     title = string("title").orEmpty(),

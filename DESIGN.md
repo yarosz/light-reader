@@ -166,11 +166,19 @@ Catalogue follows the field: "Add back Project Gutenberg", "Add back Standard Eb
 One tap adds it back, with no confirmation. Typing a removed shipped Catalogue's address adds it back
 too.
 
-**Stored.** `reading-data.json` gains `catalogues` (additive, ADR 0002), keyed by URL: the reader's
-last change to each Catalogue, `{name, removed, updatedAt}`. A shipped Catalogue has a record only
-once it has been removed, and keeps one once added back. Whether a Catalogue is shipped is decided by
-its URL alone. A merge keeps both sides' records and, for a Catalogue on both, the newer record whole
-(a tie goes to this process). A removal is a record rather than a missing entry, so it survives a
+**Stored.** `reading-data.json` gains `catalogues` (additive, ADR 0002): the reader's last change to
+each Catalogue, `{name, url, removed, updatedAt}`, keyed by the Catalogue's URL in one form. The key
+lowercases the host, drops the default port and the fragment, reads an empty path as "/" and ignores
+one trailing slash, so "www.gutenberg.org/ebooks.opds" is the shipped Gutenberg Catalogue and
+"https://books.example.org" and "https://books.example.org/" are one Catalogue. The key only
+compares: `url` keeps the address a Catalogue was added with when it differs from the key, and that
+is what is fetched. Reading the file re-keys every entry, so an `http://` or slashed key written by
+hand or by an import is the Catalogue the list shows and can remove; a key that isn't a URL reads as
+missing. A shipped Catalogue has a record only once it has been removed, and keeps one once added
+back. Whether a Catalogue is shipped is decided by its key alone. A merge keeps both sides' records
+and, for a Catalogue on both, the newer record's fields, with the unknown fields of both (the
+winner's on a clash), as for a Book. At a tie a removal beats an addition, so the result doesn't
+depend on which side saved last. A removal is a record rather than a missing entry, so it survives a
 merge with a file that still lists the Catalogue, and adding it back later wins the same way.
 
 **A page.** Back, and the Catalogue's name, the tapped entry's title, or the search terms in the
