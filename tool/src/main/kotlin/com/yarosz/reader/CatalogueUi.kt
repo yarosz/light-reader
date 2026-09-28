@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
+import com.thelightphone.sdk.SealedLightContext
 import com.thelightphone.sdk.ui.LightBarButton
 import com.thelightphone.sdk.ui.LightIcons
 import com.thelightphone.sdk.ui.LightScrollView
@@ -29,6 +30,12 @@ import com.thelightphone.sdk.ui.LightTopBarCenter
 import com.thelightphone.sdk.ui.designVerticalPxToSp
 import com.thelightphone.sdk.ui.gridUnitsAsDp
 import com.thelightphone.sdk.ui.lightClickable
+
+/**
+ * Whether the phone reports an internet connection now, from the SDK's LightConnectivity: the
+ * [PhoneOnline] a screen hands its view model. False when the phone can't say.
+ */
+fun SealedLightContext.phoneOnline(): Boolean = runCatching { connectivity.currentStatus.isConnected }.getOrDefault(false)
 
 /** A title's line height in ems: tighter than Copy's 1.5, so a wrapped title's second line sits close to its first. */
 private const val TITLE_LINE_HEIGHT = 1.2f

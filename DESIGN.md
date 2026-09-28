@@ -159,7 +159,9 @@ Removing the last one leaves Edit.
 **Add a Catalogue.** Title "Add a Catalogue", then a field labelled "Catalogue address" with the
 placeholder "https://…", then "Add". Tapping the field opens the SDK's text editor with the LP3
 keyboard, whose button is also "Add". An address with no scheme is taken as https://; http:// is
-tried once as https://, and a server with no HTTPS reads as NoHttps. The feed is fetched before
+tried once as https://, and a server with no HTTPS reads as NoHttps: a refused connection or a
+failed handshake, or a connect timeout while the phone reports it is online (offline, or when the
+phone can't say, a timeout stays Unreachable). The feed is fetched before
 anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. The
 name is the feed's title, else its host. An address already on the list reads "This Catalogue is
 already in your list." A failure that trying again can't fix hides "Add" until the address changes;

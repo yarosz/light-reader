@@ -65,7 +65,7 @@ class CatalogueViewModelTest {
         settle()
     }
 
-    private fun page(source: PageSource, catalogue: Catalogue = GUTENBERG) = CataloguePageViewModel(owner(), catalogue, source).also { settle() }
+    private fun page(source: PageSource, catalogue: Catalogue = GUTENBERG) = CataloguePageViewModel(owner(), catalogue, source, PHONE_CANT_SAY).also { settle() }
 
     private fun openBook(): CataloguePageViewModel {
         val list = page(PageSource.Feed(url("https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads"), popularEntry()))
@@ -175,7 +175,7 @@ class CatalogueViewModelTest {
 
     @Test
     fun `adding a Catalogue fetches it, names it by its title, and saves it at once`() {
-        val add = AddCatalogueViewModel(owner())
+        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
         add.typed("books.example.org/opds")
         settle()
         assertEquals(AddStatus.Added, add.status.value)
@@ -185,7 +185,7 @@ class CatalogueViewModelTest {
     @Test
     fun `an address that isn't a Catalogue, or one already listed, isn't added`() {
         answers[home.value] = Answer(body = "<html><body>hello</body></html>".toByteArray())
-        val add = AddCatalogueViewModel(owner())
+        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
         add.typed("https://books.example.org/opds")
         settle()
         assertEquals(AddStatus.Failed("https://books.example.org/opds", FailureCopy(COPY_UNREADABLE, retry = false)), add.status.value)
@@ -197,10 +197,23 @@ class CatalogueViewModelTest {
     @Test
     fun `an http address that has no https says so`() {
         answers["https://plain.example.org/opds"] = Answer(connectFailure = java.net.ConnectException("refused"))
-        val add = AddCatalogueViewModel(owner())
+        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
         add.typed("http://plain.example.org/opds")
         settle()
         assertEquals(FailureCopy(COPY_NO_HTTPS, retry = false), (add.status.value as AddStatus.Failed).copy)
+    }
+
+    @Test
+    fun `an http address that times out has no https only while the phone reports it is online`() {
+        answers["https://slow.example.org/opds"] = Answer(connectFailure = ConnectTimeoutException(java.net.SocketTimeoutException("connect timed out")))
+        val online = AddCatalogueViewModel(owner()) { true }
+        online.typed("http://slow.example.org/opds")
+        settle()
+        assertEquals(FailureCopy(COPY_NO_HTTPS, retry = false), (online.status.value as AddStatus.Failed).copy)
+        val unknown = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
+        unknown.typed("http://slow.example.org/opds")
+        settle()
+        assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), (unknown.status.value as AddStatus.Failed).copy)
     }
 
     @Test
@@ -214,7 +227,7 @@ class CatalogueViewModelTest {
         settle()
         assertEquals(listOf(STANDARD_EBOOKS_NEW_RELEASES), list.catalogues.value!!.map { it.catalogue })
         assertEquals(listOf(GUTENBERG), stored().removedShipped())
-        val add = AddCatalogueViewModel(owner())
+        val add = AddCatalogueViewModel(owner(), PHONE_CANT_SAY)
         settle()
         assertEquals(listOf(GUTENBERG), add.removedShipped.value)
         add.addBack(GUTENBERG)

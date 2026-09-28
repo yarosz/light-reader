@@ -63,7 +63,7 @@ class ShelfViewModelTest {
     private fun owner(transport: Transport) = ShelfOwner.of(dir) { ShelfOwner(dir, io, transport) { clock } }
 
     private fun shelf(transport: Transport = serving()): ShelfViewModel =
-        ShelfViewModel(owner(transport)).also {
+        ShelfViewModel(owner(transport), PHONE_CANT_SAY).also {
             it.refresh()
             settle()
         }
@@ -399,7 +399,7 @@ class ShelfViewModelTest {
     @Test
     fun `a download started before the Shelf loaded lands on the loaded reading data`() {
         seed("urn:a" to entry("A"))
-        val vm = ShelfViewModel(owner(serving()))
+        val vm = ShelfViewModel(owner(serving()), PHONE_CANT_SAY)
         val download = vm.download(link, "Stormy Night", null)
         settle()
         vm.refresh()
@@ -414,7 +414,7 @@ class ShelfViewModelTest {
     fun `two Shelves in one process share one owner, so a removal in one isn't undone by the other's flush`() {
         seed("urn:a" to entry("A"), "urn:b" to entry("B"))
         val first = shelf()
-        val second = ShelfViewModel(ShelfOwner.of(File(dir, ".")) { error("a second owner for the same directory") })
+        val second = ShelfViewModel(ShelfOwner.of(File(dir, ".")) { error("a second owner for the same directory") }, PHONE_CANT_SAY)
         assertSame(first.owner, second.owner)
         first.toggleEdit()
         first.remove(RowKey.Shelved("urn:a"))

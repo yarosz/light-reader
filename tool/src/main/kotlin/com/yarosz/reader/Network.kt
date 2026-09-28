@@ -5,6 +5,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URL
@@ -119,6 +120,9 @@ fun interface Transport {
 /** A redirect to http://, which the Tool never follows. */
 class InsecureRedirectException(location: String) : IOException("redirected to $location")
 
+/** The connection timed out before the server answered at all, as opposed to a read that stalled later. */
+class ConnectTimeoutException(cause: SocketTimeoutException) : IOException(cause.message, cause)
+
 /** Redirects followed before the last 3xx is returned as it is. */
 const val MAX_REDIRECTS = 5
 
@@ -140,6 +144,11 @@ class HttpsTransport(
             connection.readTimeout = READ_TIMEOUT_MS
             connection.instanceFollowRedirects = false
             try {
+                try {
+                    connection.connect()
+                } catch (e: SocketTimeoutException) {
+                    throw ConnectTimeoutException(e)
+                }
                 val status = connection.responseCode
                 val next = if (status in REDIRECT_STATUSES && hop < MAX_REDIRECTS) redirectTarget(current, connection.getHeaderField("Location")) else null
                 if (next != null) {
@@ -180,15 +189,27 @@ internal fun redirectTarget(from: HttpsUrl, location: String?): HttpsUrl? {
 /**
  * Why a request failed to connect. A certificate that isn't trusted says so, on any URL. Failing to
  * connect to an upgraded URL means its server has no HTTPS: a refused connection or a TLS failure
- * that isn't about the certificate (a plain-http server on port 443). So does a redirect to http.
- * Any other failure, such as an unknown host, would have failed over http too.
+ * that isn't about the certificate (a plain-http server on port 443). So does a redirect to http. A
+ * connect timeout on an upgraded URL means no HTTPS only when [phoneOnline], whether the phone
+ * reports an internet connection when the request fails, is true: a server that drops connections
+ * to port 443 looks like that, but so does a phone with no network, and when the phone can't say it
+ * counts as offline. Any other failure, such as an unknown host, would have failed over http too.
  */
-fun unreachable(url: HttpsUrl, e: IOException): NetworkFailure = when {
+fun unreachable(url: HttpsUrl, e: IOException, phoneOnline: Boolean): NetworkFailure = when {
     e is InsecureRedirectException -> NoHttps
     isCertificateFailure(e) -> UntrustedCertificate
     url.upgraded && (e is ConnectException || e is SSLException) -> NoHttps
+    url.upgraded && e is ConnectTimeoutException && phoneOnline -> NoHttps
     else -> Unreachable
 }
+
+/**
+ * Whether the phone reports an internet connection, asked only when a request fails. A caller that
+ * can't ask passes [PHONE_CANT_SAY], which [unreachable] treats as offline.
+ */
+typealias PhoneOnline = () -> Boolean
+
+val PHONE_CANT_SAY: PhoneOnline = { false }
 
 /**
  * A TLS failure caused by the certificate: Android reports a name mismatch as
@@ -201,16 +222,18 @@ private fun isCertificateFailure(e: IOException): Boolean =
         it is CertificateException || it is CertPathValidatorException || it is CertPathBuilderException
     }
 
-fun fetchPage(transport: Transport, url: HttpsUrl): Fetched<CataloguePage> = fetch(transport, url, ::parseFeed)
+fun fetchPage(transport: Transport, url: HttpsUrl, phoneOnline: PhoneOnline = PHONE_CANT_SAY): Fetched<CataloguePage> =
+    fetch(transport, url, phoneOnline, ::parseFeed)
 
 /** The search template from an OpenSearch description, the document a [CataloguePage.search] names. */
-fun fetchSearch(transport: Transport, description: HttpsUrl): Fetched<SearchTemplate> = fetch(transport, description, ::parseOpenSearch)
+fun fetchSearch(transport: Transport, description: HttpsUrl, phoneOnline: PhoneOnline = PHONE_CANT_SAY): Fetched<SearchTemplate> =
+    fetch(transport, description, phoneOnline, ::parseOpenSearch)
 
-private fun <T> fetch(transport: Transport, url: HttpsUrl, read: (InputStream, HttpsUrl) -> T?): Fetched<T> {
+private fun <T> fetch(transport: Transport, url: HttpsUrl, phoneOnline: PhoneOnline, read: (InputStream, HttpsUrl) -> T?): Fetched<T> {
     val response = try {
         transport.get(url)
     } catch (e: IOException) {
-        return Fetched.Failed(unreachable(url, e))
+        return Fetched.Failed(unreachable(url, e, phoneOnline()))
     }
     return response.use {
         if (it.status !in 200..299) return Fetched.Failed(HttpError(it.status))

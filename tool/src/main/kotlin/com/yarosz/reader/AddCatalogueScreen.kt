@@ -37,7 +37,7 @@ sealed interface AddStatus {
  * "Add a Catalogue": the typed address and how adding it is going. The feed is fetched before
  * anything is saved, and only a page that parses as a Catalogue is added, named by its title.
  */
-class AddCatalogueViewModel(private val owner: ShelfOwner) : LightViewModel<Unit>() {
+class AddCatalogueViewModel(private val owner: ShelfOwner, private val phoneOnline: PhoneOnline) : LightViewModel<Unit>() {
     val address = MutableStateFlow("")
     val status = MutableStateFlow<AddStatus>(AddStatus.Idle)
     val removedShipped: StateFlow<List<Catalogue>> =
@@ -63,7 +63,7 @@ class AddCatalogueViewModel(private val owner: ShelfOwner) : LightViewModel<Unit
             is AddPlan.Fetch -> {
                 status.value = AddStatus.Checking
                 viewModelScope.launch {
-                    status.value = when (val fetched = owner.fetchPage(plan.url)) {
+                    status.value = when (val fetched = owner.fetchPage(plan.url, phoneOnline)) {
                         is Fetched.Ok -> AddStatus.Added.also { owner.addCatalogue(catalogueFrom(fetched.value, plan.url)) }
                         is Fetched.Failed -> AddStatus.Failed(typed, feedFailureCopy(fetched.reason, isShipped(plan.url)))
                     }
@@ -85,7 +85,7 @@ class AddCatalogueScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit
     override val viewModelClass: Class<AddCatalogueViewModel>
         get() = AddCatalogueViewModel::class.java
 
-    override fun createViewModel() = AddCatalogueViewModel(ShelfOwner.of(lightContext.filesDir))
+    override fun createViewModel() = AddCatalogueViewModel(ShelfOwner.of(lightContext.filesDir), lightContext::phoneOnline)
 
     @Composable
     override fun Content() {

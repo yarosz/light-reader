@@ -127,9 +127,9 @@ class ShelfOwner(
      * over its Place and date (see [moveBook]). A retryable failure leaves "download failed · tap to
      * retry"; a permanent one leaves a [replacing] row that is on the Shelf saying why, and otherwise
      * nothing, for the caller to show. Removing the row ends the download
-     * as [DownloadResult.Removed].
+     * as [DownloadResult.Removed]. [phoneOnline] is asked if the server can't be reached (see [unreachable]).
      */
-    fun download(source: HttpsUrl, title: String, author: String?, replacing: String? = null): Deferred<DownloadResult> {
+    fun download(source: HttpsUrl, title: String, author: String?, phoneOnline: PhoneOnline, replacing: String? = null): Deferred<DownloadResult> {
         running[source]?.let { return it.result }
         transfers[source] = Transfer(title, author, transfers[source]?.startedAt ?: now(), TransferState.Running, replacing)
         val result = CompletableDeferred<DownloadResult>()
@@ -138,7 +138,7 @@ class ShelfOwner(
             val me = coroutineContext.job
             withContext(NonCancellable) {
                 val fetched = try {
-                    withContext(io) { downloader.fetch(source, title) { me.ensureActive() } }
+                    withContext(io) { downloader.fetch(source, title, phoneOnline) { me.ensureActive() } }
                 } catch (e: CancellationException) {
                     null
                 }
@@ -153,10 +153,11 @@ class ShelfOwner(
     }
 
     /** Fetches a Catalogue page on [io]. */
-    suspend fun fetchPage(url: HttpsUrl): Fetched<CataloguePage> = withContext(io) { fetchPage(transport, url) }
+    suspend fun fetchPage(url: HttpsUrl, phoneOnline: PhoneOnline): Fetched<CataloguePage> = withContext(io) { fetchPage(transport, url, phoneOnline) }
 
     /** Fetches the search template an OpenSearch description offers, on [io]. */
-    suspend fun fetchSearch(description: HttpsUrl): Fetched<SearchTemplate> = withContext(io) { fetchSearch(transport, description) }
+    suspend fun fetchSearch(description: HttpsUrl, phoneOnline: PhoneOnline): Fetched<SearchTemplate> =
+        withContext(io) { fetchSearch(transport, description, phoneOnline) }
 
     /** Puts [catalogue] on the list of Catalogues, or back on it, and saves at once. */
     fun addCatalogue(catalogue: Catalogue) = changeCatalogues { it.withCatalogue(catalogue, now()) }

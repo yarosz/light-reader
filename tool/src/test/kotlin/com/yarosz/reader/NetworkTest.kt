@@ -10,6 +10,7 @@ import java.security.cert.CertificateException
 import javax.net.ssl.SSLException
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -71,13 +72,36 @@ class NetworkTest {
     fun `an upgraded URL that refuses the connection or the handshake has no HTTPS, other failures are unreachable`() {
         val upgraded = HttpsUrl.parse("http://books.example.org/")!!
         val https = url("https://books.example.org/")
-        assertEquals(NoHttps, unreachable(upgraded, ConnectException("refused")))
-        assertEquals(NoHttps, unreachable(upgraded, SSLHandshakeException("not TLS")))
-        assertEquals(NoHttps, unreachable(upgraded, SSLException("Unsupported or unrecognized SSL message")))
-        assertEquals(Unreachable, unreachable(upgraded, UnknownHostException("offline")))
-        assertEquals(Unreachable, unreachable(upgraded, SocketTimeoutException()))
-        assertEquals(Unreachable, unreachable(https, ConnectException("refused")))
-        assertEquals(Unreachable, unreachable(https, SSLHandshakeException("not TLS")))
+        listOf(true, false).forEach { online ->
+            assertEquals(NoHttps, unreachable(upgraded, ConnectException("refused"), online))
+            assertEquals(NoHttps, unreachable(upgraded, SSLHandshakeException("not TLS"), online))
+            assertEquals(NoHttps, unreachable(upgraded, SSLException("Unsupported or unrecognized SSL message"), online))
+            assertEquals(Unreachable, unreachable(upgraded, UnknownHostException("offline"), online))
+            assertEquals(Unreachable, unreachable(upgraded, SocketTimeoutException("Read timed out"), online))
+            assertEquals(Unreachable, unreachable(https, ConnectException("refused"), online))
+            assertEquals(Unreachable, unreachable(https, SSLHandshakeException("not TLS"), online))
+        }
+    }
+
+    @Test
+    fun `a connect timeout on an upgraded URL is no HTTPS only when the phone reports it is online`() {
+        val upgraded = HttpsUrl.parse("http://books.example.org/")!!
+        val timeout = ConnectTimeoutException(SocketTimeoutException("failed to connect after 15000ms"))
+        assertEquals(NoHttps, unreachable(upgraded, timeout, phoneOnline = true))
+        assertEquals(Unreachable, unreachable(upgraded, timeout, phoneOnline = false))
+        assertEquals(Unreachable, unreachable(url("https://books.example.org/"), timeout, phoneOnline = true))
+    }
+
+    @Test
+    fun `fetching asks the phone only after a failure, and a phone that can't say counts as offline`() {
+        val timeout = ConnectTimeoutException(SocketTimeoutException("connect timed out"))
+        val transport = Transport { throw timeout }
+        var asked = 0
+        val upgraded = HttpsUrl.parse("http://books.example.org/opds")!!
+        assertEquals(Fetched.Failed(NoHttps), fetchPage(transport, upgraded) { asked++; true })
+        assertEquals(1, asked)
+        assertEquals(Fetched.Failed(Unreachable), fetchPage(transport, upgraded))
+        assertEquals(DownloadState.Failed(NoHttps), Downloader(transport, createTempDirectory("timeout").toFile()).download(upgraded, "T", { true }) {})
     }
 
     @Test
@@ -87,9 +111,9 @@ class NetworkTest {
         }
         val pathOnly = SSLHandshakeException("path").apply { initCause(CertPathValidatorException("expired")) }
         listOf(url("https://books.example.org/"), HttpsUrl.parse("http://books.example.org/")!!).forEach { at ->
-            assertEquals(UntrustedCertificate, unreachable(at, untrusted))
-            assertEquals(UntrustedCertificate, unreachable(at, pathOnly))
-            assertEquals(UntrustedCertificate, unreachable(at, SSLPeerUnverifiedException("Hostname books.example.org not verified")))
+            assertEquals(UntrustedCertificate, unreachable(at, untrusted, phoneOnline = true))
+            assertEquals(UntrustedCertificate, unreachable(at, pathOnly, phoneOnline = true))
+            assertEquals(UntrustedCertificate, unreachable(at, SSLPeerUnverifiedException("Hostname books.example.org not verified"), phoneOnline = true))
         }
     }
 
@@ -101,7 +125,7 @@ class NetworkTest {
         assertNull(redirectTarget(from, null))
         assertNull(redirectTarget(from, "ftp://books.example.org/b.epub"))
         assertNull(redirectTarget(from, "http://[bad"))
-        assertEquals(NoHttps, unreachable(from, kotlin.runCatching { redirectTarget(from, "HTTP://books.example.org/") }.exceptionOrNull() as IOException))
+        assertEquals(NoHttps, unreachable(from, kotlin.runCatching { redirectTarget(from, "HTTP://books.example.org/") }.exceptionOrNull() as IOException, phoneOnline = false))
     }
 
     @Test
