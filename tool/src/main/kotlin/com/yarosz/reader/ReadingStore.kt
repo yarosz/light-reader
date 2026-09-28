@@ -11,6 +11,11 @@ private const val TAG = "Reader"
 /** One lock per canonical directory, shared by every [ReadingStore] in the process. */
 private val saveLocks = ConcurrentHashMap<String, Any>()
 
+/** For tests, whose directories don't outlive them: forgets [dir]'s lock. */
+internal fun forgetSaveLock(dir: File) {
+    saveLocks.remove(dir.canonicalPath)
+}
+
 /**
  * The reading data file in [dir], saved so that a kill at any moment leaves a readable file. A save
  * writes the new text to a temp file, syncs it, and renames it over the main file in one step, so a

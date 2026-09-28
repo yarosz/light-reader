@@ -13,6 +13,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -237,5 +238,11 @@ class ShelfOwner(
         /** The process's owner of [filesDir], made by [create] the first time it is asked for. */
         fun of(filesDir: File, create: () -> ShelfOwner = { ShelfOwner(filesDir) }): ShelfOwner =
             synchronized(owners) { owners.getOrPut(filesDir.canonicalPath, create) }
+
+        /** For tests, whose directories don't outlive them: ends [filesDir]'s owner and forgets it and its save lock. */
+        internal fun forget(filesDir: File) {
+            synchronized(owners) { owners.remove(filesDir.canonicalPath) }?.scope?.cancel()
+            forgetSaveLock(filesDir)
+        }
     }
 }

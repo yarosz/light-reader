@@ -42,6 +42,7 @@ class ShelfViewModelTest {
 
     @AfterTest
     fun tearDown() {
+        ShelfOwner.forget(dir)
         Dispatchers.resetMain()
         dir.deleteRecursively()
     }

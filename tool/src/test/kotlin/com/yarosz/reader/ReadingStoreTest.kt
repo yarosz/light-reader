@@ -27,6 +27,7 @@ class ReadingStoreTest {
 
     @AfterTest
     fun cleanUp() {
+        forgetSaveLock(dir)
         dir.deleteRecursively()
     }
 
