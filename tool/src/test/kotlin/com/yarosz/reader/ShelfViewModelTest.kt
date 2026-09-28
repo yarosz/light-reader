@@ -78,9 +78,9 @@ class ShelfViewModelTest {
     private fun entry(title: String, place: Place? = null, source: String? = null, file: String? = "$title.epub") =
         BookEntry(title, file, place, finished = false, onShelf = true, source = source)
 
-    private fun ShelfViewModel.row(title: String) = rows.value!!.single { it.title == title }
+    private fun ShelfViewModel.row(title: String) = snapshot.value!!.rows.single { it.title == title }
 
-    private fun ShelfViewModel.titles() = rows.value!!.map { it.title }
+    private fun ShelfViewModel.titles() = snapshot.value!!.rows.map { it.title }
 
     private fun ShelfViewModel.downloadAgain(title: String) = download(row(title).tap as RowTap.Download)
 
@@ -93,7 +93,7 @@ class ShelfViewModelTest {
     @Test
     fun `an empty Shelf has no rows, and Edit can't start on it`() {
         val vm = shelf()
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
         vm.toggleEdit()
         assertEquals(ShelfMode.Browsing, vm.mode.value)
     }
@@ -134,7 +134,7 @@ class ShelfViewModelTest {
 
         vm.remove(RowKey.Shelved("urn:b"))
         settle()
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
         assertEquals(ShelfMode.Browsing, vm.mode.value)
     }
 
@@ -143,14 +143,14 @@ class ShelfViewModelTest {
         val place = Place("c1", 0, 3, "snippet", 10)
         store("urn:uuid:storm" to entry("Stormy Night", place, file = null).copy(onShelf = false))
         val vm = shelf()
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
         clock = 5_000
         val download = vm.download(link, "Stormy night (Catalogue)", "Catalogue Author")
-        assertEquals(listOf(ShelfRow(RowKey.Arriving(link), "Stormy night (Catalogue)", ROW_DOWNLOADING, RowTap.None)), vm.rows.value)
+        assertEquals(listOf(ShelfRow(RowKey.Arriving(link), "Stormy night (Catalogue)", ROW_DOWNLOADING, RowTap.None)), vm.snapshot.value?.rows)
         assertSame(download, vm.download(link, "again", null))
         settle()
         assertEquals(DownloadResult.Done("urn:uuid:storm"), download.done())
-        assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy night (Catalogue)", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.rows.value)
+        assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy night (Catalogue)", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.snapshot.value?.rows)
         vm.onAppPause()
         val added = stored().books.getValue("urn:uuid:storm")
         assertEquals(BookEntry("Stormy night (Catalogue)", stormFile, place, false, true, "Edward Bulwer-Lytton", link.value, 5_000), added)
@@ -204,7 +204,7 @@ class ShelfViewModelTest {
         vm.downloadAgain("Stormy Night")
         assertEquals(ROW_DOWNLOADING, vm.row("Stormy Night").detail)
         settle()
-        assertEquals(listOf(RowTap.Open(stormFile)), vm.rows.value!!.map { it.tap })
+        assertEquals(listOf(RowTap.Open(stormFile)), vm.snapshot.value!!.rows.map { it.tap })
     }
 
     @Test
@@ -233,7 +233,7 @@ class ShelfViewModelTest {
         )
         val vm = shelf()
         val download = vm.downloadAgain("Stored Title")
-        assertEquals(mapOf("Stored Title" to ROW_DOWNLOADING, "Other" to ROW_FILE_MISSING_SOURCE), vm.rows.value!!.associate { it.title to it.detail })
+        assertEquals(mapOf("Stored Title" to ROW_DOWNLOADING, "Other" to ROW_FILE_MISSING_SOURCE), vm.snapshot.value!!.rows.associate { it.title to it.detail })
         settle()
         assertEquals(DownloadResult.Done("urn:uuid:storm"), download.done())
         assertEquals(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stored Title", "Edward Bulwer-Lytton", RowTap.Open(stormFile)), vm.row("Stored Title"))
@@ -254,7 +254,7 @@ class ShelfViewModelTest {
         File(dir, stormFile).writeText("epub")
         val vm = shelf()
         assertEquals(DownloadResult.Done("urn:uuid:storm"), vm.downloadAgain("Stored Title").also { settle() }.done())
-        assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "On the Shelf", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.rows.value)
+        assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "On the Shelf", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.snapshot.value?.rows)
         vm.onAppPause()
         val books = stored().books
         assertEquals(BookEntry("On the Shelf", stormFile, newer, false, true, "Edward Bulwer-Lytton", link.value, 3), books.getValue("urn:uuid:storm"))
@@ -271,7 +271,20 @@ class ShelfViewModelTest {
         assertEquals(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy Night", ROW_CANT_DOWNLOAD_NOT_AN_EPUB, RowTap.None), vm.row("Stormy Night"))
         vm.toggleEdit()
         vm.remove(RowKey.Shelved("urn:uuid:storm"))
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
+    }
+
+    @Test
+    fun `a missing file whose source needs a login says so, and the row can only be removed`() {
+        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        val vm = shelf(FakeTransport(mapOf(link.value to Answer(status = 401))))
+        val download = vm.downloadAgain("Stormy Night")
+        settle()
+        assertEquals(DownloadResult.Failed(HttpError(401)), download.done())
+        assertEquals(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy Night", "can't download again · needs a login", RowTap.None), vm.row("Stormy Night"))
+        vm.toggleEdit()
+        vm.remove(RowKey.Shelved("urn:uuid:storm"))
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
     }
 
     @Test
@@ -281,7 +294,7 @@ class ShelfViewModelTest {
         assertEquals(ShelfRow(RowKey.Shelved("urn:a"), "A", ROW_FILE_MISSING, RowTap.None), vm.row("A"))
         vm.toggleEdit()
         vm.remove(RowKey.Shelved("urn:a"))
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
     }
 
     @Test
@@ -297,7 +310,7 @@ class ShelfViewModelTest {
         settle()
         assertFalse(download.isCancelled)
         assertEquals(DownloadResult.Removed, download.done())
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
         assertEquals(emptyList(), leftovers())
     }
 
@@ -310,7 +323,7 @@ class ShelfViewModelTest {
         settle()
         assertEquals(DownloadResult.Removed, download.done())
         assertEquals(emptyList(), transport.asked)
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
         assertFalse(File(dir, stormFile).exists())
     }
 
@@ -327,7 +340,7 @@ class ShelfViewModelTest {
         settle()
         assertEquals(DownloadResult.Removed, download.done())
         assertEquals(emptyList(), leftovers())
-        assertEquals(emptyList(), vm.rows.value)
+        assertEquals(emptyList(), vm.snapshot.value?.rows)
         vm.onAppPause()
         assertEquals(entry("Stormy Night", place, source = link.value, file = null).copy(onShelf = false), stored().books.getValue("urn:uuid:storm"))
     }
@@ -343,7 +356,7 @@ class ShelfViewModelTest {
         settle()
         assertEquals(DownloadResult.Removed, first.done())
         assertEquals(DownloadResult.Done("urn:uuid:storm"), second.done())
-        assertEquals(listOf(RowTap.Open(stormFile)), vm.rows.value!!.map { it.tap })
+        assertEquals(listOf(RowTap.Open(stormFile)), vm.snapshot.value!!.rows.map { it.tap })
         assertEquals(listOf(stormFile), leftovers())
     }
 
@@ -379,7 +392,7 @@ class ShelfViewModelTest {
         vm.toggleEdit()
         vm.askToRemove(RowKey.Arriving(link))
         settle()
-        assertEquals(listOf(RowKey.Shelved("urn:uuid:storm")), vm.rows.value!!.map { it.key })
+        assertEquals(listOf(RowKey.Shelved("urn:uuid:storm")), vm.snapshot.value!!.rows.map { it.key })
         assertEquals(ShelfMode.Editing(), vm.mode.value)
     }
 

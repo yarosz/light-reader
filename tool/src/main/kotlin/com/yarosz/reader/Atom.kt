@@ -227,15 +227,18 @@ internal fun isMetadataList(text: String): Boolean {
 
 private val LIFE_DATES = Regex("\\d{1,4}\\??-(?:\\d{1,4}\\??)?|-\\d{1,4}\\??")
 private val PLAIN_NAME = Regex("\\p{L}[\\p{L}.' -]*")
+private val OF = Regex("\\bof\\b")
 
 /**
  * An author's name for display. Only the simple inverted form un-inverts: "Austen, Jane" and
- * "Austen, Jane, 1775-1817" are "Jane Austen" (life dates dropped). Anything else stays as the feed
- * gave it: further commas, "Various", organisations, several authors, parenthesised full names.
+ * "Austen, Jane, 1775-1817" are "Jane Austen" (life dates dropped), and "Balzac, Honoré de" is
+ * "Honoré de Balzac". Anything else stays as the feed gave it: further commas, "Various",
+ * organisations, several authors, parenthesised full names, and a title after the comma ("Marcus
+ * Aurelius, Emperor of Rome"), which the word "of" gives away.
  */
 fun displayAuthor(name: String): String {
     val parts = name.split(',').map { it.trim() }
-    val simple = parts.size in 2..3 && parts.take(2).all { PLAIN_NAME.matches(it) } &&
+    val simple = parts.size in 2..3 && parts.take(2).all { PLAIN_NAME.matches(it) } && !OF.containsMatchIn(parts[1]) &&
         (parts.size == 2 || LIFE_DATES.matches(parts[2]))
     return if (simple) "${parts[1]} ${parts[0]}" else name
 }

@@ -15,14 +15,16 @@ import kotlinx.coroutines.launch
  * identifier, or failed) is cleared.
  */
 class ShelfViewModel(internal val owner: ShelfOwner) : LightViewModel<Unit>() {
-    val rows: StateFlow<List<ShelfRow>?> = owner.rows
+    /** What the Shelf knows; the screen shows its [ShelfSnapshot.rows]. Null until the reading data is loaded. */
+    val snapshot: StateFlow<ShelfSnapshot?> = owner.snapshot
     val mode = MutableStateFlow<ShelfMode>(ShelfMode.Browsing)
     val devStart: MutableStateFlow<DevStart?> = owner.devStart
 
     init {
         viewModelScope.launch {
-            owner.rows.collect { shown ->
+            snapshot.collect { latest ->
                 val editing = mode.value as? ShelfMode.Editing ?: return@collect
+                val shown = latest?.rows
                 when {
                     shown.isNullOrEmpty() -> mode.value = ShelfMode.Browsing
                     editing.confirming != null && shown.none { it.key == editing.confirming } -> mode.value = ShelfMode.Editing()
@@ -46,7 +48,7 @@ class ShelfViewModel(internal val owner: ShelfOwner) : LightViewModel<Unit>() {
     fun toggleEdit() {
         mode.value = when {
             mode.value is ShelfMode.Editing -> ShelfMode.Browsing
-            rows.value.isNullOrEmpty() -> return
+            snapshot.value?.rows.isNullOrEmpty() -> return
             else -> ShelfMode.Editing()
         }
     }

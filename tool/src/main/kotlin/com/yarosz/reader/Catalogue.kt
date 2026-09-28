@@ -5,11 +5,13 @@ import java.util.Locale
 /** A Catalogue: a name and the Atom feed it starts at (ADR 0001). */
 data class Catalogue(val name: String, val url: HttpsUrl)
 
-/** The Catalogues the Tool ships with. The reader can remove either. */
-val SHIPPED_CATALOGUES = listOf(
-    Catalogue("Project Gutenberg", HttpsUrl.parse("https://www.gutenberg.org/ebooks.opds/")!!),
-    Catalogue("Standard Ebooks: new releases", HttpsUrl.parse("https://standardebooks.org/feeds/atom/new-releases")!!),
-)
+val GUTENBERG = Catalogue("Project Gutenberg", HttpsUrl.parse("https://www.gutenberg.org/ebooks.opds/")!!)
+
+/** Its search covers all of Standard Ebooks, not only the new releases (D14.3). */
+val STANDARD_EBOOKS_NEW_RELEASES = Catalogue("Standard Ebooks: new releases", HttpsUrl.parse("https://standardebooks.org/feeds/atom/new-releases")!!)
+
+/** The Catalogues the Tool ships with. The reader can remove either, and add it back. */
+val SHIPPED_CATALOGUES = listOf(GUTENBERG, STANDARD_EBOOKS_NEW_RELEASES)
 
 /**
  * One fetched page of a Catalogue. [next] is the following page (rel="next"). [search] is how to

@@ -3,7 +3,7 @@ id = "com.yarosz.reader"
 label = "Reader"
 versionCode = 1
 versionName = "0.1.0"
-permissions = ["android.permission.INTERNET"]
+permissions = ["android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"]
 capabilities = []
 orientation = "portrait"
 # LightOS on a real Light Phone III. Light builds releases from this committed value, so it must stay

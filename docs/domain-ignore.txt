@@ -115,6 +115,7 @@ Offline
 Missing file
 Density is 480 dpi
 N2 follow-ups
+N3 follow-ups
 N6 bar missed
 Emulator fidelity
 Reading texture
@@ -122,3 +123,48 @@ Revisit if
 
 # Possible domain terms, left for the next domain pass (not defined in CONTEXT.md yet)
 Downloads
+
+# N3c: Catalogue screens and their state. The *Screen names follow the SDK's LightScreen; "screen" is
+# an _Avoid_ word for Page only in the reading sense.
+AddCatalogueScreen
+AddCatalogueViewModel
+CatalogueListScreen
+CatalogueListViewModel
+CatalogueListMode
+CataloguePageScreen
+CataloguePageViewModel
+TextEntryScreen
+AddPlan
+AddStatus
+ListedCatalogue
+BookDetail
+DetailAction
+ShelfMatch
+ShelfSnapshot
+FailureCopy
+More
+# A Catalogue page is one fetch of its feed, not a reading Page (see CONTEXT.md "Page").
+PageState
+
+# N3c: storage and network plumbing
+CatalogueKey
+CatalogueRecord
+
+# N3c: UI copy (DESIGN.md "Catalogues"). Standard Ebooks is a name, not "ebook"; the failure line is
+# about a download's file before it is a Book; "works" here is a verb, not a Book.
+Add back
+$ADD_BACK ${catalogue.name}
+$COPY_UNTRUSTED $COPY_UNTRUSTED_SELF_HOSTED
+Search all Standard Ebooks
+This file isn't an EPUB the Reader can open.
+You're offline. Your Shelf still works.
+
+# N3c: DESIGN.md "Catalogues" headings
+A page
+Add a Catalogue
+Book detail
+Failure copy
+Removing
+Search
+Stored
+The list

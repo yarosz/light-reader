@@ -28,6 +28,13 @@ class HttpsUrl private constructor(val value: String, val upgraded: Boolean) {
     override fun hashCode() = value.hashCode()
     override fun toString() = value
 
+    /**
+     * This URL no longer marked [upgraded]: what a stored Catalogue keeps. Having been typed as
+     * http:// describes the request that added it; a later request isn't an upgrade, and failing to
+     * reach it is Unreachable, with Retry.
+     */
+    val plain: HttpsUrl get() = if (upgraded) HttpsUrl(value, upgraded = false) else this
+
     companion object {
         /**
          * [raw] resolved against [base] when relative, with http:// rewritten to https://. Null for
@@ -140,6 +147,7 @@ class HttpsTransport(
             connection.readTimeout = READ_TIMEOUT_MS
             connection.instanceFollowRedirects = false
             try {
+                connection.connect()
                 val status = connection.responseCode
                 val next = if (status in REDIRECT_STATUSES && hop < MAX_REDIRECTS) redirectTarget(current, connection.getHeaderField("Location")) else null
                 if (next != null) {
@@ -179,9 +187,18 @@ internal fun redirectTarget(from: HttpsUrl, location: String?): HttpsUrl? {
 
 /**
  * Why a request failed to connect. A certificate that isn't trusted says so, on any URL. Failing to
- * connect to an upgraded URL means its server has no HTTPS: a refused connection or a TLS failure
- * that isn't about the certificate (a plain-http server on port 443). So does a redirect to http.
- * Any other failure, such as an unknown host, would have failed over http too.
+ * connect to an upgraded URL means its server has no HTTPS: a refused connection, or a TLS failure
+ * that isn't about the certificate (a plain-http server on port 443). So does a redirect to http, on
+ * any URL. Every hop of a redirected request is judged by [url], the one first asked for: a refused
+ * connection to the https:// server a typed http:// address redirected to still reads as NoHttps.
+ *
+ * A connect timeout is Unreachable, upgraded or not. A server that drops connections to port 443
+ * times out like that, but so does a phone whose network has no internet, so a timeout could only
+ * mean no HTTPS on a network Android has VALIDATED. The SDK's LightConnectivity reports only
+ * NET_CAPABILITY_INTERNET, which a captive or dead network also has, and asking ConnectivityManager
+ * needs a Context, which a Light Tool can't hold. Android's connect() includes the TLS handshake, so
+ * a handshake that stalls is a connect timeout too. Any other failure, such as an unknown host, would
+ * have failed over http too.
  */
 fun unreachable(url: HttpsUrl, e: IOException): NetworkFailure = when {
     e is InsecureRedirectException -> NoHttps

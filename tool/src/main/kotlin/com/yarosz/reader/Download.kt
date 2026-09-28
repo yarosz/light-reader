@@ -87,7 +87,11 @@ class Downloader(
     }
 
     /** [fetch] then [keep]. */
-    fun download(url: HttpsUrl, fallbackTitle: String, onProgress: (DownloadState.Downloading) -> Unit): DownloadState.Finished =
+    fun download(
+        url: HttpsUrl,
+        fallbackTitle: String,
+        onProgress: (DownloadState.Downloading) -> Unit,
+    ): DownloadState.Finished =
         when (val fetched = fetch(url, fallbackTitle, onProgress)) {
             is Checked -> keep(fetched)
             is DownloadState.Failed -> fetched

@@ -10,6 +10,7 @@ import java.security.cert.CertificateException
 import javax.net.ssl.SSLException
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -75,9 +76,18 @@ class NetworkTest {
         assertEquals(NoHttps, unreachable(upgraded, SSLHandshakeException("not TLS")))
         assertEquals(NoHttps, unreachable(upgraded, SSLException("Unsupported or unrecognized SSL message")))
         assertEquals(Unreachable, unreachable(upgraded, UnknownHostException("offline")))
-        assertEquals(Unreachable, unreachable(upgraded, SocketTimeoutException()))
+        assertEquals(Unreachable, unreachable(upgraded, SocketTimeoutException("Read timed out")))
         assertEquals(Unreachable, unreachable(https, ConnectException("refused")))
         assertEquals(Unreachable, unreachable(https, SSLHandshakeException("not TLS")))
+    }
+
+    @Test
+    fun `a connect timeout on an upgraded URL is unreachable, since the phone can't say its network is validated`() {
+        val transport = Transport { throw SocketTimeoutException("failed to connect to books.example.org/203.0.113.9 (port 443) after 15000ms") }
+        val upgraded = HttpsUrl.parse("http://books.example.org/opds")!!
+        assertEquals(Fetched.Failed(Unreachable), fetchPage(transport, upgraded))
+        assertEquals(Fetched.Failed(Unreachable), fetchSearch(transport, upgraded))
+        assertEquals(DownloadState.Failed(Unreachable), Downloader(transport, createTempDirectory("timeout").toFile()).download(upgraded, "T") {})
     }
 
     @Test

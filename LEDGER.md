@@ -1,8 +1,7 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2) and N2 (reading data store) done; N3 under way (pure core and Shelf done; next the Catalogue screens)
-RELEASE HOLD: Don't tag a release until N3c lands (Add is a label until then).
-LAST SESSION: 2026-09-27
+STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done; next is the pre-N4 rename PR, then N4 (Chapters + Progress)
+LAST SESSION: 2026-09-28
 
 ## v1 user flow
 
@@ -31,10 +30,15 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | #3 | Phone builds bind to LightOS (#4) | `serverPackage = "com.lightos"` committed (Light builds releases from it); `scripts/emulator-build.sh` swaps in the emulator's package for emulator builds only; a unit test and `light-build.sh` guard the committed line; `signoff/lp3` green on the fix |
 | P | Paginator v2 (#6–#9) | Page-end rules in both directions, 480 dpi type scale, portrait lock; 10 K windows packed from the Place (ADR 0007). LP3, Pride and Prejudice 165 K-character chapter, P90: open 111 ms, font change 122 ms (was 1,940 / 870); seam-adjacent open 194 ms. `mise run perf` reproduces it. Parser follow-ups #10, #11 |
 | N2 | Reading data store | `reading-data.json` per ADR 0002 (Place = Spine item, block, offset, snippet; Books keyed by `dc:identifier`), atomic replace with a separate `.bak`, a `.corrupt` copy of an unparseable file, debounced saves plus a flush on pause, merge tests; 105 unit tests, 19 mutations caught. Emulator and LP3: kill and relaunch lands on the same Page, the font step persists, a corrupt file opens at the `.bak` Place; emulator: main's build over it and back keeps the Place, a schemaVersion 2 file keeps its unknown fields |
+| N3 | Shelf + Catalogues (#15, #16, #17, #19) | One Atom parser (OPDS, OpenSearch), https only with typed http:// tried once, redirects followed in code, every XML document through one untrusted-XML parser with size caps; foreground downloads into filesDir owned by the process's `ShelfOwner`, copy-protected EPUBs refused; the Shelf (order, Edit, missing files), the Catalogue list, pages with search and "More", Book detail matched by source, Add a Catalogue, every failure's D14/D15 copy (`DESIGN.md` "Shelf", "Catalogues"); an additive `catalogues` field in `reading-data.json`; 310 unit tests. Emulator: a Gutenberg Book (Pride and Prejudice) and a Standard Ebooks Book downloaded, showed on the Shelf, and each reopened at its own Place offline after a force-stop |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
 untrimmed line boxes (`LineHeightStyle`).
+
+Found while doing N3: Android's Expat drops an undeclared XML entity silently (seen on the emulator)
+where the JVM's parser reports it, so XHTML's named entities are rewritten as numeric references
+before parsing.
 
 ## Hardware (2026-09-24, LP3 TLP301, Android 14, LightOS 582)
 
@@ -66,62 +70,12 @@ Ordered. Each item ends on its _done-when_.
   `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: the end page's
   "Back to Shelf" sets Finished, and turning back or jumping away from the end clears it. At the
   first release after N2: the upgrade-path test (release N over N-1 with a populated store).
-- **N3 · Shelf + Catalogues (ADR 0001, 0005).** One Atom parser (OPDS acquisition links and EPUB
-  enclosures); shipped Gutenberg + "Standard Ebooks: new releases"; acquisition preference: no
-  images or unmarked over with images, then EPUB3 > EPUB2, until images ship (flip
-  `PREFER_IMAGES_EDITION` in `Catalogue.kt`), and one "Add to Shelf" per Book across its page's
-  entries (`bestDownload`); foreground downloads with visible states; Book identity by
-  `dc:identifier`; copy-protection detection. OPDS search via the feed's OpenSearch link, or its ready
-  Atom template as Calibre gives (hidden when absent); Catalogue entry → detail page ("Add to Shelf"); Shelf rows open the Book. Shelf order: in
-  progress (recent first), not started, finished. "Edit" in the top bar removes a Book (file deleted,
-  Place kept). Error and offline copy. HTTPS only; a typed http:// tries https:// once. Measure a
-  190 KB Gutenberg Spine item on the emulator as soon as one opens. _Done when:_ a Book from each
-  shipped Catalogue downloads, appears on the Shelf, and resumes its own Place offline.
-  Pure core done (no UI yet): `Atom.kt` (feeds, OpenSearch), `Catalogue.kt` (shapes, shipped
-  Catalogues, acquisition preference), `Network.kt` (`HttpsUrl`, `Transport`, typed failures),
-  `Download.kt` (temp, validate, rename; `DownloadState`), copy-protection in `Epub.kt`.
-  Shelf done (`DESIGN.md` "Shelf"): the first screen, a tap opens the Reader at the Place and back
-  returns; order, second-line states, empty state, Edit with inline confirmation, removal (file
-  deleted, Place kept, a running download cancelled), missing file (downloads again from the Book's
-  source, or can only be removed). `BookEntry` gained `source`, `author` and `addedAt` (additive,
-  ADR 0002). `ShelfOwner.of(filesDir)` is the process's one owner of the reading data, its saver,
-  which files exist and the downloads (LightOS can recreate the activity in the same process without
-  clearing old view models); the Shelf and Reader view models are views onto it, and `ReadingStore`
-  saves are exclusive per directory besides. `ShelfOwner.download` runs foreground downloads through
-  `HttpsTransport` and `Downloader` into filesDir, where every Book lives, and ends as Done, Failed or
-  Removed, never a cancellation. A download lands (renames) on the main thread, where removals delete,
-  so a removed download never leaves a file and a removal never deletes one that landed after it. A
-  retryable failure stays as a row, a permanent one returns to the caller, or stays on the row that
-  downloaded its missing file again. A re-download under a new `dc:identifier` moves the row's Place.
-  dev-start opens `files/alice.epub` past the Shelf and writes nothing; `ci.sh` pushes the test
-  fixture when a device has none (and removes it after), checks `reading-data.json` is byte-identical
-  after each round trip, and checks a plain launch renders the Shelf ("shelf rows=" in logcat).
-  XHTML's named entities are rewritten as numeric references before parsing: Android's Expat drops
-  an undeclared entity silently (seen on the emulator), where the JVM's parser reported it.
-  Next: the Catalogue screens (the list with the offline line, browse, search, detail with "Add to
-  Shelf" calling `ShelfViewModel.download`), with "Add" and "Add a Book" opening the list; the
-  downloading, failed and offline screenshots come with them. N3c's first task is D15:
-  `UntrustedCertificate` becomes retryable, so its row reads "download failed · tap to retry" and
-  "can't download again · certificate not trusted" goes (`DESIGN.md` marks both).
-  Follow-up: `ci.sh` checks the size of the alice fixture it pushed, since a host-side cut can still
-  install a truncated file.
-  Hardening done: every XML document (feeds, OpenSearch, container, OPF, encryption, chapters) goes
-  through one untrusted-XML parser (`Xml.kt`: no external entity or DTD is ever read, DOCTYPEs still
-  parse); caps on feeds (8 MB), one text construct (64 K characters), package XML (4 MB), chapters
-  (32 MB), and Books (300 MB, with 16 MB always left free); a Downloader deletes stale
-  `download-*.part` files a killed process left; `UntrustedCertificate` for a certificate failure;
-  redirects followed in code, https only. An EPUB2 chapter's XHTML named entities (such as
-  `&nbsp;`) read as their characters from a built-in table, with no DTD read. A Catalogue row's
-  second line (`CatalogueEntry.byline`) is the author, else a one-line `<content>` of at most 80
-  characters that isn't a "Key: value" pair, which gives Gutenberg's list rows their authors (the
-  summary stays for the detail page). `bestDownload` answers only for one Book's page: null unless
-  every entry has the same title.
-  N3c's screens, labels and copy (the Catalogue list, a Book's detail page and whether it is already
-  on the Shelf, Add a Catalogue, restoring removed shipped Catalogues) are specified in DESIGN.md
-  under "Catalogues", which N3c adds. That section is the one place they live. Two engineering
-  notes: a Catalogue entry matches a Book when any acquisition link on the entry's page equals the
-  Book's source, passing `replacing` so the Place is kept; and whether a Catalogue is shipped is
-  decided by its URL.
+- **N3 follow-ups.** `ci.sh` checks the size of the alice fixture it pushed, since a host-side cut
+  can still install a truncated file. Images: flip `PREFER_IMAGES_EDITION` in `Catalogue.kt` when
+  images ship. The "This Book has no text." copy fix rides on N4 (below) or the next reading-view
+  change, whichever lands first. A connect timeout on a typed http:// address reads NoHttps only on a
+  VALIDATED network, which the SDK can't report today, so it is Unreachable; revisit if
+  `LightConnectivity` gains validation.
 - **Rename to the glossary (pre-N4 refactor PR).** Behaviour-preserving renames so the code says what
   `CONTEXT.md` says: `Chapter` → `SpineItem` (and the package reader's `SpineItem` → `SpineRef`);
   `Position` → `SpinePoint(item, char)`; `Transfer`/`TransferState` → `Download` with a nested
@@ -136,17 +90,18 @@ Ordered. Each item ends on its _done-when_.
   ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back or jumping away from
   the end clears it. A Spine item with no table-of-contents entry is labelled by its first heading,
   else "Chapter N" counted over listed Chapters, never "Section N"; front matter shows the Book title.
-  A copy fix rides on this first reading-view change: `ReaderScreen.kt`'s "This book has no text."
-  becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in `docs/domain-ignore.txt`
-  goes. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
+  A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
+  book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
+  `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
   tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`
   (17/20/24.5/30/36 sp, default 20; one constants file); one-line first-run hint; keep the screen on
   while reading (release after 10 min without a turn); Page text in semantics; About screen (version,
   licenses incl. Literata OFL, copy-protected explainer + where to find DRM-free Books, repo URL as text, the
-  ADR 0003 no-network sentence).
-  _Done when:_ verified with `mise run ui`.
+  ADR 0003 no-network sentence). The detail page's CopyProtected line then points to About's list.
+  _Done when:_ verified with `mise run ui`, including CopyProtected's pointer to About's DRM-free
+  list.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
   Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the

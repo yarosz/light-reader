@@ -3,22 +3,17 @@ package com.yarosz.reader
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import com.thelightphone.sdk.InitialScreen
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
@@ -31,7 +26,6 @@ import com.thelightphone.sdk.ui.LightThemeController
 import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.LightTopBar
 import com.thelightphone.sdk.ui.LightTopBarCenter
-import com.thelightphone.sdk.ui.designVerticalPxToSp
 import com.thelightphone.sdk.ui.gridUnitsAsDp
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
@@ -39,13 +33,9 @@ import java.io.File
 /** Logcat tag; `scripts/ci.sh` waits for the "shelf rows=" line to know the Shelf rendered. */
 private const val TAG = "Reader"
 
-/** A title's line height in ems: tighter than Copy's 1.5, so a wrapped title's second line sits close to its first. */
-private const val TITLE_LINE_HEIGHT = 1.2f
-
 /**
  * The Shelf: the Books on this phone, text only, in the order of [shelfRows]. A tap opens a Book at
- * its Place in the Reader. "Add" and "Add a Book" will open the list of Catalogues, which the next
- * change builds; until then they are labels only.
+ * its Place in the Reader. "Add" and "Add a Book" open the list of Catalogues.
  */
 @InitialScreen
 class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, ShelfViewModel>(sealedActivity) {
@@ -58,7 +48,8 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
     @Composable
     override fun Content() {
         val themeColors by LightThemeController.colors.collectAsState()
-        val rows by viewModel.rows.collectAsState()
+        val snapshot by viewModel.snapshot.collectAsState()
+        val rows = snapshot?.rows
         val mode by viewModel.mode.collectAsState()
         val devStart by viewModel.devStart.collectAsState()
 
@@ -80,7 +71,7 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
                         onClick = viewModel::toggleEdit,
                     ),
                     center = LightTopBarCenter.Text(SHELF_TITLE),
-                    rightButton = LightBarButton.Text(SHELF_ADD, onClick = null),
+                    rightButton = LightBarButton.Text(SHELF_ADD, onClick = ::openCatalogues),
                     modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
                 )
                 when {
@@ -96,6 +87,10 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
 
     private fun open(file: File, start: DevStart? = null) {
         navigateTo({ ReaderScreen(it, file, start) })
+    }
+
+    private fun openCatalogues() {
+        navigateTo({ CatalogueListScreen(it) })
     }
 
     private fun tap(tap: RowTap) {
@@ -118,60 +113,25 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
                 text = SHELF_ADD_A_BOOK,
                 variant = LightTextVariant.Copy,
                 align = TextAlign.Center,
-                modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+                modifier = Modifier.padding(top = 1f.gridUnitsAsDp()).lightClickable(onClick = ::openCatalogues),
             )
         }
     }
 
     @Composable
     private fun ShelfRowView(row: ShelfRow, mode: ShelfMode) {
-        val rowPadding = Modifier.fillMaxWidth().padding(horizontal = SIDE_MARGIN, vertical = 0.75f.gridUnitsAsDp())
         if (mode is ShelfMode.Editing && mode.confirming == row.key) {
-            Column(rowPadding) {
-                Title(row.title)
-                LightText(text = SHELF_CONFIRM_REMOVE, variant = LightTextVariant.Detail)
-                Row(Modifier.padding(top = 0.5f.gridUnitsAsDp())) {
-                    LightText(
-                        text = SHELF_REMOVE,
-                        variant = LightTextVariant.Copy,
-                        modifier = Modifier.lightClickable { viewModel.remove(row.key) }.padding(end = 2f.gridUnitsAsDp()),
-                    )
-                    LightText(text = SHELF_CANCEL, variant = LightTextVariant.Copy, modifier = Modifier.lightClickable(onClick = viewModel::cancelRemove))
-                }
-            }
+            ConfirmRemoval(row.title, SHELF_CONFIRM_REMOVE, SHELF_REMOVE, SHELF_CANCEL, onRemove = { viewModel.remove(row.key) }, onCancel = viewModel::cancelRemove)
             return
         }
         val tappable = mode == ShelfMode.Browsing && row.tap != RowTap.None
-        Row(
-            (if (tappable) Modifier.lightClickable { tap(row.tap) } else Modifier).then(rowPadding),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Title(row.title)
-                row.detail?.let { LightText(text = it, variant = LightTextVariant.Detail, lighten = true, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            }
-            if (mode is ShelfMode.Editing) {
-                Box(Modifier.lightClickable { viewModel.askToRemove(row.key) }.padding(start = 1f.gridUnitsAsDp())) {
-                    LightText(text = SHELF_REMOVE, variant = LightTextVariant.Copy, lighten = true)
-                }
-            }
-        }
-    }
-
-    /** A Book's title, verbatim, on at most two lines. */
-    @Composable
-    private fun Title(text: String) {
-        val copy = LightThemeTokens.typography.copy
-        BasicText(
-            text = text,
-            style = copy.copy(
-                color = LightThemeTokens.colors.content,
-                fontSize = copy.fontSize.value.designVerticalPxToSp(),
-                lineHeight = (copy.fontSize.value * TITLE_LINE_HEIGHT).designVerticalPxToSp(),
-                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
-            ),
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        ListRow(
+            row.title,
+            row.detail,
+            onClick = if (tappable) ({ tap(row.tap) }) else null,
+            trailing = if (mode is ShelfMode.Editing) ({
+                TextAction(SHELF_REMOVE, { viewModel.askToRemove(row.key) }, Modifier.padding(start = 1f.gridUnitsAsDp()), lighten = true)
+            }) else null,
         )
     }
 }

@@ -83,8 +83,9 @@ set tighter (1.2) than body copy.
 | In progress | "author · 42%" (see below) | opens the Book |
 | Never opened | "not started" | opens the Book |
 | Downloading | "downloading…" | nothing |
-| Failed, retryable | "download failed · tap to retry" (an untrusted certificate too, D15, lands with N3c) | downloads again |
-| Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" ("· certificate not trusted" goes with D15, lands with N3c) | nothing; the Book can only be removed |
+| Failed, retryable | "download failed · tap to retry" | downloads again |
+| Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" | nothing; the Book can only be removed |
+| Failed for good, the source needs a login (401) | "can't download again · needs a login" | nothing; the Book can only be removed |
 | Finished | "finished" (see below) | opens the Book |
 | File missing, source known | "file missing · tap to download again" | downloads again, keeps the Place |
 | File missing, no source | "file missing" | nothing; the Book can only be removed |
@@ -106,17 +107,20 @@ record, and removing a Book that is downloading cancels the download. Removing t
 Edit.
 
 **Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
-failures (Unreachable, HttpError, DiskError, and UntrustedCertificate under D15, lands with N3c) leave
-a row reading "download failed · tap to retry". Permanent failures (CopyProtected, NotAnEpub, and also NoHttps, which a
-retry can't fix) of a download from a Catalogue show their copy on the Book's detail page and add
-nothing to the Shelf. A copy-protected Book must never become a row that can't be read. When
+failures (Unreachable, HttpError other than 401, DiskError, and UntrustedCertificate, D15) leave a
+row reading "download failed · tap to retry". An untrusted certificate is retryable because public
+Wi-Fi intercepts TLS until the reader signs in to it. Permanent failures (CopyProtected, NotAnEpub,
+and also NoHttps and a 401, which a retry can't fix, since sign-in doesn't exist) of a download from a
+Catalogue show their copy on the Book's
+detail page and add nothing to the Shelf. A copy-protected Book must never become a row that can't be read. When
 downloading a missing file again from the Shelf fails for good, the Book's row says why ("can't
 download again · …", table above) and can then only be removed. That state lives in memory: after a
 relaunch the row reads "file missing · tap to download again" again, and a tap tries once more.
 
 **Offline.** Nothing changes on the Shelf, because everything there works offline: no rows are
 removed and nothing is greyed out. "You're offline. Your Shelf still works." is one line of
-secondary text at the top of the Catalogue list, shown when Add is tapped offline.
+secondary text at the top of the Catalogue list, shown while the phone reports no internet
+connection (see "Catalogues").
 
 **Missing file.** A Book whose file is gone reads "file missing · tap to download again", and the tap
 downloads it again from the Book's source, keeping its Place. If the download declares a different
@@ -126,3 +130,117 @@ allows. If a Book with the new identifier is already on the Shelf, the two rows 
 keeps its own title and date added, takes whichever Place is newer, and the old row leaves the
 Shelf. A Book with no known source (a future
 N7 import) reads "file missing" and can only be removed.
+
+## Catalogues
+
+Where Books are found and added. Product rulings from the advisor (D14, D15 and the N3c rulings,
+2026-09-27); copy is verbatim, and `CatalogueCopy.kt` holds it. Copy capitalises Book, Shelf and
+Catalogue and keeps "place" lowercase; row second lines stay lowercase, because they are states, not
+sentences.
+
+**The list.** "Add" and "Add a Book" on the Shelf open it. `LightTopBar`: back, "Add a Book" in the
+centre (the title, kept for continuity), and "Edit" on the right, which reads "Done" while editing
+and is hidden when the list is empty. Rows are each Catalogue by name: the shipped ones first, in
+shipped order, then the reader's own, oldest first. A Catalogue the reader added has its host as a
+second line ("books.example.org"); a shipped one has none. The last row is "Add a Catalogue", shown
+while browsing.
+
+**Offline.** "You're offline. Your Shelf still works." is one line of secondary text at the top of
+the list, shown while the phone reports no internet connection. The list follows the SDK's
+`LightConnectivity` reports while it is open (which needs the normal `ACCESS_NETWORK_STATE`
+permission), so the line comes and goes with the connection. When the phone can't report, the line
+is not shown, so it never claims more than the phone did. The last fetch's result isn't used: one
+unreachable server doesn't mean the phone is offline.
+
+**Removing.** In Edit every row's trailing edge reads "Remove", in secondary text. Tapping it turns
+the row, inline, into the Catalogue's name, then "Remove this Catalogue? Books you added from it stay
+on your Shelf.", then "Remove" and "Cancel". Any Catalogue can be removed, the shipped ones too.
+Removing the last one leaves Edit.
+
+**Add a Catalogue.** Title "Add a Catalogue", then a field labelled "Catalogue address" with the
+placeholder "https://…", then "Add". Tapping the field opens the SDK's text editor with the LP3
+keyboard, whose button is also "Add". An address with no scheme is taken as https://; http:// is
+tried once as https://, and a server with no HTTPS reads as NoHttps: a refused connection or a
+failed handshake. A connect timeout stays Unreachable (see the note under the failure copy). The
+Catalogue is stored as https://, so once added it is never "tried as https" again: a later refused
+connection is Unreachable, with Retry. The feed is fetched before
+anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. The
+name is the feed's title, else its host. An address already on the list reads "This Catalogue is
+already in your list." A failure shows below the field in body text (the SDK's Paragraph size) at
+line height 1.2, smaller than the rows. A failure that trying again can't fix hides "Add" until the address changes;
+one that can reads "Retry". Only when a shipped Catalogue has been removed, one row per removed
+Catalogue follows the field: "Add back Project Gutenberg", "Add back Standard Ebooks: new releases".
+One tap adds it back, with no confirmation. Typing a removed shipped Catalogue's address adds it back
+too.
+
+**Stored.** `reading-data.json` gains `catalogues` (additive, ADR 0002): the reader's last change to
+each Catalogue, `{name, url, removed, updatedAt}`, keyed by the Catalogue's URL in one form. The key
+lowercases the host, drops the default port and the fragment, reads an empty path as "/" and ignores
+one trailing slash, so "www.gutenberg.org/ebooks.opds" is the shipped Gutenberg Catalogue and
+"https://books.example.org" and "https://books.example.org/" are one Catalogue. The key only
+compares: `url` keeps the address a Catalogue was added with when it differs from the key, and that
+is what is fetched. Reading the file re-keys every entry, so an `http://` or slashed key written by
+hand or by an import is the Catalogue the list shows and can remove; a key that isn't a URL reads as
+missing. A shipped Catalogue has a record only once it has been removed, and keeps one once added
+back. Whether a Catalogue is shipped is decided by its key alone. A merge keeps both sides' records
+and, for a Catalogue on both, the newer record's fields, with the unknown fields of both (the
+winner's on a clash), as for a Book. At a tie a removal beats an addition, so the result doesn't
+depend on which side saved last. A removal is a record rather than a missing entry, so it survives a
+merge with a file that still lists the Catalogue, and adding it back later wins the same way.
+
+**A page.** Back, and the Catalogue's name, the tapped entry's title, or the search terms in the
+centre. Rows are text only: the title, then the byline (the author, else a short one-line content).
+An entry with a download of its own opens its detail page; any other opens the feed it leads to, and
+a feed opened that way is a Book's detail page when all its entries are one Book's Editions
+(Gutenberg's Book pages). rel=next paging is a "More" row at the end, which appends the next page.
+"More" ends when the next page is one the list already fetched, and at 500 entries: the list
+composes every row, and past 20 of Gutenberg's pages search finds a Book faster.
+"loading…" in secondary text stands in while a page loads.
+
+**Search.** Shown only when the page offers one: a text-only field, its placeholder "Search all
+Standard Ebooks" on Standard Ebooks' new releases (its search covers all of Standard Ebooks) and
+"Search" elsewhere, over a rule. It opens the same editor, with a "Search" button, and the results
+are a page of their own.
+
+**Book detail.** The title, the author, then one action, then the summary only when it is prose (a
+"Key: value" dump such as Gutenberg's is hidden, and so is a summary that only repeats the author).
+One "Add to Shelf" per Book, across the page's Editions, with the download size in secondary text
+beside it ("558 KB"). The page matches the Shelf by source URL, never by title: any of the page's
+download links equal to a stored Book's source is that Book. A miss is harmless, because a landing
+download merges into the Book by `dc:identifier`.
+
+| Match | Action | Beside it |
+|---|---|---|
+| None | "Add to Shelf" | the size |
+| On the Shelf with its file | "Read", which opens the Book at its Place | "On your Shelf" |
+| On the Shelf, file missing | "Download again", keeping the Book's row and Place | the size |
+| Removed | "Add to Shelf", keeping the Place | the size |
+| A download running | "downloading…" in secondary text | |
+
+The page stays while a download runs and follows it: "downloading…", then "Read" when it lands.
+The download belongs to the Shelf, so leaving the page doesn't stop it, and the Shelf shows it as a
+row meanwhile. A failure shows its copy above the action: a retryable one turns the action into
+"Retry", and a permanent one (CopyProtected, NotAnEpub, NoHttps) removes it and adds nothing to the
+Shelf. CopyProtected will point to About's list of places to find DRM-free Books, which arrives with
+N5; until then it shows its one line.
+
+**Failure copy.** One plain line, with "Retry" wherever retrying can help and never a dead button.
+
+| Failure | Copy | Retry |
+|---|---|---|
+| Unreachable | "Can't reach this Catalogue. Check your connection and try again." | yes |
+| NoHttps | "This Catalogue needs an https:// address." | no |
+| HttpError | "This Catalogue isn't responding properly. Try again later." | yes |
+| HttpError 401 | "This Catalogue needs a username and password. Sign-in isn't supported yet." | no |
+| Unreadable | "This address isn't a Catalogue the Reader can open." | no |
+| UntrustedCertificate, shipped Catalogue | "This connection isn't trusted. If you're on public Wi-Fi, sign in to it, then try again." | yes |
+| UntrustedCertificate, the reader's Catalogue | the same, then "A self-hosted Catalogue needs a public certificate." | yes |
+| NotAnEpub | "This file isn't an EPUB the Reader can open." | no |
+| CopyProtected | "This Book is copy-protected and can't be opened here." | no |
+| DiskError | "There isn't enough space on your phone to add this Book." | yes |
+
+A timeout on a typed http:// address is NoHttps only on a validated network: a server that drops
+connections to port 443 times out, but so does a network with no internet. The SDK's
+`LightConnectivity` reports only whether the network claims internet, not whether Android validated
+it, and asking Android directly needs a Context, which a Light Tool can't hold. So the Tool can't
+tell, and every connect timeout reads as Unreachable, with Retry.

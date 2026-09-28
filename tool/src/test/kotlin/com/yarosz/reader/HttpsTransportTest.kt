@@ -4,6 +4,7 @@ import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URL
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -88,5 +89,22 @@ class HttpsTransportTest {
         assertEquals(Fetched.Failed(HttpError(302)), fetchPage(transport, url("/loop")))
         assertEquals(MAX_REDIRECTS + 1, requested.size)
         assertEquals(Fetched.Failed(HttpError(302)), fetchPage(transport, url("/ftp")))
+    }
+
+    @Test
+    fun `a timeout while connecting or while reading reaches the caller as a socket timeout`() {
+        class Stalled(private val connecting: Boolean) : HttpURLConnection(URL("https://books.example.org/")) {
+            override fun connect() {
+                if (connecting) throw SocketTimeoutException("failed to connect after 15000ms")
+            }
+
+            override fun getResponseCode(): Int = throw SocketTimeoutException("Read timed out")
+
+            override fun disconnect() = Unit
+
+            override fun usingProxy() = false
+        }
+        assertFailsWith<SocketTimeoutException> { HttpsTransport { Stalled(connecting = true) }.get(url("/a")) }
+        assertFailsWith<SocketTimeoutException> { HttpsTransport { Stalled(connecting = false) }.get(url("/a")) }
     }
 }

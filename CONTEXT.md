@@ -29,6 +29,12 @@ A list of Books the reader can browse and add from, such as Project Gutenberg or
 server. Any Catalogue can be removed, including the ones the Tool ships with.
 _Avoid_: library, store, feed, source
 
+**Shipped Catalogue**:
+A Catalogue the Tool comes with: Project Gutenberg and Standard Ebooks' new releases. It keeps its own
+name, and is recognised by its address however the reader types it. Removing one is remembered, and the
+reader can add it back in one tap.
+_Avoid_: default catalogue, built-in, preset
+
 **Catalogue entry**:
 One thing a Catalogue lists: something the reader could add, a way further into the Catalogue, or both.
 On a Book's own page, the entries can be that Book's Editions, which share one Add to Shelf. An entry is
@@ -70,7 +76,8 @@ _Avoid_: position, anchor, offset, location
 
 **Page**:
 What fits on the screen at the current font size. Recomputed whenever the layout changes; never
-saved and never shown outside the reading session.
+saved and never shown outside the reading session. A Catalogue's page (one fetch of its list, which
+"More" extends) is not a Page.
 _Avoid_: screen
 
 **Progress**:
