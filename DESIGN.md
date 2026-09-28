@@ -67,7 +67,10 @@ never-opened, the newest is first, and a download that hasn't arrived yet counts
 started. A Book stored before the Shelf existed has no date and sorts as the oldest.
 
 **Row.** Text only, with no covers on the Shelf or in Catalogue lists. The title is on the first line
-and one state on the second. One tap opens the Book at its Place.
+and one state on the second. One tap opens the Book at its Place. Titles are shown verbatim, never
+title-cased: a Book from a Catalogue takes the Catalogue entry's title, any other its `dc:title`, and
+downloading a Book again from the Shelf keeps the title it has. A title wraps to at most two lines,
+set tighter (1.2) than body copy.
 
 | State | Second line | Tap |
 |---|---|---|
@@ -75,33 +78,43 @@ and one state on the second. One tap opens the Book at its Place.
 | Never opened | "not started" | opens the Book |
 | Downloading | "downloading…" | nothing |
 | Failed, retryable | "download failed · tap to retry" | downloads again |
+| Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB", "· needs https" or "· certificate not trusted" | nothing; the Book can only be removed |
 | Finished | "finished" (see below) | opens the Book |
 | File missing, source known | "file missing · tap to download again" | downloads again, keeps the Place |
 | File missing, no source | "file missing" | nothing; the Book can only be removed |
 
 Until N4 computes Progress, an in-progress row shows the author alone, never a placeholder percent,
 and "finished" waits for N4 too, so a finished Book reads like one in progress. When there is no author,
-the state stands alone, so an in-progress Book with no author has no second line. A Book's download
-state wins over its file, and its file over its reading state.
+the state stands alone, so an in-progress Book with no author has no second line. A running download
+wins over a Book's file, the file over a failed download (a Book that is here stays readable
+offline), and both over its reading state. Opening a Book counts as reading: it records the first
+Page's Place, so a Book opened but never paged reads as in progress, not "not started".
 
 **Empty.** "Nothing on your Shelf yet." with a text button "Add a Book". Text labels, not glyphs.
 
-**Edit.** Every row's trailing edge becomes "Remove". Tapping it turns the row itself, inline and not
-as a modal, into "Remove from Shelf? Your place is kept if you add it again." plus "Remove" and
-"Cancel". Row taps don't open Books while editing. Removal deletes the file and keeps the Place
+**Edit.** Every row's trailing edge becomes "Remove", in secondary text. Tapping it turns the row
+itself, inline and not as a modal, into the Book's title, then "Remove from Shelf? Your place is kept
+if you add it again.", then "Remove" and "Cancel". A confirmation whose row goes away (a download
+that arrives, or fails) is cleared. Row taps don't open Books while editing. Removal deletes the file and keeps the Place
 record, and removing a Book that is downloading cancels the download. Removing the last Book leaves
 Edit.
 
 **Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
 failures (Unreachable, HttpError, DiskError) leave a row reading "download failed · tap to retry".
 Permanent failures (CopyProtected, NotAnEpub, and also NoHttps and UntrustedCertificate, which a
-retry can't fix) show their copy on the Book's detail page and add nothing to the Shelf. A
-copy-protected Book must never become a row that can't be read.
+retry can't fix) of a download from a Catalogue show their copy on the Book's detail page and add
+nothing to the Shelf. A copy-protected Book must never become a row that can't be read. When
+downloading a missing file again from the Shelf fails for good, the Book's row says why ("can't
+download again · …", table above) and can then only be removed. That state lives in memory: after a
+relaunch the row reads "file missing · tap to download again" again, and a tap tries once more.
 
 **Offline.** Nothing changes on the Shelf, because everything there works offline: no rows are
 removed and nothing is greyed out. "You're offline. Your Shelf still works." is one line of
 secondary text at the top of the Catalogue list, shown when Add is tapped offline.
 
 **Missing file.** A Book whose file is gone reads "file missing · tap to download again", and the tap
-downloads it again from the Book's source, keeping its Place. A Book with no known source (a future
+downloads it again from the Book's source, keeping its Place. If the download declares a different
+`dc:identifier` (Calibre mints a new one on every conversion), the Book keeps its row: its Place,
+date added and title move to the new identifier, and the Place resolves as well as the new edition
+allows. A Book with no known source (a future
 N7 import) reads "file missing" and can only be removed.

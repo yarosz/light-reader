@@ -1,6 +1,7 @@
 # Ledger
 
 STATUS: N1, the release path, P (Paginator v2) and N2 (reading data store) done; N3 under way (pure core and Shelf done; next the Catalogue screens)
+RELEASE HOLD: Don't tag a release until N3c lands (Add is a label until then).
 LAST SESSION: 2026-09-27
 
 ## v1 user flow
@@ -82,10 +83,20 @@ Ordered. Each item ends on its _done-when_.
   returns; order, second-line states, empty state, Edit with inline confirmation, removal (file
   deleted, Place kept, a running download cancelled), missing file (downloads again from the Book's
   source, or can only be removed). `BookEntry` gained `source`, `author` and `addedAt` (additive,
-  ADR 0002). The Shelf owns the one `ReadingSaver` and hands it to each Reader. `ShelfViewModel.download`
-  runs foreground downloads through `HttpsTransport` and `Downloader` into filesDir, where every Book
-  lives: a retryable failure stays as a row, a permanent one returns to the caller. dev-start now
-  opens `files/alice.epub` past the Shelf (`ci.sh` pushes the test fixture when a device has none).
+  ADR 0002). `ShelfOwner.of(filesDir)` is the process's one owner of the reading data, its saver,
+  which files exist and the downloads (LightOS can recreate the activity in the same process without
+  clearing old view models); the Shelf and Reader view models are views onto it, and `ReadingStore`
+  saves are exclusive per directory besides. `ShelfOwner.download` runs foreground downloads through
+  `HttpsTransport` and `Downloader` into filesDir, where every Book lives, and ends as Done, Failed or
+  Removed, never a cancellation. A download lands (renames) on the main thread, where removals delete,
+  so a removed download never leaves a file and a removal never deletes one that landed after it. A
+  retryable failure stays as a row, a permanent one returns to the caller, or stays on the row that
+  downloaded its missing file again. A re-download under a new `dc:identifier` moves the row's Place.
+  dev-start opens `files/alice.epub` past the Shelf and writes nothing; `ci.sh` pushes the test
+  fixture when a device has none (and removes it after), checks `reading-data.json` is byte-identical
+  after each round trip, and checks a plain launch renders the Shelf ("shelf rows=" in logcat).
+  XHTML's named entities are rewritten as numeric references before parsing: Android's Expat drops
+  an undeclared entity silently (seen on the emulator), where the JVM's parser reported it.
   Next: the Catalogue screens (the list with the offline line, browse, search, detail with "Add to
   Shelf" calling `ShelfViewModel.download`), with "Add" and "Add a Book" opening the list; the
   downloading, failed and offline screenshots come with them.
