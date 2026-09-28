@@ -186,6 +186,9 @@ pushed_alice=""
 data_before=""
 trap clear_starts EXIT
 
+# Advisory (AGENTS.md "Domain language"): never fails the run.
+n=$(scripts/domain-drift.sh 2>/dev/null | tail -1 | grep -oE '^[0-9]+'); note "domain drift: ${n:-?} unresolved"
+
 # --- signoff/emulator
 if [ "$docs_only" = 1 ]; then
   note "emulator: not applicable (docs-only change)"

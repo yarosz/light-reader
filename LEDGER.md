@@ -63,7 +63,8 @@ Ordered. Each item ends on its _done-when_.
   but not their Spines (16 against 9 items), and reuse idrefs such as `item5` for different text, so
   a same-id Chapter can hold other text entirely. (Done in N3's pure core: a Book with no
   `dc:identifier` is hashed over its Spine documents' CRC-32 and length, pinned by a test; with no
-  `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: set `finished` from Progress. At the
+  `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: the end page's
+  "Back to Shelf" sets Finished, and turning back or jumping away from the end clears it. At the
   first release after N2: the upgrade-path test (release N over N-1 with a populated store).
 - **N3 · Shelf + Catalogues (ADR 0001, 0005).** One Atom parser (OPDS acquisition links and EPUB
   enclosures); shipped Gutenberg + "Standard Ebooks: new releases"; acquisition preference: no
@@ -99,7 +100,11 @@ Ordered. Each item ends on its _done-when_.
   an undeclared entity silently (seen on the emulator), where the JVM's parser reported it.
   Next: the Catalogue screens (the list with the offline line, browse, search, detail with "Add to
   Shelf" calling `ShelfViewModel.download`), with "Add" and "Add a Book" opening the list; the
-  downloading, failed and offline screenshots come with them.
+  downloading, failed and offline screenshots come with them. N3c's first task is D15:
+  `UntrustedCertificate` becomes retryable, so its row reads "download failed · tap to retry" and
+  "can't download again · certificate not trusted" goes (`DESIGN.md` marks both).
+  Follow-up: `ci.sh` checks the size of the alice fixture it pushed, since a host-side cut can still
+  install a truncated file.
   Hardening done: every XML document (feeds, OpenSearch, container, OPF, encryption, chapters) goes
   through one untrusted-XML parser (`Xml.kt`: no external entity or DTD is ever read, DOCTYPEs still
   parse); caps on feeds (8 MB), one text construct (64 K characters), package XML (4 MB), chapters
@@ -111,21 +116,43 @@ Ordered. Each item ends on its _done-when_.
   characters that isn't a "Key: value" pair, which gives Gutenberg's list rows their authors (the
   summary stays for the detail page). `bestDownload` answers only for one Book's page: null unless
   every entry has the same title.
+  N3c's screens, labels and copy (the Catalogue list, a Book's detail page and whether it is already
+  on the Shelf, Add a Catalogue, restoring removed shipped Catalogues) are specified in DESIGN.md
+  under "Catalogues", which N3c adds. That section is the one place they live. Two engineering
+  notes: a Catalogue entry matches a Book when any acquisition link on the entry's page equals the
+  Book's source, passing `replacing` so the Place is kept; and whether a Catalogue is shipped is
+  decided by its URL.
+- **Rename to the glossary (pre-N4 refactor PR).** Behaviour-preserving renames so the code says what
+  `CONTEXT.md` says: `Chapter` → `SpineItem` (and the package reader's `SpineItem` → `SpineRef`);
+  `Position` → `SpinePoint(item, char)`; `Transfer`/`TransferState` → `Download` with a nested
+  `Status`; `DownloadState` cleanup (`progress` → `fraction`, drop unused states); `Epub.kt`'s `Book`
+  → `OpenBook` and `BookEntry` → `Book`; `ShelfOwner`'s local `finished` → `ended`; the docs' chapter
+  wording where it means a Spine item. _Done when:_ the "renamed in the pre-N4 refactor" group in
+  `docs/domain-ignore.txt` is gone and `scripts/domain-drift.sh` reports 0 unresolved.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
-  Chapter title; "Contents" lists Chapters; "about N min left in this Chapter" (230 wpm prior, median of
+  Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,
-  "almost done" under one); percent on the Shelf; end page "The end." + "Back to Shelf" marks the Book
-  finished. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
+  "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
+  ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back or jumping away from
+  the end clears it. A Spine item with no table-of-contents entry is labelled by its first heading,
+  else "Chapter N" counted over listed Chapters, never "Section N"; front matter shows the Book title.
+  A copy fix rides on this first reading-view change: `ReaderScreen.kt`'s "This book has no text."
+  becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in `docs/domain-ignore.txt`
+  goes. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
   tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`
   (17/20/24.5/30/36 sp, default 20; one constants file); one-line first-run hint; keep the screen on
   while reading (release after 10 min without a turn); Page text in semantics; About screen (version,
-  licenses incl. Literata OFL, copy-protected explainer + DRM-free sources, repo URL as text, the
+  licenses incl. Literata OFL, copy-protected explainer + where to find DRM-free Books, repo URL as text, the
   ADR 0003 no-network sentence).
   _Done when:_ verified with `mise run ui`.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
+  Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the
+  LP3 debug build Alice's `parseMs` was 926; Pride and Prejudice takes about 2.8 s on the emulator.
+  Not a regression. Measure a release build with `mise run perf` (it prints `parseMs`), then consider
+  a lazy per-Spine-item parse.
 - **N7 · Tool Manager node** (v1.x): upload your own EPUBs, download/upload `reading-data.json`; the
   change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
 
@@ -133,4 +160,5 @@ Ordered. Each item ends on its _done-when_.
 a Light SDK discussion asking for opt-in cleartext on user-entered LAN Catalogues. **v2:** offline
 tap-a-word dictionary. **Deferred:** full TalkBack audit (first check whether LightOS ships it),
 Gutenberg language filtering. **Not planned unless asked:** sync, bookmarks, highlights, covers on
-lists, Shelf search/sort options, per-Book font, reading statistics.
+lists, Shelf search/sort options, per-Book font, reading statistics, forget a removed Book (needs a
+tombstone, because merge is a union).

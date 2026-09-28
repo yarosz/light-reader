@@ -1,0 +1,124 @@
+# Names scripts/domain-drift.sh should not report: implementation and UI vocabulary, not domain terms.
+# One name per line, matched exactly. Domain terms go in CONTEXT.md instead; UI surfaces are described
+# in DESIGN.md. See AGENTS.md "Domain language".
+
+# Renamed in the pre-N4 refactor (LEDGER.md). That PR deletes this group.
+Transfer
+TransferState
+BookEntry
+
+# Reading data and its storage
+ReadingData
+ReadingSaver
+ReadingStore
+CorruptReadingData
+Settings
+
+# Layout and pagination
+Band
+Landing
+LayoutKey
+PackedPages
+Pass
+Stacked
+Typesetter
+Window
+WindowLayout
+Reading
+Shown
+uncharacteristically
+
+# EPUB and XML parsing
+Package
+ManifestItem
+Encrypted
+EncryptionHandler
+CappedStream
+TextBudget
+TextCapture
+TooLargeException
+XhtmlEntityStream
+
+# Network and downloads
+Transport
+HttpsTransport
+HttpsUrl
+Response
+Fetch
+Fetched
+Checked
+Downloader
+DownloadResult
+DownloadState
+InsecureRedirectException
+
+# Failure types
+NetworkFailure
+DownloadFailure
+FeedFailure
+Unreachable
+Unreadable
+HttpError
+DiskError
+NoHttps
+NotAnEpub
+CopyProtected
+UntrustedCertificate
+
+# Catalogue feeds (Atom and OPDS)
+Acquisition
+CatalogueSearch
+NavigationLink
+MediaType
+SearchTemplate
+FeedHandler
+OpenSearchHandler
+epub ?3
+%.1f MB
+${(bytes + 500_000) / 1_000_000} MB
+
+# Shelf and screens
+ShelfOwner
+ShelfRow
+ShelfMode
+ShelfScreen
+ShelfViewModel
+RowKey
+RowTap
+DevStart
+Order
+
+# UI copy (DESIGN.md "Shelf"; the certificate line goes with D15 in N3c). "file" is an _Avoid_ word
+# for Book, but this is the Book's file, as in CONTEXT.md. "This book has no text." is a LEDGER.md
+# follow-up.
+can't download again · certificate not trusted
+can't download again · needs https
+can't download again · not an EPUB
+Standard Ebooks: new releases
+Project Gutenberg
+file missing
+file missing · tap to download again
+${shown.pass.chapterIndex + 1}/${book.chapters.size}
+This book has no text.
+
+# Doc headings and labels
+default
+sp
+Top bar
+Row
+Add
+Add to Shelf
+Contents
+Empty
+Edit
+Offline
+Missing file
+Density is 480 dpi
+N2 follow-ups
+N6 bar missed
+Emulator fidelity
+Reading texture
+Revisit if
+
+# Possible domain terms, left for the next domain pass (not defined in CONTEXT.md yet)
+Downloads

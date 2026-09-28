@@ -52,6 +52,12 @@ A paragraph gets a first-line indent only when it follows another paragraph (Sta
 convention); the first paragraph after a heading, caption or verse, or a chapter's first block, starts
 flush, judged on block kinds, never on window boundaries.
 
+## Copy
+
+Copy capitalises Book, Shelf and Catalogue; "place" is lowercase; chapter is lowercase in running copy
+and capitalised only in a "Chapter N" title; Edition, Spine item and Place-as-a-term never appear in
+copy.
+
 ## Shelf
 
 The Tool's first screen: the Books on this phone. Product rulings from the advisor (2026-09-27); copy
@@ -77,8 +83,8 @@ set tighter (1.2) than body copy.
 | In progress | "author · 42%" (see below) | opens the Book |
 | Never opened | "not started" | opens the Book |
 | Downloading | "downloading…" | nothing |
-| Failed, retryable | "download failed · tap to retry" | downloads again |
-| Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB", "· needs https" or "· certificate not trusted" | nothing; the Book can only be removed |
+| Failed, retryable | "download failed · tap to retry" (an untrusted certificate too, D15, lands with N3c) | downloads again |
+| Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" ("· certificate not trusted" goes with D15, lands with N3c) | nothing; the Book can only be removed |
 | Finished | "finished" (see below) | opens the Book |
 | File missing, source known | "file missing · tap to download again" | downloads again, keeps the Place |
 | File missing, no source | "file missing" | nothing; the Book can only be removed |
@@ -100,8 +106,8 @@ record, and removing a Book that is downloading cancels the download. Removing t
 Edit.
 
 **Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
-failures (Unreachable, HttpError, DiskError) leave a row reading "download failed · tap to retry".
-Permanent failures (CopyProtected, NotAnEpub, and also NoHttps and UntrustedCertificate, which a
+failures (Unreachable, HttpError, DiskError, and UntrustedCertificate under D15, lands with N3c) leave
+a row reading "download failed · tap to retry". Permanent failures (CopyProtected, NotAnEpub, and also NoHttps, which a
 retry can't fix) of a download from a Catalogue show their copy on the Book's detail page and add
 nothing to the Shelf. A copy-protected Book must never become a row that can't be read. When
 downloading a missing file again from the Shelf fails for good, the Book's row says why ("can't

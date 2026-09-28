@@ -42,7 +42,7 @@ Rules that keep it stable:
 - Page boundaries are cached within a layout pass, so going back shows the Page just read. Backward
   packing only creates Pages not yet visited in this pass.
 - The first Page of a Spine item may be short when it's reached by backward packing (at most once per
-  chapter per session, at a heading: a chapter already read this session reuses its forward Pages).
+  Spine item per session, at a heading: a Spine item already read this session reuses its forward Pages).
 - The measurer is warmed up (a short hyphenated string in every face the book uses) while the book
   opens. It takes ~16–57 ms on the LP3, so the first open pays only for its window(s).
 - Hyphenation stays on; the times above include it.
