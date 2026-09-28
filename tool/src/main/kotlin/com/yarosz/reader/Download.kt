@@ -68,9 +68,9 @@ fun File.deleteOrLog() {
  * checked to be an EPUB that isn't copy-protected, and only then renamed into place, so no partial
  * or rejected file ever sits under a Book's name. [fetch] does the slow part and [keep] the rename,
  * so a caller can decide on its own thread whether the Book is still wanted. The file is named after
- * the Book's identifier, so downloading a Book again replaces its file. A process killed mid-download leaves its temp file
- * behind; constructing a Downloader deletes such leftovers. [rename], [sync], [usableSpace], and
- * [maxBookBytes] exist so a test can make one fail.
+ * the Book's identifier, so downloading a Book again replaces its file. A process killed
+ * mid-download leaves its temp file behind; constructing a Downloader deletes such leftovers.
+ * [rename], [sync], [usableSpace], and [maxBookBytes] exist so a test can make one fail.
  */
 class Downloader(
     private val transport: Transport,
