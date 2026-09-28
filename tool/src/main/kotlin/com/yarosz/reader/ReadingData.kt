@@ -66,13 +66,30 @@ data class BookEntry(
 data class Settings(val fontStep: Int = DEFAULT_FONT_STEP, val extras: Map<String, JsonElement> = emptyMap())
 
 /**
- * Everything the Reader keeps between launches: each Book's Place and Shelf state, and the settings.
- * Every level carries the JSON fields this build doesn't know in `extras` (see [CURRENT_SCHEMA]).
+ * The reader's last change to one Catalogue, keyed by its URL in [ReadingData.catalogues]: added
+ * (with the [name] it shows under) or removed. A Catalogue the Tool ships with needs a record only
+ * once the reader removes it, and keeps its record, with [removed] false, once added back: the
+ * record is what outlives a merge with a file that still has the removal. [updatedAt] is epoch
+ * millis; the newer record wins a [merge]. [name] is null for a Catalogue the Tool ships with, which
+ * takes its shipped name.
+ */
+data class CatalogueRecord(
+    val name: String?,
+    val removed: Boolean,
+    val updatedAt: Long,
+    val extras: Map<String, JsonElement> = emptyMap(),
+)
+
+/**
+ * Everything the Reader keeps between launches: each Book's Place and Shelf state, the settings, and
+ * the reader's changes to the list of Catalogues ([catalogues], by URL; see [catalogueList]). Every
+ * level carries the JSON fields this build doesn't know in `extras` (see [CURRENT_SCHEMA]).
  */
 data class ReadingData(
     val schemaVersion: Int = CURRENT_SCHEMA,
     val books: Map<String, BookEntry> = emptyMap(),
     val settings: Settings = Settings(),
+    val catalogues: Map<String, CatalogueRecord> = emptyMap(),
     val extras: Map<String, JsonElement> = emptyMap(),
 )
 
@@ -194,6 +211,11 @@ fun Book.resolve(place: Place): Position? {
  * - schemaVersion: the higher, so an older build never downgrades the file.
  * - books: both sides' Books. For a Book on both sides, see [mergeEntry].
  * - settings: fontStep from [mine]; unknown fields from both, [mine] winning a clash.
+ * - catalogues: both sides' records; for a Catalogue on both sides, the newer record whole, a tie
+ *   going to [mine]. A removal is a record too, so it survives a merge with a file that still lists
+ *   the Catalogue, and adding it back later wins over the removal the same way. Order-independent,
+ *   like the Place: the list is the reader's, not this process's, and a newer build or an imported
+ *   file (N7) may have changed it.
  * - unknown top-level fields: from both, [mine] winning a clash.
  */
 fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
@@ -204,6 +226,11 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
         if (d != null && m != null) mergeEntry(d, m) else m ?: d!!
     },
     settings = Settings(mine.settings.fontStep, disk.settings.extras + mine.settings.extras),
+    catalogues = (disk.catalogues.keys + mine.catalogues.keys).associateWith { url ->
+        val d = disk.catalogues[url]
+        val m = mine.catalogues[url]
+        if (d != null && m != null && d.updatedAt > m.updatedAt) d else m ?: d!!
+    },
     extras = disk.extras + mine.extras,
 )
 
@@ -233,12 +260,16 @@ private val BookEntry.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
 
 private val prettyJson = Json { prettyPrint = true }
 
-private val TOP_FIELDS = setOf("schemaVersion", "settings", "books")
+private val TOP_FIELDS = setOf("schemaVersion", "settings", "books", "catalogues")
 private val SETTINGS_FIELDS = setOf("fontStep")
 private val ENTRY_FIELDS = setOf("title", "file", "place", "finished", "onShelf", "author", "source", "addedAt")
 private val PLACE_FIELDS = setOf("spineId", "block", "offset", "snippet", "updatedAt")
+private val CATALOGUE_FIELDS = setOf("name", "removed", "updatedAt")
 
-/** The file's text. Absent Places, files, authors, sources and dates are omitted; unknown fields are written back as they came. */
+/**
+ * The file's text. Absent Places, files, authors, sources, dates and names are omitted, and so is an
+ * empty `catalogues`; unknown fields are written back as they came.
+ */
 fun ReadingData.encode(): String = prettyJson.encodeToString(
     JsonElement.serializer(),
     jsonObject(
@@ -247,6 +278,19 @@ fun ReadingData.encode(): String = prettyJson.encodeToString(
         "schemaVersion" to JsonPrimitive(schemaVersion),
         "settings" to jsonObject(SETTINGS_FIELDS, settings.extras, "fontStep" to JsonPrimitive(settings.fontStep)),
         "books" to JsonObject(books.mapValues { (_, entry) -> entry.toJson() }),
+        "catalogues" to catalogues.takeIf { it.isNotEmpty() }?.let { records ->
+            JsonObject(
+                records.mapValues { (_, record) ->
+                    jsonObject(
+                        CATALOGUE_FIELDS,
+                        record.extras,
+                        "name" to record.name?.let(::JsonPrimitive),
+                        "removed" to JsonPrimitive(record.removed),
+                        "updatedAt" to JsonPrimitive(record.updatedAt),
+                    )
+                },
+            )
+        },
     ),
 )
 
@@ -289,6 +333,11 @@ fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
         schemaVersion = root.int("schemaVersion") ?: CURRENT_SCHEMA,
         books = root.obj("books")?.mapValues { (id, entry) -> (entry as? JsonObject ?: corrupt("books.$id")).toEntry(id) }.orEmpty(),
         settings = root.obj("settings")?.let { Settings(it.int("fontStep") ?: DEFAULT_FONT_STEP, it.unknown(SETTINGS_FIELDS)) } ?: Settings(),
+        catalogues = root.obj("catalogues")?.mapValues { (url, record) ->
+            (record as? JsonObject ?: corrupt("catalogues.$url")).let {
+                CatalogueRecord(it.string("name"), it.boolean("removed") ?: false, it.long("updatedAt") ?: 0, it.unknown(CATALOGUE_FIELDS))
+            }
+        }.orEmpty(),
         extras = root.unknown(TOP_FIELDS),
     )
 }
