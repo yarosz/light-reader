@@ -23,8 +23,8 @@ class ShelfViewModel(internal val owner: ShelfOwner) : LightViewModel<Unit>() {
     init {
         viewModelScope.launch {
             snapshot.collect { latest ->
-                val shown = latest?.rows
                 val editing = mode.value as? ShelfMode.Editing ?: return@collect
+                val shown = latest?.rows
                 when {
                     shown.isNullOrEmpty() -> mode.value = ShelfMode.Browsing
                     editing.confirming != null && shown.none { it.key == editing.confirming } -> mode.value = ShelfMode.Editing()
