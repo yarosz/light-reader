@@ -11,8 +11,8 @@ _.path = [
 ]
 
 [tasks.emu]
-description = "Boot the LightPhone3 AVD (writable system, required every boot)"
-run = "emulator -avd LightPhone3 -writable-system -no-snapshot -no-boot-anim"
+description = "Boot the LightPhone3 AVD (writable system, required every boot; public DNS, since the host's resolver can fail silently in the emulator)"
+run = "emulator -avd LightPhone3 -writable-system -no-snapshot -no-boot-anim -dns-server 1.1.1.1,8.8.8.8"
 
 [tasks.tool]
 description = "Build (for the emulator's LightOS app), install, and launch on the running emulator"
