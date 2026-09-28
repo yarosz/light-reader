@@ -324,6 +324,19 @@ class ShelfViewModelTest {
     }
 
     @Test
+    fun `a file this Shelf changed before a check, then deleted outside it, shows missing after the check`() {
+        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        val vm = shelf()
+        vm.downloadAgain("Stormy Night")
+        settle()
+        assertEquals(RowTap.Open(stormFile), vm.row("Stormy Night").tap)
+        File(dir, stormFile).delete()
+        vm.refresh()
+        settle()
+        assertEquals(ROW_FILE_MISSING_SOURCE, vm.row("Stormy Night").detail)
+    }
+
+    @Test
     fun `a pending confirmation on a download is cleared when the download arrives`() {
         val vm = shelf()
         vm.download(link, "Stormy Night", null)

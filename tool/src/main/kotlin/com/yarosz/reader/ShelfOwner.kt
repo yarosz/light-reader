@@ -104,7 +104,7 @@ class ShelfOwner(
             val asOf = fileChanges
             val names = saver.data.books.values.mapNotNull { it.file }.toSet()
             val found = withContext(io) { names.filter { File(filesDir, it).exists() }.toSet() }
-            val checked = names.filter { (changedAt[it] ?: -1) < asOf }.toSet()
+            val checked = names.filter { (changedAt[it] ?: -1) <= asOf }.toSet()
             present = present - checked + (found intersect checked)
             publish()
         }
