@@ -40,7 +40,7 @@ class ReadingDataTest {
     @Test
     fun `absent or null known fields take their defaults`() {
         val data = decodeReadingData("{\"books\": {\"id\": {\"file\": null}}, \"settings\": null}").getOrThrow()
-        assertEquals(ReadingData(books = mapOf("id" to BookEntry("", null, null, finished = false, onShelf = false))), data)
+        assertEquals(ReadingData(books = mapOf("id" to Book("", null, null, finished = false, onShelf = false))), data)
     }
 
     @Test
@@ -115,40 +115,40 @@ class ReadingDataTest {
     @Test
     fun `a Place resolves back to the offset it was taken at`() = forAll(runs = 300) { rnd ->
         val book = randomBook(rnd)
-        val index = rnd.nextInt(book.chapters.size)
-        val chapter = book.chapters[index]
-        for (offset in 0..chapter.text.length) {
-            assertEquals(Position(index, offset), book.resolve(chapter.placeOf(offset, 0)))
+        val index = rnd.nextInt(book.spineItems.size)
+        val spineItem = book.spineItems[index]
+        for (offset in 0..spineItem.text.length) {
+            assertEquals(SpinePoint(index, offset), book.resolve(spineItem.placeOf(offset, 0)))
         }
     }
 
     @Test
     fun `a looked-up Place yields the same Place again, so a font round trip lands on the same Page`() = forAll { rnd ->
         val book = randomBook(rnd)
-        val index = rnd.nextInt(book.chapters.size)
-        val chapter = book.chapters[index]
-        val place = chapter.placeOf(rnd.nextInt(-5, chapter.text.length + 5), rnd.nextLong())
+        val index = rnd.nextInt(book.spineItems.size)
+        val spineItem = book.spineItems[index]
+        val place = spineItem.placeOf(rnd.nextInt(-5, spineItem.text.length + 5), rnd.nextLong())
         val found = book.resolve(place)!!
-        assertEquals(place, book.chapters[found.chapter].placeOf(found.offset, place.updatedAt))
+        assertEquals(place, book.spineItems[found.item].placeOf(found.char, place.updatedAt))
     }
 
     @Test
     fun `a Place is re-found by its snippet when a new edition shifts the text before it`() = forAll { rnd ->
-        val chapter = randomChapter(rnd, "ch")
-        if (chapter.text.length <= SNIPPET_CHARS) return@forAll
-        val at = rnd.nextInt(0, chapter.text.length - SNIPPET_CHARS + 1)
-        val place = chapter.placeOf(at, 0)
-        val (edition, moved) = shiftedBefore(chapter, place, rnd)
-        assertEquals(Position(0, moved), Book("id", "", listOf(edition)).resolve(place))
+        val spineItem = randomSpineItem(rnd, "ch")
+        if (spineItem.text.length <= SNIPPET_CHARS) return@forAll
+        val at = rnd.nextInt(0, spineItem.text.length - SNIPPET_CHARS + 1)
+        val place = spineItem.placeOf(at, 0)
+        val (edition, moved) = shiftedBefore(spineItem, place, rnd)
+        assertEquals(SpinePoint(0, moved), OpenBook("id", "", listOf(edition)).resolve(place))
     }
 
     @Test
-    fun `a Place whose snippet is gone falls back to its block's start, else the chapter's`() = forAll { rnd ->
-        val chapter = randomChapter(rnd, "ch")
-        val place = chapter.placeOf(rnd.nextInt(0, chapter.text.length), 0)
-        val replaced = Chapter("ch", "", List(rnd.nextInt(1, 20)) { Block(BlockKind.Paragraph, digits(rnd, rnd.nextInt(1, 300))) })
+    fun `a Place whose snippet is gone falls back to its block's start, else the Spine item's`() = forAll { rnd ->
+        val spineItem = randomSpineItem(rnd, "ch")
+        val place = spineItem.placeOf(rnd.nextInt(0, spineItem.text.length), 0)
+        val replaced = SpineItem("ch", "", List(rnd.nextInt(1, 20)) { Block(BlockKind.Paragraph, digits(rnd, rnd.nextInt(1, 300))) })
         val expected = replaced.blockStarts.getOrNull(place.block) ?: 0
-        assertEquals(Position(0, expected), Book("id", "", listOf(replaced)).resolve(place))
+        assertEquals(SpinePoint(0, expected), OpenBook("id", "", listOf(replaced)).resolve(place))
     }
 
     @Test
@@ -156,19 +156,19 @@ class ReadingDataTest {
         val refrain = "Beware the Jabberwock, my son! The jaws"
         val verse = Block(BlockKind.Verse, List(5) { refrain }.joinToString("\n"))
         val heading = Block(BlockKind.Heading, "Jabberwocky")
-        val chapter = Chapter("c", "", listOf(heading, verse))
-        val third = chapter.blockStarts[1] + 2 * (refrain.length + 1)
-        val place = chapter.placeOf(third, 0)
-        assertEquals(4, Regex(Regex.escape(place.snippet)).findAll(chapter.text).count())
+        val spineItem = SpineItem("c", "", listOf(heading, verse))
+        val third = spineItem.blockStarts[1] + 2 * (refrain.length + 1)
+        val place = spineItem.placeOf(third, 0)
+        assertEquals(4, Regex(Regex.escape(place.snippet)).findAll(spineItem.text).count())
 
         val note = Block(BlockKind.Paragraph, "(A poem.)")
-        val longer = Book("id", "", listOf(Chapter("c", "", listOf(heading, note, verse))))
-        assertEquals(Position(0, third + note.text.length + 1), longer.resolve(place))
+        val longer = OpenBook("id", "", listOf(SpineItem("c", "", listOf(heading, note, verse))))
+        assertEquals(SpinePoint(0, third + note.text.length + 1), longer.resolve(place))
 
         val cut = 8
         val trimmed = Block(BlockKind.Verse, refrain.dropLast(cut) + "\n" + List(4) { refrain }.joinToString("\n"))
-        val shorter = Book("id", "", listOf(Chapter("c", "", listOf(heading, trimmed))))
-        assertEquals(Position(0, third - cut), shorter.resolve(place))
+        val shorter = OpenBook("id", "", listOf(SpineItem("c", "", listOf(heading, trimmed))))
+        assertEquals(SpinePoint(0, third - cut), shorter.resolve(place))
     }
 
     @Test
@@ -179,10 +179,10 @@ class ReadingDataTest {
 
     @Test
     fun `a snippet never ends inside a surrogate pair`() {
-        val chapter = Chapter("c", "", listOf(Block(BlockKind.Paragraph, "x".repeat(39) + "😀" + "y".repeat(5))))
-        assertEquals("x".repeat(39), chapter.placeOf(0, 0).snippet)
-        assertEquals("x".repeat(38) + "😀", chapter.placeOf(1, 0).snippet)
-        assertEquals(Position(0, 3), Book("id", "", listOf(chapter)).resolve(chapter.placeOf(3, 0)))
+        val spineItem = SpineItem("c", "", listOf(Block(BlockKind.Paragraph, "x".repeat(39) + "😀" + "y".repeat(5))))
+        assertEquals("x".repeat(39), spineItem.placeOf(0, 0).snippet)
+        assertEquals("x".repeat(38) + "😀", spineItem.placeOf(1, 0).snippet)
+        assertEquals(SpinePoint(0, 3), OpenBook("id", "", listOf(spineItem)).resolve(spineItem.placeOf(3, 0)))
     }
 
     @Test
@@ -196,17 +196,17 @@ class ReadingDataTest {
 
     @Test
     fun `a Place's block and snippet follow the text`() {
-        val chapter = Chapter("c", "", listOf(Block(BlockKind.Heading, "One"), Block(BlockKind.Paragraph, "Two words")))
-        assertEquals(Place("c", 0, 3, "\nTwo words", 7), chapter.placeOf(3, 7))
-        assertEquals(Place("c", 1, 4, "words", 7), chapter.placeOf(8, 7))
-        assertEquals(Place("c", 1, 9, "", 7), chapter.placeOf(99, 7))
-        assertEquals(Place("c", 0, 0, "", 7), Chapter("c", "", emptyList()).placeOf(4, 7))
+        val spineItem = SpineItem("c", "", listOf(Block(BlockKind.Heading, "One"), Block(BlockKind.Paragraph, "Two words")))
+        assertEquals(Place("c", 0, 3, "\nTwo words", 7), spineItem.placeOf(3, 7))
+        assertEquals(Place("c", 1, 4, "words", 7), spineItem.placeOf(8, 7))
+        assertEquals(Place("c", 1, 9, "", 7), spineItem.placeOf(99, 7))
+        assertEquals(Place("c", 0, 0, "", 7), SpineItem("c", "", emptyList()).placeOf(4, 7))
     }
 
     @Test
     fun `shelving adds an entry once and keeps its Place`() {
         val shelved = ReadingData().shelve("id", "Alice", "alice.epub")
-        assertEquals(BookEntry("Alice", "alice.epub", null, finished = false, onShelf = true), shelved.books.getValue("id"))
+        assertEquals(Book("Alice", "alice.epub", null, finished = false, onShelf = true), shelved.books.getValue("id"))
         val placed = shelved.withPlace("id", place(updatedAt = 3))
         assertEquals(place(updatedAt = 3), placed.shelve("id", "Alice", "alice.epub").books.getValue("id").place)
         assertEquals(placed, placed.withPlace("unknown", place(updatedAt = 4)))
@@ -214,12 +214,12 @@ class ReadingDataTest {
 
     @Test
     fun `a Book's source, author and date added round-trip, and a file from before them has none`() {
-        val entry = BookEntry("Alice", "a.epub", null, finished = false, onShelf = true, author = "Lewis Carroll", source = "https://books.example.org/a.epub", addedAt = 42)
+        val entry = Book("Alice", "a.epub", null, finished = false, onShelf = true, author = "Lewis Carroll", source = "https://books.example.org/a.epub", addedAt = 42)
         val text = ReadingData(books = mapOf("id" to entry)).encode()
         assertTrue("\"source\": \"https://books.example.org/a.epub\"" in text, text)
         assertEquals(entry, decodeReadingData(text).getOrThrow().books.getValue("id"))
         val older = decodeReadingData("""{"schemaVersion": 1, "books": {"id": {"title": "Alice", "file": "alice.epub", "onShelf": true}}}""").getOrThrow()
-        assertEquals(BookEntry("Alice", "alice.epub", null, finished = false, onShelf = true), older.books.getValue("id"))
+        assertEquals(Book("Alice", "alice.epub", null, finished = false, onShelf = true), older.books.getValue("id"))
         assertTrue(decodeReadingData("""{"books": {"id": {"source": 3}}}""").isFailure)
         assertTrue(decodeReadingData("""{"books": {"id": {"addedAt": "3"}}}""").isFailure)
     }
@@ -231,7 +231,7 @@ class ReadingDataTest {
         val reopened = added.shelve("id", "Alice", "a.epub", now = 20).books.getValue("id")
         assertEquals(Triple("Lewis Carroll", "https://books.example.org/a.epub", 10L), Triple(reopened.author, reopened.source, reopened.addedAt))
         val removed = added.withPlace("id", place(updatedAt = 3)).unshelve("id")
-        val expected = BookEntry(
+        val expected = Book(
             "Alice", null, place(updatedAt = 3), finished = false, onShelf = false,
             author = "Lewis Carroll", source = "https://books.example.org/a.epub", addedAt = 10,
         )
@@ -302,9 +302,9 @@ private fun entry(
     finished: Boolean = false,
     onShelf: Boolean = true,
     extras: Map<String, JsonElement> = emptyMap(),
-) = BookEntry(title, file, place, finished, onShelf, extras = extras)
+) = Book(title, file, place, finished, onShelf, extras = extras)
 
-private fun data(vararg books: Pair<String, BookEntry>) = ReadingData(books = mapOf(*books))
+private fun data(vararg books: Pair<String, Book>) = ReadingData(books = mapOf(*books))
 
 private val TEXT_PIECES = listOf("a", "Z", "é", "中", "😀", " ", "\"", "\\", "\n", "\t", "\u0001", "/", "{", "}", "'", "0")
 
@@ -333,7 +333,7 @@ private fun randomPlace(rnd: Random) = Place(
     extras = randomExtras(rnd, setOf("spineId", "block", "offset", "snippet", "updatedAt")),
 )
 
-private fun randomEntry(rnd: Random) = BookEntry(
+private fun randomEntry(rnd: Random) = Book(
     title = randomString(rnd),
     file = if (rnd.nextBoolean()) null else randomString(rnd).filter { it != '/' && it != '\\' } + ".epub",
     place = if (rnd.nextBoolean()) null else randomPlace(rnd),
@@ -366,40 +366,40 @@ private fun prose(rnd: Random, words: Int) =
 
 private fun digits(rnd: Random, length: Int) = buildString { repeat(length) { append("0123456789 "[rnd.nextInt(11)]) } }
 
-/** A chapter of varied prose, so any [SNIPPET_CHARS] of it occur once. */
-private fun randomChapter(rnd: Random, spineId: String) = Chapter(spineId, "", List(rnd.nextInt(1, 30)) { i ->
+/** A Spine item of varied prose, so any [SNIPPET_CHARS] of it occur once. */
+private fun randomSpineItem(rnd: Random, spineId: String) = SpineItem(spineId, "", List(rnd.nextInt(1, 30)) { i ->
     val kind = if (i == 0) BlockKind.Heading else listOf(BlockKind.Paragraph, BlockKind.Paragraph, BlockKind.Verse, BlockKind.Caption).random(rnd)
     Block(kind, prose(rnd, if (kind == BlockKind.Heading) rnd.nextInt(1, 6) else rnd.nextInt(1, 120)))
 })
 
-private fun randomBook(rnd: Random) = Book("id", "", List(rnd.nextInt(1, 6)) { randomChapter(rnd, "chapter-$it.xhtml") })
+private fun randomBook(rnd: Random) = OpenBook("id", "", List(rnd.nextInt(1, 6)) { randomSpineItem(rnd, "chapter-$it.xhtml") })
 
 /**
- * A new edition of [chapter] with text inserted or deleted before [place], and where the Place's text
+ * A new edition of [spineItem] with text inserted or deleted before [place], and where the Place's text
  * now starts: a new block before it, text added in its block before it, or text cut from its block
  * before it.
  */
-private fun shiftedBefore(chapter: Chapter, place: Place, rnd: Random): Pair<Chapter, Int> {
-    val at = chapter.blockStarts[place.block] + place.offset
-    val blocks = chapter.blocks.toMutableList()
+private fun shiftedBefore(spineItem: SpineItem, place: Place, rnd: Random): Pair<SpineItem, Int> {
+    val at = spineItem.blockStarts[place.block] + place.offset
+    val blocks = spineItem.blocks.toMutableList()
     val block = blocks[place.block]
     return when (rnd.nextInt(3)) {
         0 -> {
             val added = Block(BlockKind.Paragraph, prose(rnd, rnd.nextInt(1, 30)))
             blocks.add(rnd.nextInt(0, place.block + 1), added)
-            Chapter(chapter.spineId, "", blocks) to at + added.text.length + 1
+            SpineItem(spineItem.spineId, "", blocks) to at + added.text.length + 1
         }
         1 -> {
             val cut = rnd.nextInt(0, place.offset + 1)
             val added = " " + prose(rnd, rnd.nextInt(1, 10))
             blocks[place.block] = block.copy(text = block.text.substring(0, cut) + added + block.text.substring(cut))
-            Chapter(chapter.spineId, "", blocks) to at + added.length
+            SpineItem(spineItem.spineId, "", blocks) to at + added.length
         }
         else -> {
             val from = rnd.nextInt(0, place.offset + 1)
             val to = rnd.nextInt(from, place.offset + 1)
             blocks[place.block] = block.copy(text = block.text.removeRange(from, to))
-            Chapter(chapter.spineId, "", blocks) to at - (to - from)
+            SpineItem(spineItem.spineId, "", blocks) to at - (to - from)
         }
     }
 }

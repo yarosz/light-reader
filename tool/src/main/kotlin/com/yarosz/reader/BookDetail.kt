@@ -1,9 +1,9 @@
 package com.yarosz.reader
 
 /** What the Shelf knows: the reading data, which Books' files exist, and the downloads by source. */
-data class ShelfSnapshot(val data: ReadingData, val present: Set<String>, val transfers: Map<HttpsUrl, Transfer>) {
+data class ShelfSnapshot(val data: ReadingData, val present: Set<String>, val downloads: Map<HttpsUrl, Download>) {
     /** The Shelf's rows (see [shelfRows]), made once per snapshot, when first read. */
-    val rows: List<ShelfRow> by lazy { shelfRows(data, present, transfers) }
+    val rows: List<ShelfRow> by lazy { shelfRows(data, present, downloads) }
 }
 
 /** A stored Book whose source is one of a detail page's links. */
@@ -82,10 +82,10 @@ fun bookDetail(snapshot: ShelfSnapshot, entries: List<CatalogueEntry>, failure: 
     val link = bestDownload(entries) ?: return BookDetail(DetailAction.None, null)
     val links = entries.flatMap { entry -> entry.acquisitions.map { it.url } }.toSet() + link.url
     val match = snapshot.match(links)
-    val transfers = snapshot.transfers.filter { (source, transfer) -> source in links || (match != null && transfer.replacing == match.identifier) }
-    if (transfers.values.any { it.state == TransferState.Running }) return BookDetail(DetailAction.Downloading, null)
+    val downloads = snapshot.downloads.filter { (source, download) -> source in links || (match != null && download.replacing == match.identifier) }
+    if (downloads.values.any { it.status == Download.Status.Running }) return BookDetail(DetailAction.Downloading, null)
     if (match is ShelfMatch.Here) return BookDetail(DetailAction.Read(match.file), null)
-    val failed = transfers.values.firstNotNullOfOrNull { (it.state as? TransferState.Failed)?.reason } ?: failure
+    val failed = downloads.values.firstNotNullOfOrNull { (it.status as? Download.Status.Failed)?.reason } ?: failure
     val problem = failed?.let { downloadFailureCopy(it, shipped) }
     val label = when {
         problem != null -> RETRY

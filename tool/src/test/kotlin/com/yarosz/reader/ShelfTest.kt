@@ -19,10 +19,10 @@ class ShelfTest {
         source: HttpsUrl? = null,
         file: String? = "$title.epub",
         onShelf: Boolean = true,
-    ) = title to BookEntry(title, file, place, finished, onShelf, author = author, source = source?.value, addedAt = addedAt)
+    ) = title to Book(title, file, place, finished, onShelf, author = author, source = source?.value, addedAt = addedAt)
 
-    private fun rows(vararg books: Pair<String, BookEntry>, transfers: Map<HttpsUrl, Transfer> = emptyMap(), present: Set<String>? = null) =
-        shelfRows(ReadingData(books = mapOf(*books)), present ?: books.mapNotNull { it.second.file }.toSet(), transfers)
+    private fun rows(vararg books: Pair<String, Book>, downloads: Map<HttpsUrl, Download> = emptyMap(), present: Set<String>? = null) =
+        shelfRows(ReadingData(books = mapOf(*books)), present ?: books.mapNotNull { it.second.file }.toSet(), downloads)
 
     @Test
     fun `in progress by most recent first, then never opened by newest added, then finished at the bottom`() {
@@ -44,19 +44,19 @@ class ShelfTest {
 
     @Test
     fun `a download that hasn't arrived sorts with the never-opened Books by when it started`() {
-        val transfers = mapOf(source to Transfer("Arriving", "An Author", 30, TransferState.Running))
-        val shown = rows(book("reading", place(1)), book("newer", addedAt = 40), book("older", addedAt = 20), transfers = transfers)
+        val downloads = mapOf(source to Download("Arriving", "An Author", 30, Download.Status.Running))
+        val shown = rows(book("reading", place(1)), book("newer", addedAt = 40), book("older", addedAt = 20), downloads = downloads)
         assertEquals(listOf("reading", "newer", "Arriving", "older"), shown.map { it.title })
         assertEquals(ShelfRow(RowKey.Arriving(source), "Arriving", ROW_DOWNLOADING, RowTap.None), shown[2])
     }
 
     @Test
     fun `each row's second line and tap follow its state`() {
-        val transfers = mapOf(
-            other to Transfer("Failing", null, 1, TransferState.Failed(Unreachable)),
-            source to Transfer("Redownloading", null, 1, TransferState.Running, replacing = "Redownloading"),
-            HttpsUrl.parse("https://books.example.org/offline.epub")!! to Transfer("Present", null, 1, TransferState.Failed(Unreachable), replacing = "Present"),
-            HttpsUrl.parse("https://books.example.org/gone.epub")!! to Transfer("Retry", null, 1, TransferState.Failed(HttpError(503)), replacing = "Retry"),
+        val downloads = mapOf(
+            other to Download("Failing", null, 1, Download.Status.Failed(Unreachable)),
+            source to Download("Redownloading", null, 1, Download.Status.Running, replacing = "Redownloading"),
+            HttpsUrl.parse("https://books.example.org/offline.epub")!! to Download("Present", null, 1, Download.Status.Failed(Unreachable), replacing = "Present"),
+            HttpsUrl.parse("https://books.example.org/gone.epub")!! to Download("Retry", null, 1, Download.Status.Failed(HttpError(503)), replacing = "Retry"),
         )
         val shown = rows(
             book("In progress", place(9), author = "Jane Austen"),
@@ -69,7 +69,7 @@ class ShelfTest {
             book("Redownloading", source = source),
             book("Present", place(6), author = "Mary Shelley", source = HttpsUrl.parse("https://books.example.org/offline.epub")),
             book("Retry", source = HttpsUrl.parse("https://books.example.org/gone.epub")),
-            transfers = transfers,
+            downloads = downloads,
             present = setOf("In progress.epub", "In progress, no author.epub", "Finished.epub", "Unread.epub", "Present.epub"),
         ).associateBy { it.title }
         fun line(title: String) = shown.getValue(title).detail to shown.getValue(title).tap
@@ -96,32 +96,32 @@ class ShelfTest {
             HttpError(401) to "can't download again · needs a login",
         )
         expected.forEach { (reason, detail) ->
-            val shown = rows(book("Book", source = source), transfers = mapOf(source to Transfer("Book", null, 1, TransferState.Failed(reason), replacing = "Book")), present = emptySet())
+            val shown = rows(book("Book", source = source), downloads = mapOf(source to Download("Book", null, 1, Download.Status.Failed(reason), replacing = "Book")), present = emptySet())
             assertEquals(listOf(ShelfRow(RowKey.Shelved("Book"), "Book", detail, RowTap.None)), shown, reason.toString())
         }
     }
 
     @Test
     fun `an untrusted certificate leaves a row that retries, from the Shelf or from a Catalogue (D15)`() {
-        val failed = TransferState.Failed(UntrustedCertificate)
-        val again = rows(book("Book", source = source), transfers = mapOf(source to Transfer("Book", null, 1, failed, replacing = "Book")), present = emptySet())
+        val failed = Download.Status.Failed(UntrustedCertificate)
+        val again = rows(book("Book", source = source), downloads = mapOf(source to Download("Book", null, 1, failed, replacing = "Book")), present = emptySet())
         assertEquals(ShelfRow(RowKey.Shelved("Book"), "Book", ROW_DOWNLOAD_FAILED, RowTap.Download(source, "Book", null, "Book")), again.single())
-        val arriving = rows(transfers = mapOf(other to Transfer("New", null, 1, failed)))
+        val arriving = rows(downloads = mapOf(other to Download("New", null, 1, failed)))
         assertEquals(ShelfRow(RowKey.Arriving(other), "New", ROW_DOWNLOAD_FAILED, RowTap.Download(other, "New", null)), arriving.single())
     }
 
     @Test
     fun `a download from the Shelf shows on the one row it replaces, even when another Book has the same source`() {
-        val transfers = mapOf(source to Transfer("Old edition", null, 1, TransferState.Running, replacing = "Old edition"))
-        val shown = rows(book("Old edition", source = source), book("New edition", source = source), transfers = transfers, present = setOf("New edition.epub"))
+        val downloads = mapOf(source to Download("Old edition", null, 1, Download.Status.Running, replacing = "Old edition"))
+        val shown = rows(book("Old edition", source = source), book("New edition", source = source), downloads = downloads, present = setOf("New edition.epub"))
             .associate { it.title to it.detail }
         assertEquals(mapOf("Old edition" to ROW_DOWNLOADING, "New edition" to ROW_NOT_STARTED), shown)
     }
 
     @Test
     fun `a download from a Catalogue is a row of its own, even when a Book on the Shelf has its source`() {
-        val transfers = mapOf(source to Transfer("From the Catalogue", null, 1, TransferState.Running))
-        val shown = rows(book("On the Shelf", source = source), transfers = transfers)
+        val downloads = mapOf(source to Download("From the Catalogue", null, 1, Download.Status.Running))
+        val shown = rows(book("On the Shelf", source = source), downloads = downloads)
         assertEquals(setOf(RowKey.Shelved("On the Shelf") to ROW_NOT_STARTED, RowKey.Arriving(source) to ROW_DOWNLOADING), shown.map { it.key to it.detail }.toSet())
     }
 

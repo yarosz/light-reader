@@ -18,8 +18,8 @@ data class Span(val start: Int, val end: Int, val emphasis: Emphasis)
 
 data class Block(val kind: BlockKind, val text: String, val spans: List<Span> = emptyList())
 
-/** [spineId] is the idref of the Spine item this Chapter came from; a Place names its Chapter by it (ADR 0002). */
-data class Chapter(val spineId: String, val title: String, val blocks: List<Block>) {
+/** [spineId] is this Spine item's idref; a Place names its Spine item by it (ADR 0002). */
+data class SpineItem(val spineId: String, val title: String, val blocks: List<Block>) {
     /** Blocks joined by '\n'. Reading positions are offsets into this string. */
     val text: String = blocks.joinToString("\n") { it.text }
 
@@ -37,13 +37,13 @@ data class Chapter(val spineId: String, val title: String, val blocks: List<Bloc
  * [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see
  * [bookIdentifier]. [author] is its package's `dc:creator`s, null when it names none.
  */
-data class Book(val identifier: String, val title: String, val chapters: List<Chapter>, val author: String? = null)
+data class OpenBook(val identifier: String, val title: String, val spineItems: List<SpineItem>, val author: String? = null)
 
 /** The most a container, package, or encryption document may decompress to; real ones are a few KB. */
 const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
 
 /** The most one Spine document may decompress to: generous (the largest Gutenberg ones are under 2 MB), but no zip bomb. */
-const val MAX_CHAPTER_BYTES = 32L * 1024 * 1024
+const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
@@ -51,26 +51,26 @@ const val MAX_CHAPTER_BYTES = 32L * 1024 * 1024
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
-fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Book = ZipFile(file).use { zip ->
+fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): OpenBook = ZipFile(file).use { zip ->
     val pkg = readPackage(zip, fallbackTitle)
-    val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { parseUntrusted(zip.open(item.path), it, MAX_CHAPTER_BYTES) } }
+    val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
-    Book(
+    OpenBook(
         identifier = pkg.identifier,
         title = pkg.title,
-        chapters = body.mapIndexed { i, (idref, doc) -> Chapter(idref, doc.title ?: "Section ${i + 1}", doc.blocks) },
+        spineItems = body.mapIndexed { i, (idref, doc) -> SpineItem(idref, doc.title ?: "Section ${i + 1}", doc.blocks) },
         author = pkg.author,
     )
 }
 
 /** A Spine item's idref and the path of its document inside the zip. */
-data class SpineItem(val idref: String, val path: String)
+data class SpineRef(val idref: String, val path: String)
 
 /**
  * What a Book's package document says about it, read without parsing the text. [author] is every
  * non-empty `dc:creator`, joined by ", ", or null when there is none.
  */
-data class Package(val identifier: String, val title: String, val spine: List<SpineItem>, val author: String? = null)
+data class Package(val identifier: String, val title: String, val spine: List<SpineRef>, val author: String? = null)
 
 /**
  * Reads the package document that the container names. [fallbackTitle] titles a Book whose package
@@ -81,7 +81,7 @@ data class Package(val identifier: String, val title: String, val spine: List<Sp
 fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
     val opf = readOpf(zip)
     val spine = opf.spine.mapNotNull { idref ->
-        opf.manifest[idref]?.takeIf { it.mediaType == "application/xhtml+xml" }?.let { SpineItem(idref, it.path) }
+        opf.manifest[idref]?.takeIf { it.mediaType == "application/xhtml+xml" }?.let { SpineRef(idref, it.path) }
     }
     check(spine.isNotEmpty()) { "the package has no Spine item with a document" }
     val documents = spine.map { zip.entry(it.path) }

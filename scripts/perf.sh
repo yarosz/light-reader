@@ -3,12 +3,12 @@
 # font change, <= 300 ms P90 on the SM4450, warm). firstPageMs runs from a layout pass's start to the
 # anchor Page being ready to draw: the AnnotatedString build for the window(s), their measure, and
 # packing. It excludes the EPUB parse, composition and the first frame. Opens the EPUB's largest
-# Chapter, then times N opens (fresh process each: force-stop + start) and N font changes from the
+# Spine item, then times N opens (fresh process each: force-stop + start) and N font changes from the
 # app's "ReaderPerf" logcat lines, and reports each window measure alongside.
 #
 #   scripts/perf.sh [-s serial] [-n runs] [-w] [-c chars] <epub path or URL>
 #
-# -w puts the Place near a window seam: 150 characters before the Chapter's first window end, as the app
+# -w puts the Place near a window seam: 150 characters before the Spine item's first window end, as the app
 # cuts it, so the anchor Page straddles two windows and both are measured before it shows. The report
 # then adds how many passes measured 0, 1, 2… windows synchronously. -c sets the window size for the
 # run in place of WINDOW_CHARS, to see whether firstPageMs scales with it.
@@ -122,7 +122,7 @@ reader_on_top() {
 }
 
 dev_start() { a shell run-as $pkg sh -c "'echo $* > files/dev-start'"; }
-# Without dev-start the Tool opens on the Shelf; chapter 0 opens the Book to find its largest Chapter.
+# Without dev-start the Tool opens on the Shelf; Spine item 0 opens the Book to find its largest Spine item.
 dev_start 0
 open_reader
 book=$(await ' book ')

@@ -1,8 +1,8 @@
 package com.yarosz.reader
 
 /**
- * A run of whole blocks laid out together (ADR 0007): blocks [firstBlock]..[lastBlock] of a Chapter,
- * whose text is [start, end) in [Chapter.text]. A window's index is its position in [windows]' result.
+ * A run of whole blocks laid out together (ADR 0007): blocks [firstBlock]..[lastBlock] of a Spine item,
+ * whose text is [start, end) in [SpineItem.text]. A window's index is its position in [windows]' result.
  */
 data class Window(val firstBlock: Int, val lastBlock: Int, val start: Int, val end: Int)
 
@@ -14,15 +14,15 @@ data class Window(val firstBlock: Int, val lastBlock: Int, val start: Int, val e
 const val WINDOW_CHARS = 10_000
 
 /**
- * Cuts [chapter] into windows of at most [maxChars] characters that tile its text. Blocks are packed
+ * Cuts [spineItem] into windows of at most [maxChars] characters that tile its text. Blocks are packed
  * greedily; a single block longer than [maxChars] gets a window to itself. A heading starts a new window
- * once the current one is at least half full, so windows tend to begin where Chapters do.
+ * once the current one is at least half full, so windows tend to begin where Spine items do.
  */
-fun windows(chapter: Chapter, maxChars: Int = WINDOW_CHARS): List<Window> {
-    val blocks = chapter.blocks
+fun windows(spineItem: SpineItem, maxChars: Int = WINDOW_CHARS): List<Window> {
+    val blocks = spineItem.blocks
     if (blocks.isEmpty()) return emptyList()
-    val starts = chapter.blockStarts
-    fun endOf(block: Int) = if (block < blocks.lastIndex) starts[block + 1] else chapter.text.length
+    val starts = spineItem.blockStarts
+    fun endOf(block: Int) = if (block < blocks.lastIndex) starts[block + 1] else spineItem.text.length
     val out = mutableListOf<Window>()
     var first = 0
     for (next in 1 until blocks.size) {
@@ -33,7 +33,7 @@ fun windows(chapter: Chapter, maxChars: Int = WINDOW_CHARS): List<Window> {
             first = next
         }
     }
-    out += Window(first, blocks.lastIndex, starts[first], chapter.text.length)
+    out += Window(first, blocks.lastIndex, starts[first], spineItem.text.length)
     return out
 }
 
@@ -44,12 +44,12 @@ fun windowIndexFor(windows: List<Window>, offset: Int): Int = windows.indexConta
 const val BLOCK_SEPARATOR = '\u200B'
 
 /**
- * A window's text for layout: its blocks with [BLOCK_SEPARATOR] wherever [Chapter.text] has a '\n'
- * between blocks, including the one after the window's last block unless it ends the chapter. A '\n'
+ * A window's text for layout: its blocks with [BLOCK_SEPARATOR] wherever [SpineItem.text] has a '\n'
+ * between blocks, including the one after the window's last block unless it ends the Spine item. A '\n'
  * there would lay out an extra blank line; the paragraph styles the caller adds break the paragraphs
- * instead. Same length as the window, so a layout offset plus [Window.start] is a [Chapter.text] offset.
+ * instead. Same length as the window, so a layout offset plus [Window.start] is a [SpineItem.text] offset.
  */
-fun Chapter.windowText(window: Window): String = buildString(window.end - window.start) {
+fun SpineItem.windowText(window: Window): String = buildString(window.end - window.start) {
     for (i in window.firstBlock..window.lastBlock) {
         append(blocks[i].text)
         if (i < blocks.lastIndex) append(BLOCK_SEPARATOR)
@@ -59,7 +59,7 @@ fun Chapter.windowText(window: Window): String = buildString(window.end - window
 /**
  * Whether block [i] takes a first-line indent: a paragraph following another paragraph (Standard
  * Ebooks' "p + p" convention, DESIGN.md). Judged on block kinds alone, so a paragraph that opens a
- * window indents when the block before it in the chapter is a paragraph.
+ * window indents when the block before it in the Spine item is a paragraph.
  */
 fun indentsFirstLine(blocks: List<Block>, i: Int): Boolean =
     blocks[i].kind == BlockKind.Paragraph && i > 0 && blocks[i - 1].kind == BlockKind.Paragraph

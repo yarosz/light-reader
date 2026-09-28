@@ -45,13 +45,13 @@ class DownloadTest {
         assertEquals(listOf(done.file), files())
         assertTrue(File(dir, done.file).readBytes().contentEquals(epub))
         assertEquals(DownloadState.Downloading(0, epub.size.toLong()), progress.first())
-        assertEquals(1f, progress.last().progress)
+        assertEquals(1f, progress.last().fraction)
     }
 
     @Test
     fun `downloading a Book again replaces its file`() {
         download(Answer(body = epub))
-        val newEdition = zipBytes(epubFiles(identifier = "urn:uuid:storm", title = "Stormy Night", chapters = listOf("A new edition.")))
+        val newEdition = zipBytes(epubFiles(identifier = "urn:uuid:storm", title = "Stormy Night", spineItems = listOf("A new edition.")))
         val done = download(Answer(body = newEdition)) as DownloadState.Done
         assertEquals(listOf(done.file), files())
         assertTrue(File(dir, done.file).readBytes().contentEquals(newEdition))
@@ -61,7 +61,7 @@ class DownloadTest {
     fun `a Book with no title takes the Catalogue entry's, and a server that gives no length still downloads`() {
         val done = download(Answer(body = zipBytes(epubFiles(title = null)), length = null)) as DownloadState.Done
         assertEquals("From the Catalogue", done.title)
-        assertNull(progress.last().progress)
+        assertNull(progress.last().fraction)
     }
 
     @Test
@@ -78,10 +78,10 @@ class DownloadTest {
 
     @Test
     fun `progress is a fraction of the total when known`() {
-        assertEquals(0.25f, DownloadState.Downloading(1, 4).progress)
-        assertEquals(1f, DownloadState.Downloading(9, 4).progress)
-        assertNull(DownloadState.Downloading(1, 0).progress)
-        assertNull(DownloadState.Downloading(1, null).progress)
+        assertEquals(0.25f, DownloadState.Downloading(1, 4).fraction)
+        assertEquals(1f, DownloadState.Downloading(9, 4).fraction)
+        assertNull(DownloadState.Downloading(1, 0).fraction)
+        assertNull(DownloadState.Downloading(1, null).fraction)
     }
 
     @Test
@@ -95,7 +95,7 @@ class DownloadTest {
     fun `a file that isn't an EPUB is rejected and nothing is kept`() {
         assertEquals(NotAnEpub, failure(Answer(body = "<html>Download page</html>".toByteArray())))
         assertEquals(NotAnEpub, failure(Answer(body = zipBytes(mapOf("readme.txt" to "hello")))))
-        assertEquals(NotAnEpub, failure(Answer(body = zipBytes(epubFiles(chapters = emptyList())))))
+        assertEquals(NotAnEpub, failure(Answer(body = zipBytes(epubFiles(spineItems = emptyList())))))
         assertEquals(emptyList(), files())
     }
 
@@ -166,7 +166,7 @@ class DownloadTest {
     }
 
     @Test
-    fun `a package or chapter that would expand without bound is not an EPUB`() {
+    fun `a package or Spine item that would expand without bound is not an EPUB`() {
         assertEquals(NotAnEpub, failure(Answer(body = zipBytes(epubFiles() + ("OEBPS/content.opf" to LAUGHS)))))
         assertEquals(emptyList(), files())
     }

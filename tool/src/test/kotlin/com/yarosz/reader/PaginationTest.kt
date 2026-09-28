@@ -6,12 +6,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Examples of the page-break rules (DESIGN.md) on a whole chapter, packed from its start and packed
+ * Examples of the page-break rules (DESIGN.md) on a whole Spine item, packed from its start and packed
  * backward from an anchor. [PackTest] holds the property tests.
  */
 class PaginationTest {
 
-    /** Ten 10px lines fit a 100px page; lines past the tenth continue the chapter, so the first page is never its last. */
+    /** Ten 10px lines fit a 100px page; lines past the tenth continue the Spine item, so the first page is never its last. */
     private fun lines(count: Int = 15, midWord: Set<Int> = emptySet(), headings: Set<Int> = emptySet()) =
         List(count) { LineMetrics(it * 10, it * 10f, it * 10f + 10f, endsAtBreak = it !in midWord, heading = it in headings) }
 
@@ -65,11 +65,11 @@ class PaginationTest {
 
     @Test
     fun `kindAt finds the block holding an offset`() {
-        val chapter = Chapter("spine", "", listOf(Block(BlockKind.Heading, "Title"), Block(BlockKind.Paragraph, "Body")))
-        assertEquals(BlockKind.Heading, chapter.kindAt(0))
-        assertEquals(BlockKind.Heading, chapter.kindAt(4))
-        assertEquals(BlockKind.Heading, chapter.kindAt(5))
-        assertEquals(BlockKind.Paragraph, chapter.kindAt(6))
-        assertEquals(BlockKind.Paragraph, chapter.kindAt(9))
+        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Heading, "Title"), Block(BlockKind.Paragraph, "Body")))
+        assertEquals(BlockKind.Heading, spineItem.kindAt(0))
+        assertEquals(BlockKind.Heading, spineItem.kindAt(4))
+        assertEquals(BlockKind.Heading, spineItem.kindAt(5))
+        assertEquals(BlockKind.Paragraph, spineItem.kindAt(6))
+        assertEquals(BlockKind.Paragraph, spineItem.kindAt(9))
     }
 }

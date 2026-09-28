@@ -1,7 +1,7 @@
 package com.yarosz.reader
 
 /**
- * One laid-out line: the [Chapter.text] offset it starts at, its vertical extent in the pixels of the
+ * One laid-out line: the [SpineItem.text] offset it starts at, its vertical extent in the pixels of the
  * layout that measured it, whether it ends at a legal break (see [endsAtBreak]), and whether it starts
  * inside a heading.
  */
@@ -24,13 +24,13 @@ data class Page(val start: Int, val end: Int, val bands: List<Band>)
  * unmeasured window can add pages on that side; otherwise the index of the next one that could, or the
  * anchor's own window, which must be measured first.
  *
- * [fromAnchor] is empty, and [anchorPage] null, in two cases: the anchor is at the chapter's end, or
+ * [fromAnchor] is empty, and [anchorPage] null, in two cases: the anchor is at the Spine item's end, or
  * the anchor's page is withheld because window [needAfter] might still add lines to it (see [pack]).
  * [needAfter] tells the two apart.
  */
 data class PackedPages(val before: List<Page>, val fromAnchor: List<Page>, val needBefore: Int?, val needAfter: Int?) {
     /**
-     * The page to show. Null means "not yet" when [needAfter] is set, and "anchor at the chapter's end,
+     * The page to show. Null means "not yet" when [needAfter] is set, and "anchor at the Spine item's end,
      * show `before.last()`" when it is not.
      */
     val anchorPage: Page? = fromAnchor.firstOrNull()
@@ -53,24 +53,24 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
     nextLineStart >= text.length || text[nextLineStart - 1].isWhitespace()
 
 /**
- * Packs a chapter's measured windows into pages no taller than [pageHeight], outward from [anchor], an
- * offset in [Chapter.text]. [lines] holds each window's lines in the window's own layout pixels, or null
- * for a window not measured yet, one entry per window. A negative anchor packs from the chapter's start;
+ * Packs a Spine item's measured windows into pages no taller than [pageHeight], outward from [anchor], an
+ * offset in [SpineItem.text]. [lines] holds each window's lines in the window's own layout pixels, or null
+ * for a window not measured yet, one entry per window. A negative anchor packs from the Spine item's start;
  * one at or past its end packs everything backward.
  *
  * The line holding the anchor starts a page. Forward from it, each page ends on the last fitting line
  * that ends at a legal break and isn't a heading, or, if no such line leaves the page at least
  * [MIN_PAGE_FILL] full, on the last line that fits. Backward from it the rules mirror: each page ends
  * where the page below starts, and takes the earliest fitting start whose preceding line is such a legal
- * end (the chapter's first line always is), or, if no such start leaves the page at least
+ * end (the Spine item's first line always is), or, if no such start leaves the page at least
  * [MIN_PAGE_FILL] full, the earliest start that fits. So every page end is legal unless the guard fired,
  * in both directions; what remains asymmetric is that a backward pass may tile a stretch differently,
- * but as legally, from a forward one. Backward, only the chapter's first page may be short. A single
+ * but as legally, from a forward one. Backward, only the Spine item's first page may be short. A single
  * line taller than the page gets a page to itself. Heights add across a window seam, and a page spanning
  * windows gets a band per window.
  *
  * A page is emitted only once no further window can change it: the next line on its side doesn't fit,
- * or the chapter ends there. So when the anchor lies within about a page of its measured run's end and
+ * or the Spine item ends there. So when the anchor lies within about a page of its measured run's end and
  * the next window is unmeasured, the anchor's own page is withheld: [PackedPages.fromAnchor] is empty
  * and [PackedPages.needAfter] names the window to measure. Each page depends only on lines on its own
  * side of the anchor, so re-packing with more windows measured, for the same anchor, only appends pages

@@ -17,10 +17,10 @@ class BookDetailTest {
     private val best = bestDownload(editions)!!
 
     private fun book(source: HttpsUrl?, onShelf: Boolean = true, file: String? = "pp.epub", addedAt: Long? = null) =
-        BookEntry("Pride and Prejudice", file, null, false, onShelf, source = source?.value, addedAt = addedAt)
+        Book("Pride and Prejudice", file, null, false, onShelf, source = source?.value, addedAt = addedAt)
 
-    private fun snapshot(vararg books: Pair<String, BookEntry>, present: Set<String> = setOf("pp.epub"), transfers: Map<HttpsUrl, Transfer> = emptyMap()) =
-        ShelfSnapshot(ReadingData(books = mapOf(*books)), present, transfers)
+    private fun snapshot(vararg books: Pair<String, Book>, present: Set<String> = setOf("pp.epub"), downloads: Map<HttpsUrl, Download> = emptyMap()) =
+        ShelfSnapshot(ReadingData(books = mapOf(*books)), present, downloads)
 
     private fun detail(snapshot: ShelfSnapshot, failure: DownloadFailure? = null) = bookDetail(snapshot, editions, failure, shipped = true)
 
@@ -56,12 +56,12 @@ class BookDetailTest {
 
     @Test
     fun `a running download of any of its links or of the matched Book reads downloading`() {
-        val running = Transfer("Pride and Prejudice", null, 1, TransferState.Running)
-        assertEquals(DetailAction.Downloading, detail(snapshot(transfers = mapOf(images to running))).action)
+        val running = Download("Pride and Prejudice", null, 1, Download.Status.Running)
+        assertEquals(DetailAction.Downloading, detail(snapshot(downloads = mapOf(images to running))).action)
         val other = url("https://mirror.example.org/pp.epub")
         assertEquals(
             DetailAction.Downloading,
-            detail(snapshot("pg" to book(noImages), present = emptySet(), transfers = mapOf(other to running.copy(replacing = "pg")))).action,
+            detail(snapshot("pg" to book(noImages), present = emptySet(), downloads = mapOf(other to running.copy(replacing = "pg")))).action,
         )
     }
 
@@ -73,8 +73,8 @@ class BookDetailTest {
 
     @Test
     fun `a retryable failure, kept on the Shelf or not, shows its copy and Retry`() {
-        val failed = Transfer("Pride and Prejudice", null, 1, TransferState.Failed(Unreachable))
-        assertEquals(BookDetail(DetailAction.Download(best, RETRY, null), FailureCopy(COPY_UNREACHABLE, retry = true)), detail(snapshot(transfers = mapOf(noImages to failed))))
+        val failed = Download("Pride and Prejudice", null, 1, Download.Status.Failed(Unreachable))
+        assertEquals(BookDetail(DetailAction.Download(best, RETRY, null), FailureCopy(COPY_UNREACHABLE, retry = true)), detail(snapshot(downloads = mapOf(noImages to failed))))
         assertEquals(BookDetail(DetailAction.Download(best, RETRY, null), FailureCopy(COPY_DISK_FULL, retry = true)), detail(snapshot(), DiskError))
     }
 

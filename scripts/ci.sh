@@ -67,7 +67,7 @@ fail_ctx() {  # context, step description
 }
 
 # Font round trip: page forward, cycle A+ A+ A- A-, require the identical Page.
-# A Page is its chapter indicator ("1/12") plus its text from the Canvas's semantics: the first 40
+# A Page is its Spine item indicator ("1/12") plus its text from the Canvas's semantics: the first 40
 # characters and the length. A bigger font keeps the Page's start (the Place) but moves its end, so the
 # length is what makes the first A+ change the state. Every read must find both the indicator and the
 # Page, so an unresponsive screen or a lost device can never pass as "unchanged".
@@ -135,7 +135,7 @@ wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s
 data_hash() {  # serial -> sha256 of files/reading-data.json, or "none" when there is no such file
   "$adb" -s "$1" shell run-as $pkg sh -c "'sha256sum files/reading-data.json 2>/dev/null || echo none'" | tr -d '\r' | awk '{print $1}'
 }
-install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at chapter 1 and the
+install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at Spine item 1 and the
                         # default font, and saves nothing, so A+ A+ A- A- always cycles and the device's
                         # reading data is left as it was (data_before, checked by shelf_check). A device
                         # with no alice.epub gets the test fixture, removed again on exit. The fixture is
@@ -169,7 +169,7 @@ shelf_check() {  # serial: after the round trip, the reading data must be byte-i
   echo "the Shelf never rendered"
   return 1
 }
-clear_starts() {  # on any exit: a dev-start left behind would open every later launch at chapter 1, and
+clear_starts() {  # on any exit: a dev-start left behind would open every later launch at Spine item 1, and
                   # the Reader it launched saves nothing, so stop it before anyone reads in it. The Alice
                   # fixture goes only from devices this run pushed it to.
   for s in $dev_started; do
