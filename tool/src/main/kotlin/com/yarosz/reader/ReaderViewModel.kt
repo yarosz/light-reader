@@ -16,8 +16,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Logcat tag for layout timings; `scripts/perf.sh` parses these lines, so keys like `chapters=` stay
- * as they are (they count Spine items).
+ * Logcat tag for layout timings; `scripts/perf.sh` parses these lines, so the key `chapters=` stays
+ * as it is (it counts Spine items).
  */
 private const val PERF_TAG = "ReaderPerf"
 
@@ -86,7 +86,7 @@ class ReaderViewModel(
                         windowChars = start.windowChars ?: WINDOW_CHARS
                         spinePoint.value = SpinePoint(item, start.offset.coerceIn(0, opened.spineItems[item].text.length))
                         val ends = windows(opened.spineItems[item], windowChars).joinToString(",") { it.end.toString() }
-                        Log.i(PERF_TAG, "windows chapter=$item windowChars=$windowChars ends=$ends")
+                        Log.i(PERF_TAG, "windows item=$item windowChars=$windowChars ends=$ends")
                     } else {
                         val place = saver.data.books[opened.identifier]?.place
                         place?.let(opened::resolve)?.let { spinePoint.value = it }
@@ -156,7 +156,7 @@ class ReaderViewModel(
     }
 
     private fun turn(step: (Reading<WindowLayout>) -> Shown<WindowLayout>?) {
-        val shown = show("chapter", step) ?: return
+        val shown = show("turn", step) ?: return
         spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
         val identifier = book.value?.identifier ?: return
         val place = shown.pass.spineItem.placeOf(shown.page.start, System.currentTimeMillis())
@@ -181,7 +181,7 @@ class ReaderViewModel(
         val pass = shown.pass
         if (pass !== before) prefetching?.cancel()
         if (reading.passesStarted != started) {
-            Log.i(PERF_TAG, "pass reason=$reason chapter=${pass.item} chars=${pass.length} font=${FONT_SIZES[pass.key.fontStep]} " +
+            Log.i(PERF_TAG, "pass reason=$reason item=${pass.item} chars=${pass.length} font=${FONT_SIZES[pass.key.fontStep]} " +
                 "windows=${pass.windows.size} syncWindows=$syncWindows firstPageMs=${ms(elapsed)}")
         }
         prefetch()
@@ -213,7 +213,7 @@ class ReaderViewModel(
         val start = System.nanoTime()
         val layout = typesetter.measure(pass.spineItem, pass.windows[window], pass.key.fontStep)
         if (sync) syncWindows++
-        Log.i(PERF_TAG, "window pass=${pass.id} chapter=${pass.item} index=$window " +
+        Log.i(PERF_TAG, "window pass=${pass.id} item=${pass.item} index=$window " +
             "chars=${pass.windows[window].let { it.end - it.start }} measureMs=${ms(System.nanoTime() - start)} sync=$sync")
         return layout
     }

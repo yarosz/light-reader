@@ -77,6 +77,18 @@ Ordered. Each item ends on its _done-when_.
   change, whichever lands first. A connect timeout on a typed http:// address reads NoHttps only on a
   VALIDATED network, which the SDK can't report today, so it is Unreachable; revisit if
   `LightConnectivity` gains validation.
+- **Pre-N4 domain pass (AGENTS.md "Domain language").** Settle these parked questions:
+  - `Download`: is it a domain term? Resolve its clash with `RowTap.Download` and decide where it
+    lives (`Shelf.kt` today, not `Download.kt`).
+  - `DownloadState.Finished` against the glossary's Finished.
+  - Reading session.
+  - A Catalogue's page (`CataloguePage`) against Page.
+  - "file" in row copy.
+  - The `entry` helpers and locals that name a stored Book (`toEntry`, `mergeEntry`, `entry`), now that "Catalogue entry" is the only entry.
+  - `Pass.item` (an index) beside `Pass.spineItem`.
+  - `char` against `offset` for character indices (`SpinePoint`, `Reading.open`, `DevStart`). The `reading-data.json` key `offset` stays.
+
+  _Done when:_ `scripts/domain-drift.sh` reports 0 and the merged commit is tagged `domain-pass/n4`.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,

@@ -127,14 +127,14 @@ dev_start 0
 open_reader
 book=$(await ' book ')
 largest=$(field largest <<<"$book")
-echo "perf: $(field chapters <<<"$book") chapters; largest is index $largest, $(field largestChars <<<"$book") chars; parsed in $(field parseMs <<<"$book") ms"
+echo "perf: $(field chapters <<<"$book") Spine items; largest is index $largest, $(field largestChars <<<"$book") chars; parsed in $(field parseMs <<<"$book") ms"
 offset=0
 if $seam; then
   dev_start "$largest" 0 ${chars:+"$chars"}
   open_reader
   cut=$(await ' windows ')
   ends=$(field ends <<<"$cut")
-  [[ $ends == *,* ]] || die "chapter $largest is one window at $(field windowChars <<<"$cut") chars; no seam to measure"
+  [[ $ends == *,* ]] || die "Spine item $largest is one window at $(field windowChars <<<"$cut") chars; no seam to measure"
   first_end=${ends%%,*}
   offset=$((first_end > 150 ? first_end - 150 : 0))
   echo "perf: windows of $(field windowChars <<<"$cut") chars end at $ends; Place at offset $offset"
@@ -203,7 +203,7 @@ echo
 echo "First Page ms on $model; ADR 0007 bar: 300 P90, warm"
 echo "firstPageMs: pass start to anchor Page ready (AnnotatedString build, measure, packing); not EPUB parse, composition or first frame"
 echo "window n and sync are lower bounds: window lines are read 1 s after each pass line, so later background measures are missed"
-echo "Place: chapter $largest offset $offset$($seam && echo " (150 chars before the first window end)"); window size ${chars:-WINDOW_CHARS}"
+echo "Place: Spine item $largest offset $offset$($seam && echo " (150 chars before the first window end)"); window size ${chars:-WINDOW_CHARS}"
 printf "%-6s %3s %9s  %23s  %11s\n" "" "n" "chars" "firstPageMs P50/P90/max" "syncWin max"
 stats open
 stats font
