@@ -17,22 +17,23 @@ import org.xml.sax.helpers.DefaultHandler
  * downloaded EPUB) into [handler], reading at most [maxBytes] of [input] and passing at most
  * [maxBytes] characters of text and attribute values to the handler. Every external entity and
  * external DTD resolves to nothing, so parsing never reads a file or touches the network, while a
- * DOCTYPE (EPUB2's XHTML 1.1 one, the OEB one) is still accepted. An entity the unread DTD would
- * have declared reaches the handler as its character when it is one of XHTML's ([XHTML_ENTITIES]),
- * so `a&nbsp;b` keeps its space; any other is skipped. The character budget bounds an
+ * DOCTYPE (EPUB2's XHTML 1.1 one, the OEB one) is still accepted. XHTML's named entities
+ * ([XHTML_ENTITIES]) are rewritten as numeric references first ([XhtmlEntityStream]), so `a&nbsp;b`
+ * keeps its space with no DTD read, on Android's parser as on the JVM's. The character budget bounds an
  * internal entity-expansion bomb whatever the platform parser's own limits. Closes [input].
  * Throws [TooLargeException] past either bound and another SAXException when the document isn't
  * XML; both are SAXExceptions, so an IOException means [input] itself failed.
  */
 fun parseUntrusted(input: InputStream, handler: DefaultHandler, maxBytes: Long, namespaceAware: Boolean = false) {
     CappedStream(input, maxBytes).use { capped ->
+        val source = XhtmlEntityStream(capped.buffered())
         val reader = SAXParserFactory.newInstance().apply { isNamespaceAware = namespaceAware }.newSAXParser().xmlReader
         reader.entityResolver = EntityResolver { _, _ -> InputSource(StringReader("")) }
         reader.contentHandler = TextBudget(handler, maxBytes)
         reader.errorHandler = handler
         reader.dtdHandler = handler
         try {
-            reader.parse(InputSource(capped))
+            reader.parse(InputSource(source))
         } catch (e: Exception) {
             if (capped.exceeded) throw TooLargeException()
             throw e
@@ -74,17 +75,8 @@ private class CappedStream(inner: InputStream, private val max: Long) : FilterIn
     }
 }
 
-/**
- * Passes SAX content to [inner], failing once text and attribute values together pass [max]
- * characters, and turning a skipped XHTML entity into its character.
- */
+/** Passes SAX content to [inner], failing once text and attribute values together pass [max] characters. */
 private class TextBudget(private val inner: ContentHandler, private var max: Long) : ContentHandler by inner {
-    override fun skippedEntity(name: String) {
-        val code = XHTML_ENTITIES[name] ?: return inner.skippedEntity(name)
-        val chars = Character.toChars(code)
-        characters(chars, 0, chars.size)
-    }
-
     override fun startElement(uri: String, localName: String, qName: String, atts: Attributes) {
         for (i in 0 until atts.length) spend(atts.getValue(i).length)
         inner.startElement(uri, localName, qName, atts)

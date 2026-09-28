@@ -1,10 +1,13 @@
 package com.yarosz.reader
 
+import java.io.InputStream
+import java.io.PushbackInputStream
+
 /**
  * XHTML 1.0's named character entities (its lat1, symbol, and special sets: 253 names) and the code
- * point each names. An EPUB2 chapter uses them under an XHTML DOCTYPE whose DTD is never read, so the
- * parser reports each as skipped, and [parseUntrusted] puts the character back from here. Generated
- * from Python's `html.entities.name2codepoint` (HTML 4.01's same 252) plus `apos`.
+ * point each names. An EPUB2 chapter uses them under an XHTML DOCTYPE whose DTD is never read, so no
+ * parser knows them: [XhtmlEntityStream] rewrites each as its numeric reference. Generated from
+ * Python's `html.entities.name2codepoint` (HTML 4.01's same 252) plus `apos`.
  */
 internal val XHTML_ENTITIES: Map<String, Int> = (
     "quot 34 amp 38 apos 39 lt 60 gt 62 nbsp 160 iexcl 161 cent 162 pound 163 curren 164 yen 165 " +
@@ -35,3 +38,81 @@ internal val XHTML_ENTITIES: Map<String, Int> = (
     "lceil 8968 rceil 8969 lfloor 8970 rfloor 8971 lang 9001 rang 9002 loz 9674 spades 9824 clubs 9827 " +
     "hearts 9829 diams 9830"
     ).split(' ').chunked(2).associate { (name, code) -> name to code.toInt() }
+
+/** XML's own entities, which every parser knows. */
+private val PREDEFINED = setOf("amp", "lt", "gt", "quot", "apos")
+
+private const val LONGEST_NAME = 8
+
+/**
+ * [inner] with each of [XHTML_ENTITIES] (`&nbsp;`) rewritten as its numeric reference (`&#160;`), so
+ * it parses without the DTD that declares it. The JVM's parser reports such an entity as skipped,
+ * but Android's Expat drops it silently, so the rewrite happens before either sees it. XML's own
+ * five entities, unknown names, and CDATA sections pass through as they are. The rewrite is on
+ * bytes, which is exact for UTF-8 and other ASCII-compatible encodings; a UTF-16 document (EPUB
+ * allows one) passes through untouched.
+ */
+class XhtmlEntityStream(inner: InputStream) : InputStream() {
+    private val input = PushbackInputStream(inner, LONGEST_NAME + 2)
+    private val pending = ArrayDeque<Int>()
+    private val recent = StringBuilder()
+    private var inCdata = false
+    private var utf16: Boolean? = null
+
+    override fun read(): Int {
+        pending.removeFirstOrNull()?.let { return it }
+        if (utf16 == null) utf16 = startsUtf16()
+        val b = input.read()
+        if (b < 0 || utf16 == true) return b
+        track(b)
+        if (b != '&'.code || inCdata) return b
+        val name = StringBuilder()
+        while (name.length <= LONGEST_NAME) {
+            val c = input.read()
+            if (c == ';'.code) {
+                val code = XHTML_ENTITIES[name.toString()]?.takeIf { name.toString() !in PREDEFINED }
+                val replacement = if (code != null) "#$code;" else "$name;"
+                replacement.forEach { pending.addLast(it.code) }
+                return b
+            }
+            if (c < 0 || !(c.toChar().isLetterOrDigit() && c < 128)) {
+                if (c >= 0) input.unread(c)
+                break
+            }
+            name.append(c.toChar())
+        }
+        name.forEach { pending.addLast(it.code) }
+        return b
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        if (len == 0) return 0
+        var n = 0
+        while (n < len) {
+            val c = read()
+            if (c < 0) break
+            b[off + n++] = c.toByte()
+            if (pending.isEmpty() && input.available() <= 0) break
+        }
+        return if (n == 0) -1 else n
+    }
+
+    override fun close() = input.close()
+
+    /** Tracks whether the stream is inside a CDATA section, by the last bytes it passed. */
+    private fun track(b: Int) {
+        recent.append(b.toChar())
+        if (recent.length > 9) recent.deleteCharAt(0)
+        if (!inCdata && recent.endsWith("<![CDATA[")) inCdata = true
+        else if (inCdata && recent.endsWith("]]>")) inCdata = false
+    }
+
+    private fun startsUtf16(): Boolean {
+        val first = input.read()
+        if (first < 0) return false
+        val second = input.read()
+        if (second >= 0) input.unread(second)
+        input.unread(first)
+        return (first == 0xFE && second == 0xFF) || (first == 0xFF && second == 0xFE) || (first == 0 && second == '<'.code) || (first == '<'.code && second == 0)
+    }
+}

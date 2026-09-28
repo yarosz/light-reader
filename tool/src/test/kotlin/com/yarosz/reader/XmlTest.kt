@@ -56,6 +56,18 @@ class XmlTest {
     }
 
     @Test
+    fun `XHTML's named entities become their characters with no DTD at all, as Android's parser needs`() {
+        assertEquals(" a b—c", parse("<p x=\"&nbsp;\">a&nbsp;b&mdash;c</p>"))
+    }
+
+    @Test
+    fun `XML's own entities, unknown or unterminated names, CDATA and numeric references pass through`() {
+        assertEquals("&nbsp; <b>&amp;nbsp;  ", parse("<x>&amp;nbsp; &lt;b&gt;<![CDATA[&amp;nbsp;]]>&nbsp;&#160;</x>"))
+        assertEquals("ok", parse("<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY verylongname \"o\">]><x>&verylongname;k</x>"))
+        assertEquals("été", Collect().also { parseUntrusted("﻿<x>été</x>".toByteArray(Charsets.UTF_16BE).inputStream(), it, 1_000) }.text.toString())
+    }
+
+    @Test
     fun `text that expands past the budget fails, though the document itself is small`() {
         val doc = """<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "xxxxxxxxxx"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
             <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">]><x>&c;&c;</x>"""
