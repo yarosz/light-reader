@@ -93,12 +93,20 @@ class ShelfTest {
             CopyProtected to ROW_CANT_DOWNLOAD_COPY_PROTECTED,
             NotAnEpub to ROW_CANT_DOWNLOAD_NOT_AN_EPUB,
             NoHttps to ROW_CANT_DOWNLOAD_NO_HTTPS,
-            UntrustedCertificate to ROW_CANT_DOWNLOAD_UNTRUSTED,
         )
         expected.forEach { (reason, detail) ->
             val shown = rows(book("Book", source = source), transfers = mapOf(source to Transfer("Book", null, 1, TransferState.Failed(reason), replacing = "Book")), present = emptySet())
             assertEquals(listOf(ShelfRow(RowKey.Shelved("Book"), "Book", detail, RowTap.None)), shown, reason.toString())
         }
+    }
+
+    @Test
+    fun `an untrusted certificate leaves a row that retries, from the Shelf or from a Catalogue (D15)`() {
+        val failed = TransferState.Failed(UntrustedCertificate)
+        val again = rows(book("Book", source = source), transfers = mapOf(source to Transfer("Book", null, 1, failed, replacing = "Book")), present = emptySet())
+        assertEquals(ShelfRow(RowKey.Shelved("Book"), "Book", ROW_DOWNLOAD_FAILED, RowTap.Download(source, "Book", null, "Book")), again.single())
+        val arriving = rows(transfers = mapOf(other to Transfer("New", null, 1, failed)))
+        assertEquals(ShelfRow(RowKey.Arriving(other), "New", ROW_DOWNLOAD_FAILED, RowTap.Download(other, "New", null)), arriving.single())
     }
 
     @Test
@@ -123,9 +131,9 @@ class ShelfTest {
     }
 
     @Test
-    fun `only the network, a server error and a full phone can be retried`() {
-        val retryable = listOf(Unreachable, HttpError(500), HttpError(404), DiskError)
-        val permanent = listOf(NoHttps, UntrustedCertificate, NotAnEpub, CopyProtected)
+    fun `the network, a server error, a full phone and an untrusted certificate can be retried`() {
+        val retryable = listOf(Unreachable, HttpError(500), HttpError(404), DiskError, UntrustedCertificate)
+        val permanent = listOf(NoHttps, NotAnEpub, CopyProtected)
         assertEquals(retryable.map { true } + permanent.map { false }, (retryable + permanent).map { it.isRetryable })
     }
 }

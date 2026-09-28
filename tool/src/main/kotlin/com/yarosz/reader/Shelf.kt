@@ -18,7 +18,6 @@ const val ROW_FILE_MISSING_SOURCE = "file missing · tap to download again"
 const val ROW_CANT_DOWNLOAD_COPY_PROTECTED = "can't download again · copy-protected"
 const val ROW_CANT_DOWNLOAD_NOT_AN_EPUB = "can't download again · not an EPUB"
 const val ROW_CANT_DOWNLOAD_NO_HTTPS = "can't download again · needs https"
-const val ROW_CANT_DOWNLOAD_UNTRUSTED = "can't download again · certificate not trusted"
 
 /** A row's identity: a Book on the Shelf, or a download of a Book the Shelf doesn't have yet. */
 sealed interface RowKey {
@@ -48,14 +47,15 @@ sealed interface TransferState {
 
 /**
  * Whether tapping "download failed · tap to retry" can help. The network and a full phone can
- * change between tries; a server with no HTTPS or an untrusted certificate, a file that isn't an
- * EPUB, and a copy-protected Book won't. The Catalogue's detail page explains those; a Shelf row
- * whose download failed that way reads "can't download again · …" and can only be removed.
+ * change between tries, and so can an untrusted certificate: public Wi-Fi intercepts TLS until the
+ * reader signs in to it (D15). A server with no HTTPS, a file that isn't an EPUB, and a
+ * copy-protected Book won't. The Catalogue's detail page explains those; a Shelf row whose download
+ * failed that way reads "can't download again · …" and can only be removed.
  */
 val DownloadFailure.isRetryable: Boolean
     get() = when (this) {
-        Unreachable, is HttpError, DiskError -> true
-        NoHttps, UntrustedCertificate, NotAnEpub, CopyProtected -> false
+        Unreachable, is HttpError, DiskError, UntrustedCertificate -> true
+        NoHttps, NotAnEpub, CopyProtected -> false
     }
 
 /** What tapping a row does outside Edit. */
@@ -124,11 +124,10 @@ private fun bookRow(identifier: String, entry: BookEntry, file: String?, transfe
 private fun transferDetail(state: TransferState) = when (state) {
     TransferState.Running -> ROW_DOWNLOADING
     is TransferState.Failed -> when (state.reason) {
-        Unreachable, is HttpError, DiskError -> ROW_DOWNLOAD_FAILED
+        Unreachable, is HttpError, DiskError, UntrustedCertificate -> ROW_DOWNLOAD_FAILED
         CopyProtected -> ROW_CANT_DOWNLOAD_COPY_PROTECTED
         NotAnEpub -> ROW_CANT_DOWNLOAD_NOT_AN_EPUB
         NoHttps -> ROW_CANT_DOWNLOAD_NO_HTTPS
-        UntrustedCertificate -> ROW_CANT_DOWNLOAD_UNTRUSTED
     }
 }
 
