@@ -146,6 +146,16 @@ class CatalogueListTest {
     }
 
     @Test
+    fun `two keys for one Catalogue merge at decode, whichever the file lists first`() {
+        val newer = """"https://books.example.org/opds":{"name":"Newer","removed":true,"updatedAt":9,"future":1}"""
+        val older = """"http://Books.example.org/opds/":{"name":"Older","removed":false,"updatedAt":3,"past":2}"""
+        listOf("{\"catalogues\":{$newer,$older}}", "{\"catalogues\":{$older,$newer}}").forEach { text ->
+            val record = decodeReadingData(text).getOrThrow().catalogues.getValue(home.url.catalogueKey)
+            assertEquals(CatalogueRecord("Newer", null, true, 9, mapOf("future" to JsonPrimitive(1), "past" to JsonPrimitive(2))), record, text)
+        }
+    }
+
+    @Test
     fun `decoding re-keys each Catalogue, so an http or slashed key can be removed, and drops a key that isn't a URL`() {
         val text = """{"catalogues":{
             "http://Books.example.org/opds/":{"name":"Home books","removed":false,"updatedAt":3},
