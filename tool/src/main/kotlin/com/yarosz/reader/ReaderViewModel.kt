@@ -15,7 +15,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Logcat tag for layout timings; `scripts/perf.sh` parses these lines. */
+/**
+ * Logcat tag for layout timings; `scripts/perf.sh` parses these lines, so keys like `chapters=` stay
+ * as they are (they count Spine items).
+ */
 private const val PERF_TAG = "ReaderPerf"
 
 /** How long page turns and font changes settle before the reading data is saved. */
