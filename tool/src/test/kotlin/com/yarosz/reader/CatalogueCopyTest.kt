@@ -42,9 +42,11 @@ class CatalogueCopyTest {
             Unreachable to FailureCopy(COPY_UNREACHABLE, retry = true),
             NoHttps to FailureCopy(COPY_NO_HTTPS, retry = false),
             HttpError(503) to FailureCopy(COPY_HTTP_ERROR, retry = true),
+            HttpError(401) to FailureCopy(COPY_NEEDS_SIGN_IN, retry = false),
             UntrustedCertificate to FailureCopy(COPY_UNTRUSTED, retry = true),
         )
         expected.forEach { (failure, copy) -> assertEquals(copy, downloadFailureCopy(failure, shipped = true), failure.toString()) }
+        expected.forEach { (failure, copy) -> assertEquals(failure.isRetryable, copy.retry, "Retry follows isRetryable: $failure") }
     }
 
     @Test

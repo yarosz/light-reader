@@ -18,6 +18,7 @@ const val ROW_FILE_MISSING_SOURCE = "file missing · tap to download again"
 const val ROW_CANT_DOWNLOAD_COPY_PROTECTED = "can't download again · copy-protected"
 const val ROW_CANT_DOWNLOAD_NOT_AN_EPUB = "can't download again · not an EPUB"
 const val ROW_CANT_DOWNLOAD_NO_HTTPS = "can't download again · needs https"
+const val ROW_CANT_DOWNLOAD_NEEDS_LOGIN = "can't download again · needs a login"
 
 /** A row's identity: a Book on the Shelf, or a download of a Book the Shelf doesn't have yet. */
 sealed interface RowKey {
@@ -46,15 +47,17 @@ sealed interface TransferState {
 }
 
 /**
- * Whether tapping "download failed · tap to retry" can help. The network and a full phone can
- * change between tries, and so can an untrusted certificate: public Wi-Fi intercepts TLS until the
- * reader signs in to it (D15). A server with no HTTPS, a file that isn't an EPUB, and a
- * copy-protected Book won't. The Catalogue's detail page explains those; a Shelf row whose download
- * failed that way reads "can't download again · …" and can only be removed.
+ * Whether trying again can help: the one rule behind a Shelf row's "tap to retry" and every "Retry"
+ * ([FailureCopy.retry]). The network and a full phone can change between tries, and so can an
+ * untrusted certificate: public Wi-Fi intercepts TLS until the reader signs in to it (D15). A server
+ * with no HTTPS, a file that isn't an EPUB, and a copy-protected Book won't, and neither will a 401,
+ * because no sign-in exists to change the answer. The Catalogue's detail page explains those; a Shelf
+ * row whose download failed that way reads "can't download again · …" and can only be removed.
  */
 val DownloadFailure.isRetryable: Boolean
     get() = when (this) {
-        Unreachable, is HttpError, DiskError, UntrustedCertificate -> true
+        Unreachable, DiskError, UntrustedCertificate -> true
+        is HttpError -> status != 401
         NoHttps, NotAnEpub, CopyProtected -> false
     }
 
@@ -123,12 +126,16 @@ private fun bookRow(identifier: String, entry: BookEntry, file: String?, transfe
 
 private fun transferDetail(state: TransferState) = when (state) {
     TransferState.Running -> ROW_DOWNLOADING
-    is TransferState.Failed -> when (state.reason) {
-        Unreachable, is HttpError, DiskError, UntrustedCertificate -> ROW_DOWNLOAD_FAILED
-        CopyProtected -> ROW_CANT_DOWNLOAD_COPY_PROTECTED
-        NotAnEpub -> ROW_CANT_DOWNLOAD_NOT_AN_EPUB
-        NoHttps -> ROW_CANT_DOWNLOAD_NO_HTTPS
-    }
+    is TransferState.Failed -> failedDetail(state.reason)
+}
+
+/** "download failed · tap to retry" when retrying can help ([isRetryable]), else why it can't. */
+private fun failedDetail(reason: DownloadFailure) = if (reason.isRetryable) ROW_DOWNLOAD_FAILED else when (reason) {
+    CopyProtected -> ROW_CANT_DOWNLOAD_COPY_PROTECTED
+    NotAnEpub -> ROW_CANT_DOWNLOAD_NOT_AN_EPUB
+    NoHttps -> ROW_CANT_DOWNLOAD_NO_HTTPS
+    is HttpError -> ROW_CANT_DOWNLOAD_NEEDS_LOGIN
+    Unreachable, DiskError, UntrustedCertificate -> ROW_DOWNLOAD_FAILED
 }
 
 /** A running download does nothing on a tap, and neither does a permanent failure: its row can only be removed. */

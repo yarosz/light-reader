@@ -275,6 +275,19 @@ class ShelfViewModelTest {
     }
 
     @Test
+    fun `a missing file whose source needs a login says so, and the row can only be removed`() {
+        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        val vm = shelf(FakeTransport(mapOf(link.value to Answer(status = 401))))
+        val download = vm.downloadAgain("Stormy Night")
+        settle()
+        assertEquals(DownloadResult.Failed(HttpError(401)), download.done())
+        assertEquals(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "Stormy Night", "can't download again · needs a login", RowTap.None), vm.row("Stormy Night"))
+        vm.toggleEdit()
+        vm.remove(RowKey.Shelved("urn:uuid:storm"))
+        assertEquals(emptyList(), vm.rows.value)
+    }
+
+    @Test
     fun `a missing file with no source can only be removed`() {
         store("urn:a" to entry("A"))
         val vm = shelf(FakeTransport(emptyMap()))

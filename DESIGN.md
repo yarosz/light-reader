@@ -85,6 +85,7 @@ set tighter (1.2) than body copy.
 | Downloading | "downloading…" | nothing |
 | Failed, retryable | "download failed · tap to retry" | downloads again |
 | Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" | nothing; the Book can only be removed |
+| Failed for good, the source needs a login (401) | "can't download again · needs a login" | nothing; the Book can only be removed |
 | Finished | "finished" (see below) | opens the Book |
 | File missing, source known | "file missing · tap to download again" | downloads again, keeps the Place |
 | File missing, no source | "file missing" | nothing; the Book can only be removed |
@@ -106,10 +107,11 @@ record, and removing a Book that is downloading cancels the download. Removing t
 Edit.
 
 **Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
-failures (Unreachable, HttpError, DiskError, and UntrustedCertificate, D15) leave a row reading
-"download failed · tap to retry". An untrusted certificate is retryable because public Wi-Fi
-intercepts TLS until the reader signs in to it. Permanent failures (CopyProtected, NotAnEpub, and
-also NoHttps, which a retry can't fix) of a download from a Catalogue show their copy on the Book's
+failures (Unreachable, HttpError other than 401, DiskError, and UntrustedCertificate, D15) leave a
+row reading "download failed · tap to retry". An untrusted certificate is retryable because public
+Wi-Fi intercepts TLS until the reader signs in to it. Permanent failures (CopyProtected, NotAnEpub,
+and also NoHttps and a 401, which a retry can't fix, since sign-in doesn't exist) of a download from a
+Catalogue show their copy on the Book's
 detail page and add nothing to the Shelf. A copy-protected Book must never become a row that can't be read. When
 downloading a missing file again from the Shelf fails for good, the Book's row says why ("can't
 download again · …", table above) and can then only be removed. That state lives in memory: after a

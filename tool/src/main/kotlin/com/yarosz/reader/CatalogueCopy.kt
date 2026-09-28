@@ -56,15 +56,18 @@ fun feedFailureCopy(failure: FeedFailure, shipped: Boolean): FailureCopy = when 
 /** A download from a Catalogue that failed, shown on the Book's detail page. */
 fun downloadFailureCopy(failure: DownloadFailure, shipped: Boolean): FailureCopy = when (failure) {
     is NetworkFailure -> networkFailureCopy(failure, shipped)
-    NotAnEpub -> FailureCopy(COPY_NOT_AN_EPUB, retry = false)
-    CopyProtected -> FailureCopy(COPY_COPY_PROTECTED, retry = false)
-    DiskError -> FailureCopy(COPY_DISK_FULL, retry = true)
+    NotAnEpub -> FailureCopy(COPY_NOT_AN_EPUB, failure.isRetryable)
+    CopyProtected -> FailureCopy(COPY_COPY_PROTECTED, failure.isRetryable)
+    DiskError -> FailureCopy(COPY_DISK_FULL, failure.isRetryable)
 }
 
-/** A 401 can't be retried: no sign-in exists to change the answer. */
-private fun networkFailureCopy(failure: NetworkFailure, shipped: Boolean): FailureCopy = when (failure) {
-    Unreachable -> FailureCopy(COPY_UNREACHABLE, retry = true)
-    NoHttps -> FailureCopy(COPY_NO_HTTPS, retry = false)
-    UntrustedCertificate -> FailureCopy(if (shipped) COPY_UNTRUSTED else "$COPY_UNTRUSTED $COPY_UNTRUSTED_SELF_HOSTED", retry = true)
-    is HttpError -> if (failure.status == 401) FailureCopy(COPY_NEEDS_SIGN_IN, retry = false) else FailureCopy(COPY_HTTP_ERROR, retry = true)
+/** Retry follows [isRetryable], the rule a Shelf row's "tap to retry" follows too. */
+private fun networkFailureCopy(failure: NetworkFailure, shipped: Boolean): FailureCopy {
+    val text = when (failure) {
+        Unreachable -> COPY_UNREACHABLE
+        NoHttps -> COPY_NO_HTTPS
+        UntrustedCertificate -> if (shipped) COPY_UNTRUSTED else "$COPY_UNTRUSTED $COPY_UNTRUSTED_SELF_HOSTED"
+        is HttpError -> if (failure.status == 401) COPY_NEEDS_SIGN_IN else COPY_HTTP_ERROR
+    }
+    return FailureCopy(text, failure.isRetryable)
 }

@@ -93,6 +93,7 @@ class ShelfTest {
             CopyProtected to ROW_CANT_DOWNLOAD_COPY_PROTECTED,
             NotAnEpub to ROW_CANT_DOWNLOAD_NOT_AN_EPUB,
             NoHttps to ROW_CANT_DOWNLOAD_NO_HTTPS,
+            HttpError(401) to "can't download again · needs a login",
         )
         expected.forEach { (reason, detail) ->
             val shown = rows(book("Book", source = source), transfers = mapOf(source to Transfer("Book", null, 1, TransferState.Failed(reason), replacing = "Book")), present = emptySet())
@@ -131,9 +132,9 @@ class ShelfTest {
     }
 
     @Test
-    fun `the network, a server error, a full phone and an untrusted certificate can be retried`() {
+    fun `the network, a server error, a full phone and an untrusted certificate can be retried, a login can't`() {
         val retryable = listOf(Unreachable, HttpError(500), HttpError(404), DiskError, UntrustedCertificate)
-        val permanent = listOf(NoHttps, NotAnEpub, CopyProtected)
+        val permanent = listOf(NoHttps, NotAnEpub, CopyProtected, HttpError(401))
         assertEquals(retryable.map { true } + permanent.map { false }, (retryable + permanent).map { it.isRetryable })
     }
 }
