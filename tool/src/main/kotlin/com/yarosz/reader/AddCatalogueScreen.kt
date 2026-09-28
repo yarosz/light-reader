@@ -14,6 +14,7 @@ import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.ui.LightText
 import com.thelightphone.sdk.ui.LightTextField
 import com.thelightphone.sdk.ui.LightTextVariant
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,15 +28,17 @@ sealed interface AddStatus {
 
     data object Checking : AddStatus
 
-    /** Adding [address] failed; the copy says why, and whether trying the same address again can help. */
-    data class Failed(val address: String, val copy: FailureCopy) : AddStatus
+    /** Adding the address failed; the copy says why, and whether trying it again can help. */
+    data class Failed(val copy: FailureCopy) : AddStatus
 
     data object Added : AddStatus
 }
 
 /**
  * "Add a Catalogue": the typed address and how adding it is going. The feed is fetched before
- * anything is saved, and only a page that parses as a Catalogue is added, named by its title.
+ * anything is saved, and only a page that parses as a Catalogue is added, named by its title. The
+ * status is always the current address's: a new address ends a check still running for the old one,
+ * so its answer can't land on the new address or add a Catalogue the reader typed over.
  */
 class AddCatalogueViewModel(private val owner: ShelfOwner, private val phoneOnline: PhoneOnline) : LightViewModel<Unit>() {
     val address = MutableStateFlow("")
@@ -43,10 +46,20 @@ class AddCatalogueViewModel(private val owner: ShelfOwner, private val phoneOnli
     val removedShipped: StateFlow<List<Catalogue>> =
         owner.snapshot.map { it?.data?.removedShipped().orEmpty() }.stateIn(viewModelScope, SharingStarted.Eagerly, owner.snapshot.value?.data?.removedShipped().orEmpty())
 
-    /** Sets the address typed in the editor and adds it at once: the editor's button is "Add". */
+    private var checking: Job? = null
+
+    /**
+     * Sets the address typed in the editor and adds it at once: the editor's button is "Add". A
+     * changed or cleared address starts over from Idle, ending a check of the old one.
+     */
     fun typed(text: String) {
-        address.value = text.trim()
-        if (address.value.isNotEmpty()) add()
+        val typed = text.trim()
+        if (typed != address.value) {
+            checking?.cancel()
+            address.value = typed
+            status.value = AddStatus.Idle
+        }
+        if (typed.isNotEmpty()) add()
     }
 
     fun add() {
@@ -54,26 +67,29 @@ class AddCatalogueViewModel(private val owner: ShelfOwner, private val phoneOnli
         val data = owner.snapshot.value?.data ?: return
         if (status.value == AddStatus.Checking) return
         when (val plan = data.planAdd(typed)) {
-            is AddPlan.Invalid -> status.value = AddStatus.Failed(typed, feedFailureCopy(plan.reason, shipped = false))
-            AddPlan.Duplicate -> status.value = AddStatus.Failed(typed, FailureCopy(ADD_CATALOGUE_DUPLICATE, retry = false))
-            is AddPlan.AddBack -> {
-                owner.addCatalogue(plan.catalogue)
-                status.value = AddStatus.Added
-            }
+            is AddPlan.Invalid -> status.value = AddStatus.Failed(feedFailureCopy(plan.reason, shipped = false))
+            AddPlan.Duplicate -> status.value = AddStatus.Failed(FailureCopy(ADD_CATALOGUE_DUPLICATE, retry = false))
+            is AddPlan.AddBack -> addBack(plan.catalogue)
             is AddPlan.Fetch -> {
                 status.value = AddStatus.Checking
-                viewModelScope.launch {
+                checking = viewModelScope.launch {
                     status.value = when (val fetched = owner.fetchPage(plan.url, phoneOnline)) {
                         is Fetched.Ok -> AddStatus.Added.also { owner.addCatalogue(catalogueFrom(fetched.value, plan.url)) }
-                        is Fetched.Failed -> AddStatus.Failed(typed, feedFailureCopy(fetched.reason, isShipped(plan.url)))
+                        is Fetched.Failed -> AddStatus.Failed(feedFailureCopy(fetched.reason, isShipped(plan.url)))
                     }
                 }
             }
         }
     }
 
-    /** "Add back Project Gutenberg": one tap, no confirmation. */
-    fun addBack(catalogue: Catalogue) = owner.addCatalogue(catalogue)
+    /**
+     * "Add back Project Gutenberg": one tap, no confirmation. Typing a removed shipped Catalogue's
+     * address does the same, and either returns to the list.
+     */
+    fun addBack(catalogue: Catalogue) {
+        owner.addCatalogue(catalogue)
+        status.value = AddStatus.Added
+    }
 }
 
 /**
@@ -110,7 +126,7 @@ class AddCatalogueScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit
                 is AddStatus.Failed -> LightText(text = shown.copy.text, variant = LightTextVariant.Copy, modifier = rowPadding())
                 AddStatus.Idle, AddStatus.Added -> Unit
             }
-            val failedForGood = (status as? AddStatus.Failed)?.let { !it.copy.retry && it.address == address } == true
+            val failedForGood = (status as? AddStatus.Failed)?.copy?.retry == false
             if (address.isNotEmpty() && status != AddStatus.Checking && !failedForGood) {
                 val retry = (status as? AddStatus.Failed)?.copy?.retry == true
                 ListRow(if (retry) RETRY else ADD_CATALOGUE_BUTTON, null, onClick = viewModel::add)
