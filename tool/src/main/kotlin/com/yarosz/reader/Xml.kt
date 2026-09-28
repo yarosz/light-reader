@@ -26,7 +26,7 @@ import org.xml.sax.helpers.DefaultHandler
  */
 fun parseUntrusted(input: InputStream, handler: DefaultHandler, maxBytes: Long, namespaceAware: Boolean = false) {
     CappedStream(input, maxBytes).use { capped ->
-        val source = XhtmlEntityStream(capped.buffered())
+        val source = XhtmlEntityStream(capped)
         val reader = SAXParserFactory.newInstance().apply { isNamespaceAware = namespaceAware }.newSAXParser().xmlReader
         reader.entityResolver = EntityResolver { _, _ -> InputSource(StringReader("")) }
         reader.contentHandler = TextBudget(handler, maxBytes)

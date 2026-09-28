@@ -127,7 +127,7 @@ dev_start 0
 open_reader
 book=$(await ' book ')
 largest=$(field largest <<<"$book")
-echo "perf: $(field chapters <<<"$book") chapters; largest is index $largest, $(field largestChars <<<"$book") chars"
+echo "perf: $(field chapters <<<"$book") chapters; largest is index $largest, $(field largestChars <<<"$book") chars; parsed in $(field parseMs <<<"$book") ms"
 offset=0
 if $seam; then
   dev_start "$largest" 0 ${chars:+"$chars"}

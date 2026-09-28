@@ -65,12 +65,14 @@ class ReaderViewModel(
         loading = viewModelScope.launch {
             owner.awaitLoaded()
             val stored = saver.data
+            val parseStart = System.nanoTime()
             runCatching { withContext(io) { parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension) } }
                 .onSuccess { opened ->
+                    val parseMs = ms(System.nanoTime() - parseStart)
                     val largest = opened.chapters.indices.maxByOrNull { opened.chapters[it].text.length }
                     if (largest != null) {
                         Log.i(PERF_TAG, "book chapters=${opened.chapters.size} largest=$largest " +
-                            "largestChars=${opened.chapters[largest].text.length}")
+                            "largestChars=${opened.chapters[largest].text.length} parseMs=$parseMs")
                     }
                     val now = System.currentTimeMillis()
                     val title = saver.data.books[opened.identifier]?.title?.takeIf { it.isNotBlank() } ?: opened.title

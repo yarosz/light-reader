@@ -60,6 +60,45 @@ class XmlTest {
         assertEquals(" a b—c", parse("<p x=\"&nbsp;\">a&nbsp;b&mdash;c</p>"))
     }
 
+    /** [text] through [XhtmlEntityStream], its input handing over at most [chunk] bytes a read. */
+    private fun rewrite(text: String, chunk: Int = Int.MAX_VALUE, bytewise: Boolean = false): String {
+        val input = object : java.io.ByteArrayInputStream(text.toByteArray()) {
+            override fun read(b: ByteArray, off: Int, len: Int) = super.read(b, off, minOf(len, chunk))
+        }
+        val stream = XhtmlEntityStream(input)
+        return if (bytewise) generateSequence { stream.read().takeIf { it >= 0 } }.map { it.toByte() }.toList().toByteArray().decodeToString()
+        else stream.readBytes().decodeToString()
+    }
+
+    @Test
+    fun `an entity split between two reads of the input is still rewritten`() {
+        val text = "a&nbsp;b&amp;c&euro;&hellip;d&unknown;&;&#160;&"
+        val expected = "a&#160;b&amp;c&#8364;&#8230;d&unknown;&;&#160;&"
+        for (chunk in 1..text.length) {
+            assertEquals(expected, rewrite(text, chunk), "chunk $chunk")
+            assertEquals(expected, rewrite(text, chunk, bytewise = true), "chunk $chunk, a byte at a time")
+        }
+    }
+
+    @Test
+    fun `an entity across the stream's own block boundary is rewritten, and a last byte of '&' passes through`() {
+        for (pad in 8_180..8_200) {
+            val x = "x".repeat(pad)
+            assertEquals("$x&#160;$x&", rewrite("$x&nbsp;$x&"), "pad $pad")
+        }
+        assertEquals("${"x".repeat(8_191)}&amp;", rewrite("${"x".repeat(8_191)}&amp;"))
+        assertEquals("&", rewrite("&"))
+        assertEquals("", rewrite(""))
+    }
+
+    @Test
+    fun `a CDATA section ended by more than two brackets still ends, even split between reads`() {
+        val text = "<![CDATA[&nbsp;]]]>&nbsp;<![CDATA[&nbsp;]]>&nbsp;"
+        for (chunk in 1..text.length) {
+            assertEquals("<![CDATA[&nbsp;]]]>&#160;<![CDATA[&nbsp;]]>&#160;", rewrite(text, chunk), "chunk $chunk")
+        }
+    }
+
     @Test
     fun `XML's own entities, unknown or unterminated names, CDATA and numeric references pass through`() {
         assertEquals("&nbsp; <b>&amp;nbsp;  ", parse("<x>&amp;nbsp; &lt;b&gt;<![CDATA[&amp;nbsp;]]>&nbsp;&#160;</x>"))
