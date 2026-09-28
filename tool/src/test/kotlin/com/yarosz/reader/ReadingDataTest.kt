@@ -242,11 +242,14 @@ class ReadingDataTest {
     }
 
     @Test
-    fun `a stored file that isn't a plain name inside filesDir is corruption`() {
+    fun `a stored file that isn't a plain name inside filesDir reads as missing, and the other Books stay`() {
+        val other = entry(title = "Other", file = "other.epub", place = place(updatedAt = 3))
         listOf("../reading-data.json", "a/b.epub", "/data/x.epub", "a\\b.epub", ".", "..", "", "a\u0000.epub").forEach { name ->
-            val text = ReadingData(books = mapOf("id" to entry(file = name))).encode()
-            assertTrue(decodeReadingData(text).isFailure, name)
+            val bad = entry(file = name, place = place(updatedAt = 5), onShelf = true)
+            val text = ReadingData(books = mapOf("id" to bad, "other" to other)).encode()
+            assertEquals(mapOf("id" to bad.copy(file = null), "other" to other), decodeReadingData(text).getOrThrow().books, name)
         }
+        assertTrue(decodeReadingData("""{"books": {"id": {"file": 3}}}""").isFailure)
         assertEquals("..a.epub", decodeReadingData(ReadingData(books = mapOf("id" to entry(file = "..a.epub"))).encode()).getOrThrow().books.getValue("id").file)
     }
 

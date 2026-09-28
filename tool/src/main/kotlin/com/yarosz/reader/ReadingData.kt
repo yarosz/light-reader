@@ -1,5 +1,6 @@
 package com.yarosz.reader
 
+import android.util.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -9,6 +10,8 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.math.abs
+
+private const val TAG = "Reader"
 
 /**
  * The reading data file's format version. The compatibility rule: a later schema only adds fields. It
@@ -266,23 +269,24 @@ private fun jsonObject(known: Set<String>, extras: Map<String, JsonElement>, var
 
 /**
  * Parses the file's text. A known field that is absent or null takes its default, which is what keeps
- * a file from a newer build readable. A known field of the wrong type is corruption and fails, as do
- * a Book's file that isn't a plain name inside filesDir and anything that isn't a JSON object at the
- * top. Never throws.
+ * a file from a newer build readable. A known field of the wrong type is corruption and fails, as does
+ * anything that isn't a JSON object at the top. A Book's file that isn't a plain name inside filesDir
+ * reads as missing (null), so nothing outside filesDir is ever deleted and the other Books stay.
+ * Never throws.
  */
 fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
     val root = Json.parseToJsonElement(text) as? JsonObject ?: corrupt("top level")
     ReadingData(
         schemaVersion = root.int("schemaVersion") ?: CURRENT_SCHEMA,
-        books = root.obj("books")?.mapValues { (id, entry) -> (entry as? JsonObject ?: corrupt("books.$id")).toEntry() }.orEmpty(),
+        books = root.obj("books")?.mapValues { (id, entry) -> (entry as? JsonObject ?: corrupt("books.$id")).toEntry(id) }.orEmpty(),
         settings = root.obj("settings")?.let { Settings(it.int("fontStep") ?: DEFAULT_FONT_STEP, it.unknown(SETTINGS_FIELDS)) } ?: Settings(),
         extras = root.unknown(TOP_FIELDS),
     )
 }
 
-private fun JsonObject.toEntry() = BookEntry(
+private fun JsonObject.toEntry(id: String) = BookEntry(
     title = string("title").orEmpty(),
-    file = string("file")?.also { if (!isPlainFileName(it)) corrupt("file") },
+    file = bookFile(id),
     place = obj("place")?.let {
         Place(
             spineId = it.string("spineId").orEmpty(),
@@ -300,6 +304,14 @@ private fun JsonObject.toEntry() = BookEntry(
     addedAt = long("addedAt"),
     extras = unknown(ENTRY_FIELDS),
 )
+
+/** The Book's file, or null when it has none or it isn't a plain name inside filesDir (logged). */
+private fun JsonObject.bookFile(id: String): String? {
+    val name = string("file") ?: return null
+    if (isPlainFileName(name)) return name
+    Log.w(TAG, "reading data: books.$id.file isn't a plain name inside filesDir; reading it as missing")
+    return null
+}
 
 /**
  * Whether [name] names a file directly inside filesDir, as [BookEntry.file] must: a removal deletes
