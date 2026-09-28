@@ -149,7 +149,8 @@ Ordered. Each item ends on its _done-when_.
   while reading (release after 10 min without a turn); Page text in semantics; About screen (version,
   licenses incl. Literata OFL, copy-protected explainer + where to find DRM-free Books, repo URL as text, the
   ADR 0003 no-network sentence). The detail page's CopyProtected line then points to About's list.
-  _Done when:_ verified with `mise run ui`.
+  _Done when:_ verified with `mise run ui`, including CopyProtected's pointer to About's DRM-free
+  list.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
   Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the
