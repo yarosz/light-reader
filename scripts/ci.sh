@@ -26,6 +26,9 @@ started=$(date +%s)
 evidence=()
 note() { evidence+=("$1"); echo "ci: $1"; }
 die() { echo "ci: FAIL $1" >&2; exit 1; }
+drift() {  # advisory (AGENTS.md "Domain language"): never fails the run
+  note "domain drift: $(scripts/domain-drift.sh 2>/dev/null | tail -1 | grep -oE '^[0-9]+' || echo '?') unresolved"
+}
 
 # --- Preflight: the statuses attest to one exact, pushed commit.
 # Untracked files count: the tests and APKs build from the live tree, so it must equal the commit.
@@ -189,10 +192,12 @@ trap clear_starts EXIT
 # --- signoff/emulator
 if [ "$docs_only" = 1 ]; then
   note "emulator: not applicable (docs-only change)"
+  drift
 else
   ./gradlew -q --console=plain :tool:testDebugUnitTest || fail_ctx emulator "unit tests"
   tests=$(cat tool/build/test-results/testDebugUnitTest/*.xml | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc)
   note "unit + property tests: $tests passed"
+  drift
 
   lblog=$(mktemp)
   if ! scripts/light-build.sh >"$lblog" 2>&1; then

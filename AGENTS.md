@@ -3,13 +3,26 @@
 A LightOS tool: an eReader for DRM-free EPUBs on the Light Phone III, for any LP3 owner who chose the
 phone to read more deliberately. One clear capability, nothing else.
 
-- **Vocabulary:** `CONTEXT.md` is the glossary. Use its terms (Book, Shelf, Catalogue, Chapter, Spine
-  item, Place, Page, Progress) in code, UI copy, and docs; update it when a term is settled.
+- **Vocabulary:** `CONTEXT.md` is the glossary. Use its terms in code, UI copy, and docs; see "Domain
+  language" below.
 - **Architecture decisions:** `docs/adr/`. Read the relevant ADR before changing Catalogues, how a Place
   is stored, network behaviour, layout vs navigation units, DRM handling, or typography.
 - **Tunable values and typesetting rules:** `DESIGN.md` (type scale for the LP3's 480 dpi, page-break
   rules).
 - **State and next work:** `LEDGER.md`. Read it before starting; update it before ending a session.
+
+## Domain language
+
+- **In every PR:** a new domain concept enters `CONTEXT.md` in the same PR, or goes in
+  `docs/domain-ignore.txt` as implementation or UI vocabulary (UI surfaces belong in `DESIGN.md`).
+- **Domain pass, at two points in every milestone:** before its first PR and after its last PR merges,
+  plus whenever `scripts/domain-drift.sh` lists more than a handful of candidates. A pass:
+  1. Run `scripts/domain-drift.sh` (`mise run domain-drift`).
+  2. Run the `grilling` and `domain-modeling` skills with an answering agent (Opus) grounded in
+     `CONTEXT.md`, the ADRs, `DESIGN.md` and the code. `grill-with-docs` is user-invoked only.
+  3. Resolve every candidate as a glossary term, a rename, UI vocabulary or an ignore entry. Offer an
+     ADR only when a decision is hard to reverse, surprising, and a real trade-off.
+  4. Done when `domain-drift.sh` reports 0 unresolved. Tag the merged commit `domain-pass/<milestone>`.
 
 ## Layout
 
