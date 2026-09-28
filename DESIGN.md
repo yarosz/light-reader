@@ -116,5 +116,7 @@ secondary text at the top of the Catalogue list, shown when Add is tapped offlin
 downloads it again from the Book's source, keeping its Place. If the download declares a different
 `dc:identifier` (Calibre mints a new one on every conversion), the Book keeps its row: its Place,
 date added and title move to the new identifier, and the Place resolves as well as the new edition
-allows. A Book with no known source (a future
+allows. If a Book with the new identifier is already on the Shelf, the two rows become that one: it
+keeps its own title and date added, takes whichever Place is newer, and the old row leaves the
+Shelf. A Book with no known source (a future
 N7 import) reads "file missing" and can only be removed.

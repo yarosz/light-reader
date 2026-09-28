@@ -226,6 +226,23 @@ class ShelfViewModelTest {
     }
 
     @Test
+    fun `a Book downloaded again under the identifier of a Book already on the Shelf merges into that row`() {
+        val newer = Place("c1", 0, 3, "snippet", 10)
+        store(
+            "urn:uuid:old-conversion" to entry("Stored Title", newer, source = link.value, file = bookFileName("urn:uuid:old-conversion")).copy(addedAt = 7),
+            "urn:uuid:storm" to entry("On the Shelf", Place("c1", 0, 9, "older", 5), file = stormFile).copy(addedAt = 3),
+        )
+        File(dir, stormFile).writeText("epub")
+        val vm = shelf()
+        assertEquals(DownloadResult.Done("urn:uuid:storm"), vm.downloadAgain("Stored Title").also { settle() }.done())
+        assertEquals(listOf(ShelfRow(RowKey.Shelved("urn:uuid:storm"), "On the Shelf", "Edward Bulwer-Lytton", RowTap.Open(stormFile))), vm.rows.value)
+        vm.onAppPause()
+        val books = stored().books
+        assertEquals(BookEntry("On the Shelf", stormFile, newer, false, true, "Edward Bulwer-Lytton", link.value, 3), books.getValue("urn:uuid:storm"))
+        assertFalse(books.getValue("urn:uuid:old-conversion").onShelf)
+    }
+
+    @Test
     fun `a permanent failure downloading a missing file again stays on its row, which can only be removed`() {
         store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
         val vm = shelf(serving("<html>moved</html>".toByteArray()))

@@ -116,13 +116,19 @@ fun ReadingData.unshelve(identifier: String): ReadingData {
 /**
  * Moves the Book at [from] to [to], as when downloading it again brings a package that declares a
  * new identifier (Calibre mints one on every conversion): its Place, finished flag, date added,
- * title, source and unknown fields go to [to], replacing any entry there. [from] stays behind off
- * the Shelf with no file, the state a removal leaves, rather than being dropped: [merge] keeps
- * every Book the file on disk has, so a dropped key would come back on the next save.
+ * title, source and unknown fields go to [to], replacing an entry there that is off the Shelf. A
+ * Book already on the Shelf at [to] stays as it is except for its Place, which becomes the newer of
+ * the two (with its finished flag; a tie keeps its own). [from] stays behind off the Shelf with no
+ * file, the state a removal leaves, rather than being dropped: [merge] keeps every Book the file on
+ * disk has, so a dropped key would come back on the next save.
  */
 fun ReadingData.moveBook(from: String, to: String): ReadingData {
     val entry = books[from]?.takeIf { from != to } ?: return this
-    return copy(books = books + (to to entry) + (from to entry.copy(file = null, onShelf = false)))
+    val moved = books[to]?.takeIf { it.onShelf }?.let { target ->
+        val reading = if (entry.placeTime > target.placeTime) entry else target
+        target.copy(place = reading.place, finished = reading.finished)
+    } ?: entry
+    return copy(books = books + (to to moved) + (from to entry.copy(file = null, onShelf = false)))
 }
 
 /**
@@ -208,7 +214,7 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
  * source are [mine]'s unless null. Unknown fields come from both, [mine] winning a clash.
  */
 private fun mergeEntry(disk: BookEntry, mine: BookEntry): BookEntry {
-    val reading = if ((disk.place?.updatedAt ?: Long.MIN_VALUE) > (mine.place?.updatedAt ?: Long.MIN_VALUE)) disk else mine
+    val reading = if (disk.placeTime > mine.placeTime) disk else mine
     return BookEntry(
         title = mine.title.ifBlank { disk.title },
         file = mine.file,
@@ -221,6 +227,9 @@ private fun mergeEntry(disk: BookEntry, mine: BookEntry): BookEntry {
         extras = disk.extras + mine.extras,
     )
 }
+
+/** When the Book's Place was recorded; a Book with no Place counts as oldest. */
+private val BookEntry.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
 
 private val prettyJson = Json { prettyPrint = true }
 

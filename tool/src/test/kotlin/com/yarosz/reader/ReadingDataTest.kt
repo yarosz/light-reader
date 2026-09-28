@@ -266,6 +266,22 @@ class ReadingDataTest {
         val merged = merge(data, moved)
         assertEquals(false, merged.books.getValue("urn:old").onShelf)
         assertEquals(true, merged.books.getValue("urn:new").onShelf)
+        val offShelf = data("urn:old" to old, "urn:new" to entry(title = "Gone", file = null, onShelf = false, place = place(updatedAt = 9)))
+        assertEquals(old, offShelf.moveBook("urn:old", "urn:new").books.getValue("urn:new"))
+    }
+
+    @Test
+    fun `moving a Book onto one already on the Shelf keeps that one's title and date, with the newer Place`() {
+        val old = entry(title = "Stored", place = place(updatedAt = 5), finished = true).copy(addedAt = 3)
+        val there = entry(title = "There", file = "there.epub", place = place(updatedAt = 4, offset = 7))
+            .copy(addedAt = 8, source = "https://s.example.org/t.epub")
+        val movedNewer = data("urn:old" to old, "urn:new" to there).moveBook("urn:old", "urn:new")
+        assertEquals(there.copy(place = old.place, finished = true), movedNewer.books.getValue("urn:new"))
+        assertEquals(old.copy(file = null, onShelf = false), movedNewer.books.getValue("urn:old"))
+        val newerThere = there.copy(place = place(updatedAt = 6, offset = 7))
+        val movedOlder = data("urn:old" to old, "urn:new" to newerThere).moveBook("urn:old", "urn:new")
+        assertEquals(newerThere, movedOlder.books.getValue("urn:new"))
+        assertEquals(old.copy(file = null, onShelf = false), movedOlder.books.getValue("urn:old"))
     }
 
     @Test

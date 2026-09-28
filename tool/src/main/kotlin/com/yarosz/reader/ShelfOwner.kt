@@ -184,7 +184,15 @@ class ShelfOwner(
                 transfers.remove(source)
                 saver.change { data ->
                     val moved = transfer.replacing?.let { data.moveBook(it, finished.identifier) } ?: data
-                    moved.shelve(finished.identifier, transfer.title.ifBlank { finished.title }, finished.file, finished.author ?: transfer.author, source.value, now())
+                    val title = transfer.replacing?.let { moved.books[finished.identifier]?.title } ?: transfer.title
+                    moved.shelve(
+                        finished.identifier,
+                        title.ifBlank { finished.title },
+                        finished.file,
+                        finished.author ?: transfer.author,
+                        source.value,
+                        now(),
+                    )
                 }
                 fileChanged(finished.file, exists = true)
                 DownloadResult.Done(finished.identifier)
