@@ -31,7 +31,6 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
-import com.thelightphone.sdk.InitialScreen
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.ui.LightText
@@ -40,14 +39,19 @@ import com.thelightphone.sdk.ui.LightTheme
 import com.thelightphone.sdk.ui.LightThemeController
 import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.lightClickable
+import java.io.File
 
-@InitialScreen
-class ReaderScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, ReaderViewModel>(sealedActivity) {
+/** Reads the Book in [file], opened from the Shelf; back returns there. See [ReaderViewModel] for [start]. */
+class ReaderScreen(
+    sealedActivity: SealedLightActivity,
+    private val file: File,
+    private val start: DevStart? = null,
+) : LightScreen<Unit, ReaderViewModel>(sealedActivity) {
 
     override val viewModelClass: Class<ReaderViewModel>
         get() = ReaderViewModel::class.java
 
-    override fun createViewModel() = ReaderViewModel(lightContext.filesDir)
+    override fun createViewModel() = ReaderViewModel(file, ShelfOwner.of(lightContext.filesDir), start)
 
     @Composable
     override fun Content() {

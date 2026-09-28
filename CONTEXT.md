@@ -25,6 +25,12 @@ A source of Books the reader can browse and download from, such as Project Guten
 reader's own home server. Any Catalogue can be removed, including the ones the Tool ships with.
 _Avoid_: library, store, feed
 
+**Source** (of a Book):
+The Catalogue download link a Book on the Shelf last came from. A Book whose file goes missing
+downloads again from its source; a Book with no source (one the reader imported) can only be removed.
+A Catalogue is where Books are found; a source is one Book's file.
+_Avoid_: origin, URL
+
 ## Structure of a Book
 
 **Chapter**:

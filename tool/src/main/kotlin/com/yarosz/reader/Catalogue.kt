@@ -33,15 +33,17 @@ sealed interface CatalogueSearch {
 
 /**
  * One entry of a page: a Book to add, a way further into the Catalogue, or both. Text only, because
- * lists never show covers. [opens] is the feed the entry leads to, such as a Gutenberg Book's own
- * page. [details] is the entry's complete OPDS entry document (an alternate link typed
- * "type=entry"), which is never a feed to open. [related] are further feeds named by the entry, such
- * as Gutenberg's "By Austen, Jane…".
+ * lists never show covers. [byline] is the second line of its row, null for none (see
+ * [entryByline]). [opens] is the feed the entry leads to, such as a Gutenberg Book's own page.
+ * [details] is the entry's complete OPDS entry document (an alternate link typed "type=entry"),
+ * which is never a feed to open. [related] are further feeds named by the entry, such as
+ * Gutenberg's "By Austen, Jane…".
  */
 data class CatalogueEntry(
     val title: String,
     val authors: List<String>,
     val summary: String?,
+    val byline: String?,
     val opens: HttpsUrl?,
     val details: HttpsUrl?,
     val related: List<NavigationLink>,
@@ -85,10 +87,15 @@ fun bestAcquisition(links: List<Acquisition>, preferImages: Boolean = PREFER_IMA
     )
 
 /**
- * The one link "Add to Shelf" downloads for a Book whose page lists several entries, one per edition
- * (Gutenberg lists its no-images and images editions separately): the best of all their links.
+ * The one link "Add to Shelf" downloads for a Book's own page, whose entries are that Book's editions
+ * (Gutenberg lists its no-images and images editions separately): the best of all their links. Null
+ * unless every entry has the same title, because then the page is a list of different Books (Standard
+ * Ebooks' new releases), and one download for all of them would add an arbitrary one. The title is
+ * the test because it is what the page shows as one Book: entry ids differ per edition
+ * (Gutenberg's `urn:gutenberg:1342:2` and `…:3`), so they can't tell editions from other Books.
  */
-fun bestDownload(entries: List<CatalogueEntry>): Acquisition? = bestAcquisition(entries.flatMap { it.acquisitions })
+fun bestDownload(entries: List<CatalogueEntry>): Acquisition? =
+    if (entries.map { it.title }.distinct().size == 1) bestAcquisition(entries.flatMap { it.acquisitions }) else null
 
 /** 0 for the preferred edition; without [preferImages], "no images" and unmarked tie. */
 private fun Acquisition.editionRank(preferImages: Boolean): Int {

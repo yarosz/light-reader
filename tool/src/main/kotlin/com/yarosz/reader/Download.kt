@@ -41,19 +41,36 @@ sealed interface DownloadState {
 
     sealed interface Finished : DownloadState
 
-    /** The Book is on the phone as [file], a name inside the books directory. */
-    data class Done(val identifier: String, val title: String, val file: String) : Finished
+    /** The Book is on the phone as [file], a name inside the Downloader's directory. [author] is its package's, if any. */
+    data class Done(val identifier: String, val title: String, val file: String, val author: String? = null) : Finished
 
-    data class Failed(val reason: DownloadFailure) : Finished
+    data class Failed(val reason: DownloadFailure) : Finished, Fetch
+}
+
+/** What [Downloader.fetch] brings back: a [Checked] Book, or why it failed. */
+sealed interface Fetch
+
+/**
+ * A downloaded Book that passed every check, still in its temp file inside the Downloader's
+ * directory. [Downloader.keep] renames it into place; [discard] deletes it.
+ */
+class Checked(val temp: File, val identifier: String, val title: String, val author: String?) : Fetch {
+    fun discard() = temp.deleteOrLog()
+}
+
+/** Deletes this file, logging when it exists and can't be deleted: a Book's file or a temp file left behind. */
+fun File.deleteOrLog() {
+    if (!delete() && exists()) Log.w(TAG, "couldn't delete $name")
 }
 
 /**
  * Downloads Books into [dir] in the foreground. A download is written to a temp file, synced,
  * checked to be an EPUB that isn't copy-protected, and only then renamed into place, so no partial
- * or rejected file ever sits under a Book's name. The file is named after the Book's identifier, so
- * downloading a Book again replaces its file. A process killed mid-download leaves its temp file
- * behind; constructing a Downloader deletes such leftovers. [rename], [sync], [usableSpace], and
- * [maxBookBytes] exist so a test can make one fail.
+ * or rejected file ever sits under a Book's name. [fetch] does the slow part and [keep] the rename,
+ * so a caller can decide on its own thread whether the Book is still wanted. The file is named after
+ * the Book's identifier, so downloading a Book again replaces its file. A process killed
+ * mid-download leaves its temp file behind; constructing a Downloader deletes such leftovers.
+ * [rename], [sync], [usableSpace], and [maxBookBytes] exist so a test can make one fail.
  */
 class Downloader(
     private val transport: Transport,
@@ -66,16 +83,24 @@ class Downloader(
     init {
         val staleBefore = System.currentTimeMillis() - STALE_PART_MS
         dir.listFiles { file -> file.name.startsWith(PART_PREFIX) && file.name.endsWith(PART_SUFFIX) && file.lastModified() < staleBefore }
-            ?.forEach { it.delete() }
+            ?.forEach { it.deleteOrLog() }
     }
 
+    /** [fetch] then [keep]. */
+    fun download(url: HttpsUrl, fallbackTitle: String, onProgress: (DownloadState.Downloading) -> Unit): DownloadState.Finished =
+        when (val fetched = fetch(url, fallbackTitle, onProgress)) {
+            is Checked -> keep(fetched)
+            is DownloadState.Failed -> fetched
+        }
+
     /**
-     * Downloads [url], reporting progress to [onProgress] on the calling thread, which blocks.
-     * [fallbackTitle] (the Catalogue entry's title) titles a Book whose package has none.
-     * [onProgress] may throw to cancel, such as a coroutine's CancellationException; the temp file is
-     * then deleted and the exception propagates.
+     * Downloads [url] into a temp file and checks it, reporting progress to [onProgress] on the
+     * calling thread, which blocks. [fallbackTitle] (the Catalogue entry's title) titles a Book whose
+     * package has none. [onProgress] may throw to cancel, such as a coroutine's CancellationException;
+     * the temp file is then deleted and the exception propagates. Only a [Checked] result keeps its
+     * temp file.
      */
-    fun download(url: HttpsUrl, fallbackTitle: String, onProgress: (DownloadState.Downloading) -> Unit): DownloadState.Finished {
+    fun fetch(url: HttpsUrl, fallbackTitle: String, onProgress: (DownloadState.Downloading) -> Unit): Fetch {
         val response = try {
             transport.get(url)
         } catch (e: IOException) {
@@ -87,6 +112,7 @@ class Downloader(
             response.close()
             return DownloadState.Failed(DiskError)
         }
+        var checked: Checked? = null
         try {
             response.use {
                 if (it.status !in 200..299) return DownloadState.Failed(HttpError(it.status))
@@ -94,10 +120,20 @@ class Downloader(
                 if ((it.length ?: 0) + MIN_FREE_BYTES > usableSpace()) return DownloadState.Failed(DiskError)
                 copy(it, temp, onProgress)?.let { failure -> return DownloadState.Failed(failure) }
             }
-            return shelve(temp, fallbackTitle, lengthKnown = response.length != null)
+            return inspect(temp, fallbackTitle, lengthKnown = response.length != null).also { checked = it as? Checked }
         } finally {
-            temp.delete()
+            if (checked == null) temp.deleteOrLog()
         }
+    }
+
+    /** Renames [checked]'s temp file to its Book's name, replacing an earlier download of the Book. */
+    fun keep(checked: Checked): DownloadState.Finished {
+        val target = File(dir, bookFileName(checked.identifier))
+        if (!rename(checked.temp, target)) {
+            checked.discard()
+            return DownloadState.Failed(DiskError)
+        }
+        return DownloadState.Done(checked.identifier, checked.title, target.name, checked.author)
     }
 
     /**
@@ -139,10 +175,11 @@ class Downloader(
     }
 
     /**
-     * Checks [temp] and renames it into place. A file that starts as a zip but has no central
-     * directory was cut short; with no declared length that is the only sign of a dropped connection.
+     * Checks that [temp] is a readable EPUB that isn't copy-protected. A file that starts as a zip but
+     * has no central directory was cut short; with no declared length that is the only sign of a
+     * dropped connection.
      */
-    private fun shelve(temp: File, fallbackTitle: String, lengthKnown: Boolean): DownloadState.Finished {
+    private fun inspect(temp: File, fallbackTitle: String, lengthKnown: Boolean): Fetch {
         val opened = try {
             ZipFile(temp)
         } catch (e: ZipException) {
@@ -160,9 +197,7 @@ class Downloader(
             Log.w(TAG, "download is not a readable EPUB", e)
             return DownloadState.Failed(NotAnEpub)
         }
-        val target = File(dir, bookFileName(pkg.identifier))
-        if (!rename(temp, target)) return DownloadState.Failed(DiskError)
-        return DownloadState.Done(pkg.identifier, pkg.title, target.name)
+        return Checked(temp, pkg.identifier, pkg.title, pkg.author)
     }
 }
 

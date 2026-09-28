@@ -17,20 +17,23 @@ import org.xml.sax.helpers.DefaultHandler
  * downloaded EPUB) into [handler], reading at most [maxBytes] of [input] and passing at most
  * [maxBytes] characters of text and attribute values to the handler. Every external entity and
  * external DTD resolves to nothing, so parsing never reads a file or touches the network, while a
- * DOCTYPE (EPUB2's XHTML 1.1 one, the OEB one) is still accepted. The character budget bounds an
+ * DOCTYPE (EPUB2's XHTML 1.1 one, the OEB one) is still accepted. XHTML's named entities
+ * ([XHTML_ENTITIES]) are rewritten as numeric references first ([XhtmlEntityStream]), so `a&nbsp;b`
+ * keeps its space with no DTD read, on Android's parser as on the JVM's. The character budget bounds an
  * internal entity-expansion bomb whatever the platform parser's own limits. Closes [input].
  * Throws [TooLargeException] past either bound and another SAXException when the document isn't
  * XML; both are SAXExceptions, so an IOException means [input] itself failed.
  */
 fun parseUntrusted(input: InputStream, handler: DefaultHandler, maxBytes: Long, namespaceAware: Boolean = false) {
     CappedStream(input, maxBytes).use { capped ->
+        val source = XhtmlEntityStream(capped)
         val reader = SAXParserFactory.newInstance().apply { isNamespaceAware = namespaceAware }.newSAXParser().xmlReader
         reader.entityResolver = EntityResolver { _, _ -> InputSource(StringReader("")) }
         reader.contentHandler = TextBudget(handler, maxBytes)
         reader.errorHandler = handler
         reader.dtdHandler = handler
         try {
-            reader.parse(InputSource(capped))
+            reader.parse(InputSource(source))
         } catch (e: Exception) {
             if (capped.exceeded) throw TooLargeException()
             throw e

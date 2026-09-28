@@ -1,6 +1,7 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2) and N2 (reading data store) done; next is N3 (Shelf + Catalogues)
+STATUS: N1, the release path, P (Paginator v2) and N2 (reading data store) done; N3 under way (pure core and Shelf done; next the Catalogue screens)
+RELEASE HOLD: Don't tag a release until N3c lands (Add is a label until then).
 LAST SESSION: 2026-09-27
 
 ## v1 user flow
@@ -77,16 +78,39 @@ Ordered. Each item ends on its _done-when_.
   shipped Catalogue downloads, appears on the Shelf, and resumes its own Place offline.
   Pure core done (no UI yet): `Atom.kt` (feeds, OpenSearch), `Catalogue.kt` (shapes, shipped
   Catalogues, acquisition preference), `Network.kt` (`HttpsUrl`, `Transport`, typed failures),
-  `Download.kt` (temp, validate, rename; `DownloadState`), copy-protection in `Epub.kt`. Next: the
-  Shelf screen, then the Catalogue screens, wiring `HttpsTransport` and `Downloader`.
+  `Download.kt` (temp, validate, rename; `DownloadState`), copy-protection in `Epub.kt`.
+  Shelf done (`DESIGN.md` "Shelf"): the first screen, a tap opens the Reader at the Place and back
+  returns; order, second-line states, empty state, Edit with inline confirmation, removal (file
+  deleted, Place kept, a running download cancelled), missing file (downloads again from the Book's
+  source, or can only be removed). `BookEntry` gained `source`, `author` and `addedAt` (additive,
+  ADR 0002). `ShelfOwner.of(filesDir)` is the process's one owner of the reading data, its saver,
+  which files exist and the downloads (LightOS can recreate the activity in the same process without
+  clearing old view models); the Shelf and Reader view models are views onto it, and `ReadingStore`
+  saves are exclusive per directory besides. `ShelfOwner.download` runs foreground downloads through
+  `HttpsTransport` and `Downloader` into filesDir, where every Book lives, and ends as Done, Failed or
+  Removed, never a cancellation. A download lands (renames) on the main thread, where removals delete,
+  so a removed download never leaves a file and a removal never deletes one that landed after it. A
+  retryable failure stays as a row, a permanent one returns to the caller, or stays on the row that
+  downloaded its missing file again. A re-download under a new `dc:identifier` moves the row's Place.
+  dev-start opens `files/alice.epub` past the Shelf and writes nothing; `ci.sh` pushes the test
+  fixture when a device has none (and removes it after), checks `reading-data.json` is byte-identical
+  after each round trip, and checks a plain launch renders the Shelf ("shelf rows=" in logcat).
+  XHTML's named entities are rewritten as numeric references before parsing: Android's Expat drops
+  an undeclared entity silently (seen on the emulator), where the JVM's parser reported it.
+  Next: the Catalogue screens (the list with the offline line, browse, search, detail with "Add to
+  Shelf" calling `ShelfViewModel.download`), with "Add" and "Add a Book" opening the list; the
+  downloading, failed and offline screenshots come with them.
   Hardening done: every XML document (feeds, OpenSearch, container, OPF, encryption, chapters) goes
   through one untrusted-XML parser (`Xml.kt`: no external entity or DTD is ever read, DOCTYPEs still
   parse); caps on feeds (8 MB), one text construct (64 K characters), package XML (4 MB), chapters
   (32 MB), and Books (300 MB, with 16 MB always left free); a Downloader deletes stale
   `download-*.part` files a killed process left; `UntrustedCertificate` for a certificate failure;
-  redirects followed in code, https only. Open: an EPUB2 chapter's undeclared named entities (such
-  as `&nbsp;`) are skipped, joining the words around them; a Gutenberg list row carries its author
-  only as `<content>` text, shown as the summary.
+  redirects followed in code, https only. An EPUB2 chapter's XHTML named entities (such as
+  `&nbsp;`) read as their characters from a built-in table, with no DTD read. A Catalogue row's
+  second line (`CatalogueEntry.byline`) is the author, else a one-line `<content>` of at most 80
+  characters that isn't a "Key: value" pair, which gives Gutenberg's list rows their authors (the
+  summary stays for the detail page). `bestDownload` answers only for one Book's page: null unless
+  every entry has the same title.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
   Chapter title; "Contents" lists Chapters; "about N min left in this Chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,

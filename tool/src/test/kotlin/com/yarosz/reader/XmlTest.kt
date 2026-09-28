@@ -45,6 +45,68 @@ class XmlTest {
     }
 
     @Test
+    fun `XHTML's named entities under a DTD that is never read become their characters`() {
+        withNoNetwork {
+            val xml = "<?xml version=\"1.0\"?><!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://127.0.0.1:9/xhtml11.dtd\">" +
+                "<html>a&nbsp;b&mdash;&eacute;&hellip;&apos;&euro;&unknown;c</html>"
+            assertEquals("a\u00A0b\u2014\u00E9\u2026'\u20ACc", parse(xml))
+        }
+        assertEquals(253, XHTML_ENTITIES.size)
+        assertEquals(mapOf("nbsp" to 160, "yuml" to 255, "Yuml" to 376, "hearts" to 9829, "euro" to 8364), XHTML_ENTITIES.filterKeys { it in setOf("nbsp", "yuml", "Yuml", "hearts", "euro") })
+    }
+
+    @Test
+    fun `XHTML's named entities become their characters with no DTD at all, as Android's parser needs`() {
+        assertEquals(" a b—c", parse("<p x=\"&nbsp;\">a&nbsp;b&mdash;c</p>"))
+    }
+
+    /** [text] through [XhtmlEntityStream], its input handing over at most [chunk] bytes a read. */
+    private fun rewrite(text: String, chunk: Int = Int.MAX_VALUE, bytewise: Boolean = false): String {
+        val input = object : java.io.ByteArrayInputStream(text.toByteArray()) {
+            override fun read(b: ByteArray, off: Int, len: Int) = super.read(b, off, minOf(len, chunk))
+        }
+        val stream = XhtmlEntityStream(input)
+        return if (bytewise) generateSequence { stream.read().takeIf { it >= 0 } }.map { it.toByte() }.toList().toByteArray().decodeToString()
+        else stream.readBytes().decodeToString()
+    }
+
+    @Test
+    fun `an entity split between two reads of the input is still rewritten`() {
+        val text = "a&nbsp;b&amp;c&euro;&hellip;d&unknown;&;&#160;&"
+        val expected = "a&#160;b&amp;c&#8364;&#8230;d&unknown;&;&#160;&"
+        for (chunk in 1..text.length) {
+            assertEquals(expected, rewrite(text, chunk), "chunk $chunk")
+            assertEquals(expected, rewrite(text, chunk, bytewise = true), "chunk $chunk, a byte at a time")
+        }
+    }
+
+    @Test
+    fun `an entity across the stream's own block boundary is rewritten, and a last byte of '&' passes through`() {
+        for (pad in 8_180..8_200) {
+            val x = "x".repeat(pad)
+            assertEquals("$x&#160;$x&", rewrite("$x&nbsp;$x&"), "pad $pad")
+        }
+        assertEquals("${"x".repeat(8_191)}&amp;", rewrite("${"x".repeat(8_191)}&amp;"))
+        assertEquals("&", rewrite("&"))
+        assertEquals("", rewrite(""))
+    }
+
+    @Test
+    fun `a CDATA section ended by more than two brackets still ends, even split between reads`() {
+        val text = "<![CDATA[&nbsp;]]]>&nbsp;<![CDATA[&nbsp;]]>&nbsp;"
+        for (chunk in 1..text.length) {
+            assertEquals("<![CDATA[&nbsp;]]]>&#160;<![CDATA[&nbsp;]]>&#160;", rewrite(text, chunk), "chunk $chunk")
+        }
+    }
+
+    @Test
+    fun `XML's own entities, unknown or unterminated names, CDATA and numeric references pass through`() {
+        assertEquals("&nbsp; <b>&amp;nbsp;  ", parse("<x>&amp;nbsp; &lt;b&gt;<![CDATA[&amp;nbsp;]]>&nbsp;&#160;</x>"))
+        assertEquals("ok", parse("<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY verylongname \"o\">]><x>&verylongname;k</x>"))
+        assertEquals("été", Collect().also { parseUntrusted("﻿<x>été</x>".toByteArray(Charsets.UTF_16BE).inputStream(), it, 1_000) }.text.toString())
+    }
+
+    @Test
     fun `text that expands past the budget fails, though the document itself is small`() {
         val doc = """<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "xxxxxxxxxx"><!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
             <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">]><x>&c;&c;</x>"""

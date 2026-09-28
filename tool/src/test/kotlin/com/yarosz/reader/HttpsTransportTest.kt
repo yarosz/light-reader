@@ -3,8 +3,10 @@ package com.yarosz.reader
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.Socket
 import java.net.URL
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -19,7 +21,8 @@ class HttpsTransportTest {
 
     private class Canned(val status: Int, val location: String?, val body: String)
 
-    private val routes = mutableMapOf<String, Canned>()
+    /** Written by the test thread, read by the server's. */
+    private val routes = ConcurrentHashMap<String, Canned>()
     private val requested: MutableList<String> = Collections.synchronizedList(mutableListOf())
     private val server = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
 
@@ -27,19 +30,22 @@ class HttpsTransportTest {
         thread(isDaemon = true) {
             while (!server.isClosed) {
                 val socket = runCatching { server.accept() }.getOrNull() ?: break
-                socket.use {
-                    val reader = it.getInputStream().bufferedReader()
-                    val path = reader.readLine().split(' ')[1]
-                    while (reader.readLine().orEmpty().isNotEmpty()) Unit
-                    requested += path
-                    val canned = routes[path] ?: Canned(404, null, "")
-                    val body = canned.body.toByteArray()
-                    val head = "HTTP/1.1 ${canned.status} X\r\n" + (canned.location?.let { l -> "Location: $l\r\n" } ?: "") +
-                        "Content-Length: ${body.size}\r\nConnection: close\r\n\r\n"
-                    it.getOutputStream().apply { write(head.toByteArray()); write(body); flush() }
-                }
+                runCatching { socket.use(::answer) }
             }
         }
+    }
+
+    /** Answers one connection. A client that hangs up early fails only that connection, never the server. */
+    private fun answer(socket: Socket) {
+        val reader = socket.getInputStream().bufferedReader()
+        val path = reader.readLine().split(' ')[1]
+        while (reader.readLine().orEmpty().isNotEmpty()) Unit
+        requested += path
+        val canned = routes[path] ?: Canned(404, null, "")
+        val body = canned.body.toByteArray()
+        val head = "HTTP/1.1 ${canned.status} X\r\n" + (canned.location?.let { l -> "Location: $l\r\n" } ?: "") +
+            "Content-Length: ${body.size}\r\nConnection: close\r\n\r\n"
+        socket.getOutputStream().apply { write(head.toByteArray()); write(body); flush() }
     }
 
     private val transport = HttpsTransport { url ->

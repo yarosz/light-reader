@@ -132,21 +132,58 @@ wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s
   done
   return 1
 }
-install_and_launch() {  # serial apk; dev-start opens chapter 1 at the default font and saves nothing, so
-                        # A+ A+ A- A- always cycles and the device's reading data is left as it was
+data_hash() {  # serial -> sha256 of files/reading-data.json, or "none" when there is no such file
+  "$adb" -s "$1" shell run-as $pkg sh -c "'sha256sum files/reading-data.json 2>/dev/null || echo none'" | tr -d '\r' | awk '{print $1}'
+}
+install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at chapter 1 and the
+                        # default font, and saves nothing, so A+ A+ A- A- always cycles and the device's
+                        # reading data is left as it was (data_before, checked by shelf_check). A device
+                        # with no alice.epub gets the test fixture, removed again on exit. The fixture is
+                        # pushed under a temp name and renamed, and the device recorded before the push,
+                        # so a push cut short never leaves a partial alice.epub that a later run accepts.
   dev_started="$dev_started $1"
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
+    && data_before=$(data_hash "$1") && [ -n "$data_before" ] \
     && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 0 > files/dev-start'" \
+    && { "$adb" -s "$1" shell run-as $pkg test -f files/alice.epub \
+      || { pushed_alice="$pushed_alice $1" \
+        && "$adb" -s "$1" shell run-as $pkg sh -c "'cat > files/alice.epub.ci && mv files/alice.epub.ci files/alice.epub'" \
+          <tool/src/test/fixtures/alice.epub; }; } \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
+shelf_check() {  # serial: after the round trip, the reading data must be byte-identical (Home pauses the
+                 # Reader, which flushes any save), and a launch without dev-start must render the Shelf:
+                 # a "shelf rows=" line logged after this run's marker, so an earlier launch's can't pass
+  local mark="ci-shelf-check-$$-$RANDOM-$(date +%s)"
+  "$adb" -s "$1" shell input keyevent KEYCODE_HOME >/dev/null 2>&1
+  sleep 2
+  [ "$(data_hash "$1")" = "$data_before" ] || { echo "the dev-start session changed files/reading-data.json"; return 1; }
+  "$adb" -s "$1" shell run-as $pkg rm -f files/dev-start && "$adb" -s "$1" shell am force-stop $pkg \
+    || { echo "could not stop the Reader to relaunch it without dev-start"; return 1; }
+  "$adb" -s "$1" shell log -p i -t Reader "$mark" || { echo "could not write the logcat marker"; return 1; }
+  "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1 || { echo "could not launch without dev-start"; return 1; }
+  for _ in $(seq 1 30); do
+    "$adb" -s "$1" logcat -d -s Reader:I | sed -n "/$mark/,\$p" | grep -q 'shelf rows=' && return 0
+    sleep 1
+  done
+  echo "the Shelf never rendered"
+  return 1
+}
 clear_starts() {  # on any exit: a dev-start left behind would open every later launch at chapter 1, and
-                  # the Reader it launched saves nothing, so stop it before anyone reads in it
+                  # the Reader it launched saves nothing, so stop it before anyone reads in it. The Alice
+                  # fixture goes only from devices this run pushed it to.
   for s in $dev_started; do
     "$adb" -s "$s" shell run-as $pkg rm -f files/dev-start || echo "ci: could not remove files/dev-start on $s" >&2
     "$adb" -s "$s" shell am force-stop $pkg || echo "ci: could not stop $pkg on $s" >&2
   done
+  for s in $pushed_alice; do
+    "$adb" -s "$s" shell run-as $pkg rm -f files/alice.epub files/alice.epub.ci \
+      || echo "ci: could not remove the Alice fixture on $s" >&2
+  done
 }
 dev_started=""
+pushed_alice=""
+data_before=""
 trap clear_starts EXIT
 
 # --- signoff/emulator
@@ -182,6 +219,8 @@ else
   install_and_launch "$emu" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx emulator "install"
   line=$(roundtrip "$emu") || fail_ctx emulator "font round trip: $line"
   note "emulator font round trip (identical Page): $line"
+  why=$(shelf_check "$emu") || fail_ctx emulator "$why"
+  note "emulator: reading data byte-identical after the round trip; a plain launch renders the Shelf"
 fi
 
 # --- signoff/lp3 (only when a Light Phone III is attached)
@@ -198,6 +237,8 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
+  why=$(shelf_check "$lp3") || fail_ctx lp3 "$why"
+  note "LP3: reading data byte-identical after the round trip; a plain launch renders the Shelf"
   lp3_ran=1
 elif [ "$docs_only" = 0 ]; then
   note "LP3: no Light Phone III attached (signoff/lp3 not posted)"

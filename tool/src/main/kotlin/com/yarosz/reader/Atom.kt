@@ -180,6 +180,7 @@ private class FeedHandler(private val url: HttpsUrl) : DefaultHandler() {
             title = title,
             authors = authors.toList(),
             summary = (summary ?: content)?.takeIf { it.isNotEmpty() && !isMetadataList(it) },
+            byline = entryByline(authors, content),
             opens = opens,
             details = details,
             related = related.toList(),
@@ -199,6 +200,21 @@ private class MediaType(val essence: String, val isEntry: Boolean) {
 }
 
 private val KEY_VALUE_LINE = Regex("\\p{L}[\\p{L} .]{0,30}: .*")
+
+/** The longest `<content>` that can stand in for an author on a row. */
+const val MAX_BYLINE_CHARS = 80
+
+/**
+ * The second line of an entry's row: its authors, else its `<content>` when that is one short line
+ * (at most [MAX_BYLINE_CHARS]) and not a "Key: value" pair, else nothing. OPDS lists often put the
+ * author only there, as Gutenberg's do ("Jane Austen"); a navigation entry's short description ("Our
+ * most popular books.") reads well there too.
+ */
+internal fun entryByline(authors: List<String>, content: String?): String? {
+    if (authors.isNotEmpty()) return authors.joinToString(", ")
+    val line = content?.takeIf { it.isNotEmpty() && '\n' !in it && it.length <= MAX_BYLINE_CHARS } ?: return null
+    return line.takeUnless { KEY_VALUE_LINE.matches(it) }
+}
 
 /**
  * True for a summary made of "Key: value" lines, like Gutenberg's metadata dump ("Title: …",

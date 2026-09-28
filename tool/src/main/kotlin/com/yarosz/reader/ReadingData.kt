@@ -1,5 +1,6 @@
 package com.yarosz.reader
 
+import android.util.Log
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -9,6 +10,8 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.math.abs
+
+private const val TAG = "Reader"
 
 /**
  * The reading data file's format version. The compatibility rule: a later schema only adds fields. It
@@ -42,7 +45,11 @@ data class Place(
 
 /**
  * One Book's reading state, keyed by the Book's identifier in [ReadingData.books]. [file] is the EPUB's
- * name inside filesDir, never a path. [finished] travels with the Place.
+ * name inside filesDir, where every Book lives, never a path. [finished] travels with the Place.
+ * [author] is the package's `dc:creator`s, for the Shelf row. [source] is the Book's source: the
+ * acquisition URL it was last downloaded from, which downloads it again when its file goes missing;
+ * null for a Book that didn't come from a Catalogue. [addedAt] is when it was last put on the Shelf,
+ * epoch millis; null in a file from before the Shelf, which sorts as oldest.
  */
 data class BookEntry(
     val title: String,
@@ -50,6 +57,9 @@ data class BookEntry(
     val place: Place?,
     val finished: Boolean,
     val onShelf: Boolean,
+    val author: String? = null,
+    val source: String? = null,
+    val addedAt: Long? = null,
     val extras: Map<String, JsonElement> = emptyMap(),
 )
 
@@ -69,11 +79,56 @@ data class ReadingData(
 /** The title stored for the Book in [file], a name inside filesDir, or null when none is stored. */
 fun ReadingData.storedTitle(file: String): String? = books.values.firstOrNull { it.file == file }?.title?.takeIf { it.isNotBlank() }
 
-/** Puts the Book on the Shelf, adding its entry when it has none, with [title] and [file] current. */
-fun ReadingData.shelve(identifier: String, title: String, file: String): ReadingData {
-    val entry = books[identifier]?.copy(title = title, file = file, onShelf = true)
-        ?: BookEntry(title = title, file = file, place = null, finished = false, onShelf = true)
+/**
+ * Puts the Book on the Shelf, adding its entry when it has none, with [title] and [file] current. A
+ * null [author] or [source] keeps the one stored. [now] becomes [BookEntry.addedAt] when the Book
+ * wasn't on the Shelf; a Book already there keeps its date. Its Place is always kept.
+ */
+fun ReadingData.shelve(
+    identifier: String,
+    title: String,
+    file: String,
+    author: String? = null,
+    source: String? = null,
+    now: Long? = null,
+): ReadingData {
+    val old = books[identifier] ?: BookEntry(title = title, file = file, place = null, finished = false, onShelf = false)
+    val entry = old.copy(
+        title = title,
+        file = file,
+        onShelf = true,
+        author = author ?: old.author,
+        source = source ?: old.source,
+        addedAt = if (!old.onShelf && now != null) now else old.addedAt,
+    )
     return copy(books = books + (identifier to entry))
+}
+
+/**
+ * Takes the Book off the Shelf: its file is forgotten (the caller deletes it) and everything else is
+ * kept, so adding it again brings back its Place.
+ */
+fun ReadingData.unshelve(identifier: String): ReadingData {
+    val entry = books[identifier] ?: return this
+    return copy(books = books + (identifier to entry.copy(file = null, onShelf = false)))
+}
+
+/**
+ * Moves the Book at [from] to [to], as when downloading it again brings a package that declares a
+ * new identifier (Calibre mints one on every conversion): its Place, finished flag, date added,
+ * title, source and unknown fields go to [to], replacing an entry there that is off the Shelf. A
+ * Book already on the Shelf at [to] stays as it is except for its Place, which becomes the newer of
+ * the two (with its finished flag; a tie keeps its own). [from] stays behind off the Shelf with no
+ * file, the state a removal leaves, rather than being dropped: [merge] keeps every Book the file on
+ * disk has, so a dropped key would come back on the next save.
+ */
+fun ReadingData.moveBook(from: String, to: String): ReadingData {
+    val entry = books[from]?.takeIf { from != to } ?: return this
+    val moved = books[to]?.takeIf { it.onShelf }?.let { target ->
+        val reading = if (entry.placeTime > target.placeTime) entry else target
+        target.copy(place = reading.place, finished = reading.finished)
+    } ?: entry
+    return copy(books = books + (to to moved) + (from to entry.copy(file = null, onShelf = false)))
 }
 
 /**
@@ -154,30 +209,36 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
 
 /**
  * The newer Place wins, and brings its [BookEntry.finished] with it: a missing Place counts as oldest
- * and a tie goes to [mine]. [BookEntry.file] and [BookEntry.onShelf] come from [mine], because this
- * process owns the files. The title is [mine]'s unless blank. Unknown fields come from both, [mine]
- * winning a clash.
+ * and a tie goes to [mine]. [BookEntry.file], [BookEntry.onShelf] and [BookEntry.addedAt] come from
+ * [mine], because this process owns the files. The title is [mine]'s unless blank; the author and
+ * source are [mine]'s unless null. Unknown fields come from both, [mine] winning a clash.
  */
 private fun mergeEntry(disk: BookEntry, mine: BookEntry): BookEntry {
-    val reading = if ((disk.place?.updatedAt ?: Long.MIN_VALUE) > (mine.place?.updatedAt ?: Long.MIN_VALUE)) disk else mine
+    val reading = if (disk.placeTime > mine.placeTime) disk else mine
     return BookEntry(
         title = mine.title.ifBlank { disk.title },
         file = mine.file,
         place = reading.place,
         finished = reading.finished,
         onShelf = mine.onShelf,
+        author = mine.author ?: disk.author,
+        source = mine.source ?: disk.source,
+        addedAt = mine.addedAt,
         extras = disk.extras + mine.extras,
     )
 }
+
+/** When the Book's Place was recorded; a Book with no Place counts as oldest. */
+private val BookEntry.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
 
 private val prettyJson = Json { prettyPrint = true }
 
 private val TOP_FIELDS = setOf("schemaVersion", "settings", "books")
 private val SETTINGS_FIELDS = setOf("fontStep")
-private val ENTRY_FIELDS = setOf("title", "file", "place", "finished", "onShelf")
+private val ENTRY_FIELDS = setOf("title", "file", "place", "finished", "onShelf", "author", "source", "addedAt")
 private val PLACE_FIELDS = setOf("spineId", "block", "offset", "snippet", "updatedAt")
 
-/** The file's text. Absent Places and files are omitted; unknown fields are written back as they came. */
+/** The file's text. Absent Places, files, authors, sources and dates are omitted; unknown fields are written back as they came. */
 fun ReadingData.encode(): String = prettyJson.encodeToString(
     JsonElement.serializer(),
     jsonObject(
@@ -196,6 +257,9 @@ private fun BookEntry.toJson() = jsonObject(
     "file" to file?.let(::JsonPrimitive),
     "onShelf" to JsonPrimitive(onShelf),
     "finished" to JsonPrimitive(finished),
+    "author" to author?.let(::JsonPrimitive),
+    "source" to source?.let(::JsonPrimitive),
+    "addedAt" to addedAt?.let(::JsonPrimitive),
     "place" to place?.let {
         jsonObject(
             PLACE_FIELDS,
@@ -215,21 +279,23 @@ private fun jsonObject(known: Set<String>, extras: Map<String, JsonElement>, var
 /**
  * Parses the file's text. A known field that is absent or null takes its default, which is what keeps
  * a file from a newer build readable. A known field of the wrong type is corruption and fails, as does
- * anything that isn't a JSON object at the top. Never throws.
+ * anything that isn't a JSON object at the top. A Book's file that isn't a plain name inside filesDir
+ * reads as missing (null), so nothing outside filesDir is ever deleted and the other Books stay.
+ * Never throws.
  */
 fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
     val root = Json.parseToJsonElement(text) as? JsonObject ?: corrupt("top level")
     ReadingData(
         schemaVersion = root.int("schemaVersion") ?: CURRENT_SCHEMA,
-        books = root.obj("books")?.mapValues { (id, entry) -> (entry as? JsonObject ?: corrupt("books.$id")).toEntry() }.orEmpty(),
+        books = root.obj("books")?.mapValues { (id, entry) -> (entry as? JsonObject ?: corrupt("books.$id")).toEntry(id) }.orEmpty(),
         settings = root.obj("settings")?.let { Settings(it.int("fontStep") ?: DEFAULT_FONT_STEP, it.unknown(SETTINGS_FIELDS)) } ?: Settings(),
         extras = root.unknown(TOP_FIELDS),
     )
 }
 
-private fun JsonObject.toEntry() = BookEntry(
+private fun JsonObject.toEntry(id: String) = BookEntry(
     title = string("title").orEmpty(),
-    file = string("file"),
+    file = bookFile(id),
     place = obj("place")?.let {
         Place(
             spineId = it.string("spineId").orEmpty(),
@@ -242,8 +308,26 @@ private fun JsonObject.toEntry() = BookEntry(
     },
     finished = boolean("finished") ?: false,
     onShelf = boolean("onShelf") ?: false,
+    author = string("author"),
+    source = string("source"),
+    addedAt = long("addedAt"),
     extras = unknown(ENTRY_FIELDS),
 )
+
+/** The Book's file, or null when it has none or it isn't a plain name inside filesDir (logged). */
+private fun JsonObject.bookFile(id: String): String? {
+    val name = string("file") ?: return null
+    if (isPlainFileName(name)) return name
+    Log.w(TAG, "reading data: books.$id.file isn't a plain name inside filesDir; reading it as missing")
+    return null
+}
+
+/**
+ * Whether [name] names a file directly inside filesDir, as [BookEntry.file] must: a removal deletes
+ * that file, so a path separator, "." or ".." could reach outside it.
+ */
+private fun isPlainFileName(name: String) =
+    name.isNotEmpty() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }
 
 private class CorruptReadingData(field: String) : Exception("reading data: $field has the wrong type")
 

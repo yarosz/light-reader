@@ -69,6 +69,18 @@ class UntrustedEpubTest {
     }
 
     @Test
+    fun `an EPUB2 chapter's named entities read as their characters, so words around them stay apart`() {
+        val files = epubFiles(chapters = listOf("Mr.&nbsp;Darcy&mdash;caf&eacute;")).withDoctype(
+            "OEBPS/c0.xhtml",
+            """<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">""",
+        )
+        val numeric = epubFiles(chapters = listOf("Mr.&#160;Darcy&#8212;caf&#233;"))
+        val book = withNoNetwork { parseEpub(epub(files)) }
+        assertEquals(parseEpub(epub(numeric)).chapters.single().text, book.chapters.single().text)
+        assertEquals("Mr.\u00A0Darcy\u2014café", book.chapters.single().text)
+    }
+
+    @Test
     fun `an entity-expansion bomb in the package fails`() {
         val files = epubFiles() + (opf to LAUGHS)
         assertFailsWith<SAXException> { ZipFile(epub(files)).use { readPackage(it, "t") } }
