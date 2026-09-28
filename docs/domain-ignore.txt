@@ -3,8 +3,6 @@
 # in DESIGN.md. See AGENTS.md "Domain language".
 
 # Renamed in the pre-N4 refactor (LEDGER.md). That PR deletes this group.
-Chapter
-Position
 Transfer
 TransferState
 BookEntry
@@ -15,7 +13,6 @@ ReadingSaver
 ReadingStore
 CorruptReadingData
 Settings
-top level
 
 # Layout and pagination
 Band
@@ -27,8 +24,9 @@ Stacked
 Typesetter
 Window
 WindowLayout
+Reading
+Shown
 uncharacteristically
-band on unmeasured window ${band.window}
 
 # EPUB and XML parsing
 Package
@@ -66,11 +64,9 @@ NoHttps
 NotAnEpub
 CopyProtected
 UntrustedCertificate
-search template $template can't be filled
 
 # Catalogue feeds (Atom and OPDS)
 Acquisition
-CataloguePage
 CatalogueSearch
 NavigationLink
 MediaType
@@ -90,14 +86,19 @@ ShelfViewModel
 RowKey
 RowTap
 DevStart
+Order
 
-# UI copy (DESIGN.md "Shelf"; the certificate line goes with D15 in N3c)
+# UI copy (DESIGN.md "Shelf"; the certificate line goes with D15 in N3c). "file" is an _Avoid_ word
+# for Book, but this is the Book's file, as in CONTEXT.md. "This book has no text." is a LEDGER.md
+# follow-up.
 can't download again · certificate not trusted
 can't download again · needs https
 can't download again · not an EPUB
 Standard Ebooks: new releases
+Project Gutenberg
+file missing
+file missing · tap to download again
 ${shown.pass.chapterIndex + 1}/${book.chapters.size}
-# Breaks DESIGN.md "Copy" (should read "This Book has no text."); fix it with the next reading-view change.
 This book has no text.
 
 # Doc headings and labels
@@ -105,6 +106,9 @@ default
 sp
 Top bar
 Row
+Add
+Add to Shelf
+Contents
 Empty
 Edit
 Offline
@@ -115,3 +119,6 @@ N6 bar missed
 Emulator fidelity
 Reading texture
 Revisit if
+
+# Possible domain terms, left for the next domain pass (not defined in CONTEXT.md yet)
+Downloads
