@@ -114,7 +114,14 @@ class CatalogueListScreen(sealedActivity: SealedLightActivity) : LightScreen<Uni
     private fun CatalogueRow(listed: ListedCatalogue, mode: CatalogueListMode) {
         val catalogue = listed.catalogue
         if (mode is CatalogueListMode.Editing && mode.confirming == catalogue.url) {
-            ConfirmRemoval(catalogue.name, CATALOGUES_CONFIRM_REMOVE, onRemove = { viewModel.remove(catalogue.url) }, onCancel = viewModel::cancelRemove)
+            ConfirmRemoval(
+                catalogue.name,
+                CATALOGUES_CONFIRM_REMOVE,
+                CATALOGUES_REMOVE,
+                CATALOGUES_CANCEL,
+                onRemove = { viewModel.remove(catalogue.url) },
+                onCancel = viewModel::cancelRemove,
+            )
             return
         }
         ListRow(

@@ -48,7 +48,8 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
     @Composable
     override fun Content() {
         val themeColors by LightThemeController.colors.collectAsState()
-        val rows by viewModel.rows.collectAsState()
+        val snapshot by viewModel.snapshot.collectAsState()
+        val rows = snapshot?.rows
         val mode by viewModel.mode.collectAsState()
         val devStart by viewModel.devStart.collectAsState()
 
@@ -120,7 +121,7 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
     @Composable
     private fun ShelfRowView(row: ShelfRow, mode: ShelfMode) {
         if (mode is ShelfMode.Editing && mode.confirming == row.key) {
-            ConfirmRemoval(row.title, SHELF_CONFIRM_REMOVE, onRemove = { viewModel.remove(row.key) }, onCancel = viewModel::cancelRemove)
+            ConfirmRemoval(row.title, SHELF_CONFIRM_REMOVE, SHELF_REMOVE, SHELF_CANCEL, onRemove = { viewModel.remove(row.key) }, onCancel = viewModel::cancelRemove)
             return
         }
         val tappable = mode == ShelfMode.Browsing && row.tap != RowTap.None

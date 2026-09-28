@@ -1,7 +1,10 @@
 package com.yarosz.reader
 
-/** What the Shelf knows, as the Catalogue screens read it: the reading data, which Books' files exist, and the downloads by source. */
-data class ShelfSnapshot(val data: ReadingData, val present: Set<String>, val transfers: Map<HttpsUrl, Transfer>)
+/** What the Shelf knows: the reading data, which Books' files exist, and the downloads by source. */
+data class ShelfSnapshot(val data: ReadingData, val present: Set<String>, val transfers: Map<HttpsUrl, Transfer>) {
+    /** The Shelf's rows (see [shelfRows]), made once per snapshot, when first read. */
+    val rows: List<ShelfRow> by lazy { shelfRows(data, present, transfers) }
+}
 
 /** A stored Book whose source is one of a detail page's links. */
 sealed interface ShelfMatch {
@@ -32,14 +35,15 @@ fun ShelfSnapshot.match(links: Collection<HttpsUrl>): ShelfMatch? {
             entry.onShelf -> ShelfMatch.Missing(identifier)
             else -> ShelfMatch.Removed(identifier)
         } to entry.addedAt
-    }.minWithOrNull(compareBy<Pair<ShelfMatch, Long?>> { it.first.rank }.thenByDescending { it.second ?: Long.MIN_VALUE })?.first
+    }.maxWithOrNull(compareBy<Pair<ShelfMatch, Long?>> { it.first.preference }.thenBy { it.second ?: Long.MIN_VALUE })?.first
 }
 
-private val ShelfMatch.rank
+/** Higher is better: a Book here, then one whose file is missing, then a removed one. */
+private val ShelfMatch.preference
     get() = when (this) {
-        is ShelfMatch.Here -> 0
+        is ShelfMatch.Here -> 2
         is ShelfMatch.Missing -> 1
-        is ShelfMatch.Removed -> 2
+        is ShelfMatch.Removed -> 0
     }
 
 /** A Book's detail page below its title and author: the one action, and the failure line above it (null for none). */

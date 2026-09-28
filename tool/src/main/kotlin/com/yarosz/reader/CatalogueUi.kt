@@ -109,16 +109,16 @@ fun TextAction(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
 
 /**
  * The inline confirmation a row turns into in Edit: its [title] stays on the first line, so the
- * reader can see what is about to go, then [question], then "Remove" and "Cancel".
+ * reader can see what is about to go, then [question], then the [remove] and [cancel] buttons.
  */
 @Composable
-fun ConfirmRemoval(title: String, question: String, onRemove: () -> Unit, onCancel: () -> Unit) {
+fun ConfirmRemoval(title: String, question: String, remove: String, cancel: String, onRemove: () -> Unit, onCancel: () -> Unit) {
     Column(rowPadding()) {
         BookTitle(title)
         LightText(text = question, variant = LightTextVariant.Detail)
         Row(Modifier.padding(top = 0.5f.gridUnitsAsDp())) {
-            TextAction(SHELF_REMOVE, onRemove, Modifier.padding(end = 2f.gridUnitsAsDp()))
-            TextAction(SHELF_CANCEL, onCancel)
+            TextAction(remove, onRemove, Modifier.padding(end = 2f.gridUnitsAsDp()))
+            TextAction(cancel, onCancel)
         }
     }
 }

@@ -122,7 +122,7 @@ class CatalogueViewModelTest {
         book.download(book.detail.value!!.action as DetailAction.Download)
         settle()
         assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_COPY_PROTECTED, retry = false)), book.detail.value)
-        assertEquals(emptyList(), owner().rows.value)
+        assertEquals(emptyList(), owner().snapshot.value!!.rows)
     }
 
     @Test
@@ -138,7 +138,7 @@ class CatalogueViewModelTest {
         book.download(add)
         settle()
         assertEquals(FailureCopy(COPY_NOT_AN_EPUB, retry = false), book.detail.value!!.problem)
-        assertEquals(emptyList(), owner().rows.value)
+        assertEquals(emptyList(), owner().snapshot.value!!.rows)
 
         answers[noImages.value] = Answer(body = pride)
         val again = openBook()

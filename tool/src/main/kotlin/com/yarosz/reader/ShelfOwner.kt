@@ -66,14 +66,9 @@ class ShelfOwner(
     private val store = ReadingStore(filesDir)
     val saver = ReadingSaver(scope, io, SAVE_DEBOUNCE_MS, store::save) { Log.w(TAG, "reading data save failed", it) }
 
-    private val shown = MutableStateFlow<List<ShelfRow>?>(null)
-
-    /** The rows to show; null until the reading data is loaded. */
-    val rows: StateFlow<List<ShelfRow>?> = shown
-
     private val snapshots = MutableStateFlow<ShelfSnapshot?>(null)
 
-    /** What the rows are made from, for the Catalogue screens; null until the reading data is loaded. */
+    /** What the Shelf knows, which its rows ([ShelfSnapshot.rows]) and the Catalogue screens read; null until the reading data is loaded. */
     val snapshot: StateFlow<ShelfSnapshot?> = snapshots
 
     /** A dev-start session to open once (see [DEV_BOOK_FILE]); the Shelf clears it when it navigates. */
@@ -253,9 +248,7 @@ class ShelfOwner(
 
     private fun publish() {
         if (!loaded.isCompleted) return
-        val snapshot = ShelfSnapshot(saver.data, present, transfers.toMap())
-        snapshots.value = snapshot
-        shown.value = shelfRows(snapshot.data, snapshot.present, snapshot.transfers)
+        snapshots.value = ShelfSnapshot(saver.data, present, transfers.toMap())
     }
 
     /**
