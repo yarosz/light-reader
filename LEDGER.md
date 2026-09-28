@@ -135,7 +135,10 @@ Ordered. Each item ends on its _done-when_.
   "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
   ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back or jumping away from
   the end clears it. A Spine item with no table-of-contents entry is labelled by its first heading,
-  else "Chapter N" counted over listed Chapters, never "Section N"; front matter shows the Book title. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
+  else "Chapter N" counted over listed Chapters, never "Section N"; front matter shows the Book title.
+  A copy fix rides on this first reading-view change: `ReaderScreen.kt`'s "This book has no text."
+  becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in `docs/domain-ignore.txt`
+  goes. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
   tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`
