@@ -5,11 +5,13 @@ import kotlin.math.ceil
 import kotlin.math.roundToLong
 
 /** Reading copy, verbatim from DESIGN.md "Reading". */
+const val READING_OPENING = "Opening…"
 const val READING_NO_TEXT = "This Book has no text."
 const val READING_COULDNT_OPEN = "Couldn't open this Book."
 const val END_PAGE_TEXT = "The end."
 const val BACK_TO_SHELF = "Back to Shelf"
 const val MINUTES_ALMOST_DONE = "almost done with this chapter"
+const val MINUTES_ALMOST_DONE_SHORT = "almost done"
 const val CONTENTS_TITLE = "Contents"
 const val CONTENTS_HERE = "you're here"
 const val CONTENTS_SHELF = "Shelf"
@@ -29,6 +31,12 @@ const val SAMPLE_MIN_WORDS = 20
 /** Time on a Page outside [SAMPLE_MIN_MS]..[SAMPLE_MAX_MS] gives no sample: a skim, or the reader looked away. */
 const val SAMPLE_MIN_MS = 2_000L
 const val SAMPLE_MAX_MS = 180_000L
+
+/**
+ * A Page read faster than this gives no sample: it was skimmed, or turned past while hunting for a place,
+ * and a few minutes of that would otherwise drag the median, and every minutes line, down for the session.
+ */
+const val SAMPLE_MAX_WPM = 600.0
 
 /**
  * Where every word of a Book's [spineItems] starts, found once when the Book opens (off the main thread),
@@ -81,11 +89,17 @@ fun OpenBook.placeAt(point: SpinePoint, now: Long): Place =
 fun OpenBook.chapterEnd(index: Int): SpinePoint = chapters.getOrNull(index + 1)?.start?.let { minOf(it, textEnd) } ?: textEnd
 
 /**
+ * A Progress line: [full], and the [short] form the footer shows instead when [full] doesn't fit on its one
+ * line between "A−" and "A+" (large system text).
+ */
+data class ProgressLine(val full: String, val short: String)
+
+/**
  * The Progress line for a Page starting at [point]: the minutes left in its Chapter at [wpm]
  * ([minutesLeftCopy]). Null, for no line, in front matter, from [OpenBook.textEnd] on, and in a Chapter
  * whose whole text reads in under a minute.
  */
-fun OpenBook.minutesLine(words: WordIndex, point: SpinePoint, wpm: Double): String? {
+fun OpenBook.minutesLine(words: WordIndex, point: SpinePoint, wpm: Double): ProgressLine? {
     val index = chapterAt(point) ?: return null
     val end = chapterEnd(index)
     if (point >= end || words.between(chapters[index].start, end) / wpm < 1) return null
@@ -93,21 +107,24 @@ fun OpenBook.minutesLine(words: WordIndex, point: SpinePoint, wpm: Double): Stri
 }
 
 /**
- * The copy for [raw] minutes left: whole minutes up to 15, rounded up; 5-minute steps from 15, rounded up.
- * [raw] is first rounded to 1e-9, so a quotient that should be whole doesn't round up a step.
+ * The copy for [raw] minutes left, full and short: whole minutes up to 15, rounded up; 5-minute steps from
+ * 15, rounded up. [raw] is first rounded to 1e-9, so a quotient that should be whole doesn't round up a step.
  */
-fun minutesLeftCopy(raw: Double): String {
+fun minutesLeftCopy(raw: Double): ProgressLine {
     val minutes = (raw * 1e9).roundToLong() / 1e9
-    return when {
-        minutes < 1 -> MINUTES_ALMOST_DONE
-        minutes < 15 -> "about ${ceil(minutes).toInt()} min left in this chapter"
-        else -> "about ${ceil(minutes / 5).toInt() * 5} min left in this chapter"
+    val shown = when {
+        minutes < 1 -> return ProgressLine(MINUTES_ALMOST_DONE, MINUTES_ALMOST_DONE_SHORT)
+        minutes < 15 -> ceil(minutes).toInt()
+        else -> ceil(minutes / 5).toInt() * 5
     }
+    return ProgressLine("about $shown min left in this chapter", "about $shown min left")
 }
 
 /** The words per minute of [words] read in [ms], or null when that doesn't count as a sample. */
-fun sampleWpm(words: Int, ms: Long): Double? =
-    if (words >= SAMPLE_MIN_WORDS && ms in SAMPLE_MIN_MS..SAMPLE_MAX_MS) words * 60_000.0 / ms else null
+fun sampleWpm(words: Int, ms: Long): Double? {
+    if (words < SAMPLE_MIN_WORDS || ms !in SAMPLE_MIN_MS..SAMPLE_MAX_MS) return null
+    return (words * 60_000.0 / ms).takeIf { it <= SAMPLE_MAX_WPM }
+}
 
 /**
  * The reader's reading speed: [PRIOR_WPM] until there are [MEASURED_AFTER] samples, then the median of

@@ -63,12 +63,13 @@ copy.
 ## Reading
 
 The reading view until N5 moves its chrome into an overlay. Product rulings from the advisor (N4,
-2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book that can't be opened reads "Couldn't
-open this Book." (the reason goes to the log), and one with no text reads "This Book has no text." Under
-either is "Back to Shelf", as on the end page. System back (the LP3's back gesture) leaves the Reader
-from anywhere, to the Shelf, which the Reader always opens over (see "Catalogues"), but a Tool can't show
-it, so every Reader state but the brief "Opening…" has a visible way to the Shelf: "Back to Shelf" where
-there is no Page, and on a Page the top line, then "Shelf" in Contents.
+2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book reads "Opening…" while it opens (a
+long one takes seconds). One that can't be opened reads "Couldn't open this Book." (the reason goes to
+the log), and one with no text reads "This Book has no text." Under each is "Back to Shelf", as on the
+end page. System back (the LP3's back gesture) leaves the Reader from anywhere, to the Shelf, which the
+Reader always opens over (see "Catalogues"), but a Tool can't show it, so every Reader state has a
+visible way to the Shelf: "Back to Shelf" where there is no Page, and on a Page the top line, then
+"Shelf" in Contents.
 
 **Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
 goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
@@ -81,7 +82,11 @@ Contents; to a screen reader it is a button, "Contents: " and the title. Its tap
 width of the screen's top 48 dp, or the top line's full height when that is taller, so it takes the top
 of the Page; the rest of the Page turns Pages. The footer is 48 dp:
 "A−" and "A+" at its ends, each with 8 dp of padding at the sides, each filling the footer's height as
-its tap target, and the Progress line between them.
+its tap target, and the Progress line between them. At the smallest size "A−", and at the largest "A+",
+is drawn in secondary text, ignores taps, and is a disabled button to a screen reader. The Progress
+line is one line, in Detail and secondary text, centred; when its full form, measured as drawn, doesn't
+fit between "A−" and "A+" (large system text), it shows its short form (below), ellipsised only if even
+that doesn't fit.
 The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.
 
 **Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
@@ -89,21 +94,23 @@ end (the next Chapter's start, or the end of the Book's text if that comes first
 reading speed. A word is a whitespace-separated run of text. The words are indexed once, off the main
 thread, when the Book opens, so a turn counts them without reading any text. On the raw minutes m:
 
-| m | Line |
-|---|---|
-| under 1 | "almost done with this chapter" |
-| 1 to under 15 | "about ⌈m⌉ min left in this chapter" |
-| 15 and over | "about ⌈m/5⌉×5 min left in this chapter" |
+| m | Line | Short form |
+|---|---|---|
+| under 1 | "almost done with this chapter" | "almost done" |
+| 1 to under 15 | "about ⌈m⌉ min left in this chapter" | "about ⌈m⌉ min left" |
+| 15 and over | "about ⌈m/5⌉×5 min left in this chapter" | "about ⌈m/5⌉×5 min left" |
 
 "chapter" stays lowercase (see "Copy"). There is no line in front matter, on the end page, or in a
 Chapter whose whole text reads in under a minute at the current speed.
 
 **Reading speed.** 230 words a minute until there are 5 samples, then the median of the newest 20 or
 fewer. A sample is the words on a Page divided by the time on it. It counts only when the Page was
-reached by a forward turn of one Page and left by one, holds at least 20 words, and was on screen for
-2 s to 3 min. A back turn, a font change or relayout, opening Contents, a Chapter jump, reopening the
-Book, or the Tool pausing drops the running timing. Samples belong to the reader: they are shared
-across Books, kept in memory for as long as the Tool runs, and never saved.
+reached by a forward turn of one Page and left by one, holds at least 20 words, was on screen for 2 s
+to 3 min, and was read at 600 words a minute or slower: faster is a skim, or a hunt for a place (a
+turn every 2.5 s is about 1,200), and a few minutes of it would drag every minutes line to nothing for
+the rest of the session. A back turn, a font change or relayout, opening Contents, a Chapter jump,
+reopening the Book, or the Tool pausing drops the running timing. Samples belong to the reader: they are
+shared across Books, kept in memory for as long as the Tool runs, and never saved.
 
 **End page.** A forward turn (a tap outside the left third and below the top line's target, or volume
 down) from the Page that reaches the end of the Book's text shows the end page: "The end." centred, and under it "Back to Shelf", which

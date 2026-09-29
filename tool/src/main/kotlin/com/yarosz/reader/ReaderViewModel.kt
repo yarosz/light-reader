@@ -46,7 +46,7 @@ class ReaderViewModel(
     internal val saver = if (start == null) owner.saver else ReadingSaver(viewModelScope, io, SAVE_DEBOUNCE_MS, { }) { }
 
     val book = MutableStateFlow<OpenBook?>(null)
-    val status = MutableStateFlow("Opening…")
+    val status = MutableStateFlow(READING_OPENING)
 
     /** The Place: the top of the page being read. Relayouts never rewrite it, so font changes can't drift. */
     val spinePoint = MutableStateFlow(SpinePoint(0, 0))
@@ -68,7 +68,7 @@ class ReaderViewModel(
     val topLine = MutableStateFlow("")
 
     /** The footer's Progress line ([minutesLine]); null for none. */
-    val progressLine = MutableStateFlow<String?>(null)
+    val progressLine = MutableStateFlow<ProgressLine?>(null)
 
     /** The title the Shelf shows for the Book. */
     private var shelfTitle = ""
@@ -165,8 +165,8 @@ class ReaderViewModel(
     }
 
     fun changeFont(delta: Int) {
-        val step = (fontStep.value + delta).coerceIn(FONT_SIZES.indices)
-        if (step == fontStep.value) return
+        if (!canChangeFont(fontStep.value, delta)) return
+        val step = fontStep.value + delta
         fontStep.value = step
         saver.change { it.copy(settings = it.settings.copy(fontStep = step)) }
         timer.discard()

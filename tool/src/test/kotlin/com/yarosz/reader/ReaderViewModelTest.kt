@@ -22,6 +22,9 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
+/** Time on a Page in the speed tests: a [LineMeasurer] Page holds about 900 words, 360 a minute at this. */
+private const val READ_MS = 150_000L
+
 /**
  * Opens the checked-in Alice from a temp filesDir, through the directory's [ShelfOwner], loaded as
  * the Shelf leaves it. The main thread and IO are test dispatchers on separate schedulers, so an open
@@ -103,8 +106,8 @@ class ReaderViewModelTest {
     private val ReaderViewModel.shownWords: Int
         get() = frame.value!!.let { aliceWords.between(SpinePoint(it.pass.item, it.page.start), SpinePoint(it.pass.item, it.page.end)) }
 
-    /** Reads the shown Page for [ms], then turns forward. */
-    private fun ReaderViewModel.readThenTurn(ms: Long = 20_000) {
+    /** Reads the shown Page for [ms], then turns forward. The default reads [LineMeasurer]'s Pages under [SAMPLE_MAX_WPM]. */
+    private fun ReaderViewModel.readThenTurn(ms: Long = READ_MS) {
         clock += ms
         nextPage()
     }
@@ -392,7 +395,7 @@ class ReaderViewModelTest {
             val words = vm.shownWords
             assertTrue(words >= SAMPLE_MIN_WORDS)
             vm.readThenTurn()
-            words * 60_000.0 / 20_000
+            words * 60_000.0 / READ_MS
         }
         assertEquals(samples.sorted()[MEASURED_AFTER / 2], speed.wpm)
         val shown = vm.frame.value!!
@@ -463,6 +466,15 @@ class ReaderViewModelTest {
         settle()
         assertEquals(3, vm.fontStep.value)
         assertEquals(3, ReadingStore(dir).load().settings.fontStep)
+    }
+
+    @Test
+    fun `A− does nothing at the smallest size and A+ nothing at the largest, so the footer shows them disabled`() {
+        assertFalse(canChangeFont(0, -1))
+        assertTrue(canChangeFont(0, +1))
+        assertTrue(canChangeFont(FONT_SIZES.lastIndex, -1))
+        assertFalse(canChangeFont(FONT_SIZES.lastIndex, +1))
+        assertTrue(canChangeFont(DEFAULT_FONT_STEP, -1) && canChangeFont(DEFAULT_FONT_STEP, +1))
     }
 
     /**
