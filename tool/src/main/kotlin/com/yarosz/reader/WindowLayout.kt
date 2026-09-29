@@ -76,7 +76,7 @@ class Typesetter(private val measurer: TextMeasurer, private val captionColor: C
                 top = layout.getLineTop(i),
                 bottom = layout.getLineBottom(i),
                 endsAtBreak = endsAtBreak(spineItem.text, next),
-                heading = spineItem.kindAt(start) == BlockKind.Heading || spineItem.isHeadingCaption(spineItem.blockAt(start)),
+                heading = spineItem.keepsWithNext(start),
             )
         }
         return WindowLayout(layout, lines)

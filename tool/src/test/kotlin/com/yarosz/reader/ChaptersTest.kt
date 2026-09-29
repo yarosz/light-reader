@@ -18,16 +18,20 @@ class ChaptersTest {
         dir.deleteRecursively()
     }
 
-    /** A Book of [bodies], one Spine item each, in OEBPS/text/ under [names]; [nav] and [ncx] sit in OEBPS/. */
-    private fun open(
+    private fun open(bodies: List<String>, nav: String? = null, ncx: String? = null, names: List<String> = bodies.indices.map { "c$it.xhtml" }) =
+        parseEpub(epub(bodies, nav, ncx, names))
+
+    /** An EPUB of [bodies], one Spine item each, in OEBPS/text/ under [names]; [nav] sits in OEBPS/ under [navName], [ncx] in OEBPS/. */
+    private fun epub(
         bodies: List<String>,
         nav: String? = null,
         ncx: String? = null,
         names: List<String> = bodies.indices.map { "c$it.xhtml" },
-    ): OpenBook {
+        navName: String = "nav.xhtml",
+    ): File {
         val manifest = bodies.indices.joinToString("") {
             """<item id="c$it" href="text/${names[it].replace(" ", "%20")}" media-type="application/xhtml+xml"/>"""
-        } + (if (nav != null) """<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>""" else "") +
+        } + (if (nav != null) """<item id="nav" href="$navName" media-type="application/xhtml+xml" properties="nav"/>""" else "") +
             (if (ncx != null) """<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>""" else "")
         val spine = bodies.indices.joinToString("") { "<itemref idref=\"c$it\"/>" }
         val files = mapOf(
@@ -36,8 +40,8 @@ class ChaptersTest {
             "OEBPS/content.opf" to """<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="uid">urn:uuid:chapters</dc:identifier><dc:title>Chapters</dc:title></metadata><manifest>$manifest</manifest><spine${if (ncx != null) " toc=\"ncx\"" else ""}>$spine</spine></package>""",
         ) + bodies.mapIndexed { i, body ->
             "OEBPS/text/${names[i]}" to """<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c$i</title></head><body>$body</body></html>"""
-        } + listOfNotNull(nav?.let { "OEBPS/nav.xhtml" to it }, ncx?.let { "OEBPS/toc.ncx" to it })
-        return parseEpub(File(dir, "book.epub").writeEpub(files))
+        } + listOfNotNull(nav?.let { "OEBPS/$navName" to it }, ncx?.let { "OEBPS/toc.ncx" to it })
+        return File(dir, "book.epub").writeEpub(files)
     }
 
     private fun nav(vararg items: String) =
@@ -206,7 +210,7 @@ class ChaptersTest {
             ),
             nav = nav(li("One", "text/c0.xhtml"), li("X. CHAPTER II.", "text/c1.xhtml#c2")),
         )
-        assertEquals(listOf(Block(BlockKind.Caption, "X."), Block(BlockKind.Heading, "CHAPTER II.")), book.spineItems[1].blocks.take(2))
+        assertEquals(listOf(Block(BlockKind.Caption, "X.", headingCaption = true), Block(BlockKind.Heading, "CHAPTER II.")), book.spineItems[1].blocks.take(2))
         assertEquals(Chapter("CHAPTER II.", SpinePoint(1, 0)), book.chapters[1])
     }
 
@@ -245,7 +249,7 @@ class ChaptersTest {
         )
         for (id in listOf("x", "y")) {
             val book = open(bodies, nav = nav(li("One", "text/c0.xhtml"), li("He rode a black horse. CHAPTER III.", "text/c1.xhtml#$id")))
-            assertEquals(listOf(Block(BlockKind.Caption, "He rode a black horse."), Block(BlockKind.Heading, "CHAPTER III.")), book.spineItems[1].blocks.subList(1, 3))
+            assertEquals(listOf(Block(BlockKind.Caption, "He rode a black horse.", headingCaption = true), Block(BlockKind.Heading, "CHAPTER III.")), book.spineItems[1].blocks.subList(1, 3))
             assertEquals(Chapter("CHAPTER III.", book.startOf("He rode")), book.chapters[1])
         }
     }
@@ -268,9 +272,9 @@ class ChaptersTest {
         ))
         assertEquals(
             listOf(
-                Block(BlockKind.Caption, "Cap one", listOf(Span(0, 7, Emphasis.Italic))),
+                Block(BlockKind.Caption, "Cap one", listOf(Span(0, 7, Emphasis.Italic)), headingCaption = true),
                 Block(BlockKind.Heading, "CHAPTER I."),
-                Block(BlockKind.Caption, "Cap two", listOf(Span(0, 7, Emphasis.Italic))),
+                Block(BlockKind.Caption, "Cap two", listOf(Span(0, 7, Emphasis.Italic)), headingCaption = true),
                 Block(BlockKind.Heading, "CHAPTER II.", listOf(Span(0, 7, Emphasis.Italic))),
             ),
             book.spineItems[0].blocks,
@@ -316,6 +320,50 @@ class ChaptersTest {
     }
 
     @Test
+    fun `an id on an element starting with no-break spaces points at the first of them`() {
+        val book = open(
+            listOf("<p>One</p>", "<p>Front</p><h2 id=\"c1\">&#160;CHAPTER I.</h2><p>Text</p><p id=\"p\">&#160;&#160;Indented</p>"),
+            nav = nav(li("One", "text/c0.xhtml"), li("CHAPTER I.", "text/c1.xhtml#c1"), li("P", "text/c1.xhtml#p")),
+        )
+        val spineItem = book.spineItems[1]
+        assertEquals(listOf("\u00A0CHAPTER I.", "\u00A0\u00A0Indented"), listOf(spineItem.blocks[1].text, spineItem.blocks[3].text))
+        assertEquals(listOf(SpinePoint(1, spineItem.blockStarts[1]), SpinePoint(1, spineItem.blockStarts[3])), book.chapters.drop(1).map { it.start })
+        assertEquals(1, book.chapterAt(SpinePoint(1, spineItem.blockStarts[1])))
+    }
+
+    @Test
+    fun `a split caption keeps with its heading, and an image caption before a heading doesn't`() {
+        val spineItem = open(listOf("<p>Text</p><img alt=\"A figure.\" src=\"f.png\"/><h2><span class=\"caption\">Cap.</span><br/>CHAPTER I.</h2><p>More</p>")).spineItems[0]
+        assertEquals(
+            listOf(Block(BlockKind.Caption, "A figure."), Block(BlockKind.Caption, "Cap.", headingCaption = true), Block(BlockKind.Heading, "CHAPTER I.")),
+            spineItem.blocks.subList(1, 4),
+        )
+        assertEquals(listOf(false, false, true, true, false), spineItem.blockStarts.map { spineItem.keepsWithNext(it) })
+    }
+
+    @Test
+    fun `a Chapter starting at the end of a Spine item takes its heading from what follows`() {
+        val book = open(
+            listOf("<p>One</p>", "<h2>Last</h2><div id=\"end\"></div>", "<p>More</p><h2>Next</h2>"),
+            nav = nav(li("One", "text/c0.xhtml"), li("", "text/c1.xhtml#end")),
+        )
+        assertEquals(SpinePoint(1, book.spineItems[1].text.length), book.chapters[1].start)
+        assertEquals("Next", book.chapters[1].title)
+    }
+
+    @Test
+    fun `a nav link inside a span label gives the entry its href`() {
+        val book = open(
+            listOf("<p>One</p>", "<p>Two</p>"),
+            nav = nav(
+                "<li><span class=\"toc\"><a href=\"text/c0.xhtml\">Loomings</a></span></li>",
+                "<li><span class=\"toc\"><a href=\"text/c1.xhtml\">The Carpet-Bag</a></span></li>",
+            ),
+        )
+        assertEquals(listOf(Chapter("Loomings", SpinePoint(0, 0)), Chapter("The Carpet-Bag", SpinePoint(1, 0))), book.chapters)
+    }
+
+    @Test
     fun `a nav entry's link wins over a span before it`() {
         val numbered = "<li><span class=\"num\">1.</span> <a href=\"text/c0.xhtml\">Loomings</a></li>" +
             "<li><span class=\"num\">2.</span> <a href=\"text/c1.xhtml\">The Carpet-Bag</a></li>"
@@ -340,19 +388,43 @@ class ChaptersTest {
         assertEquals(perSpineItem, open(unlisted, ncx = ncxChapters.substringBefore("</navMap>")).chapters)
     }
 
-    @Test
-    fun `thousands of anchored blocks in one Spine item, each with an entry, open well under a second`() {
-        val n = 8_000
-        val body = (0 until n).joinToString("") { "<div id=\"e$it\"></div><p>&#160;</p><h2 id=\"c$it\">$it</h2>" }
-        val entries = (0 until n).flatMap { listOf(li("E$it", "text/c1.xhtml#e$it"), li("", "text/c1.xhtml#c$it")) }
-        val bodies = listOf("<p>One</p>", body)
-        open(bodies, nav = nav(li("One", "text/c0.xhtml")))
+    /** Opens [epub] once to warm up, then again, which must take under two seconds. */
+    private fun openQuickly(epub: File): OpenBook {
+        parseEpub(epub)
         val started = System.nanoTime()
-        val book = open(bodies, nav = nav(li("One", "text/c0.xhtml"), *entries.toTypedArray()))
+        val book = parseEpub(epub)
         val millis = (System.nanoTime() - started) / 1_000_000
+        assertTrue(millis < 2_000, "took $millis ms")
+        return book
+    }
+
+    @Test
+    fun `thousands of anchored blocks in one Spine item, each with an entry, open quickly`() {
+        val n = 45_000
+        val body = (0 until n).joinToString("") { "<div id=\"e$it\"></div><p>&#160;</p><h2 id=\"c$it\">$it</h2>" }
+        val entries = (0 until n).flatMap { listOf(li("", "text/c1.xhtml#e$it"), li("", "text/c1.xhtml#c$it")) }
+        val book = openQuickly(epub(listOf("<p>One</p>", body), nav = nav(li("One", "text/c0.xhtml"), *entries.toTypedArray())))
         assertEquals(2 * n + 1, book.chapters.size)
         assertEquals("${n - 1}", book.chapters.last().title)
-        assertTrue(millis < 1_000, "took $millis ms")
+    }
+
+    @Test
+    fun `thousands of Spine items, each entry naming the last, open quickly`() {
+        val items = 5_000
+        val entries = 100_000
+        val dir = "d".repeat(500)
+        val names = List(items) { "$dir/c%05d.xhtml".format(it) }
+        val nav = nav(*Array(entries) { li("x", names.last().substringAfter('/')) })
+        val book = openQuickly(epub(List(items) { "<p>$it</p>" }, nav = nav, names = names, navName = "text/$dir/nav.xhtml"))
+        assertEquals(entries, book.chapters.size)
+    }
+
+    @Test
+    fun `ids waiting for text across half a million blank blocks open quickly`() {
+        val ids = 5_000
+        val body = (0 until ids).joinToString("") { "<div id=\"g$it\"></div>" } + "<p>&#160;</p>".repeat(500_000) + "<h2>End</h2>"
+        val book = openQuickly(epub(listOf("<p>One</p>", body), nav = nav(li("One", "text/c0.xhtml"), *Array(ids) { li("G$it", "text/c1.xhtml#g$it") })))
+        assertEquals(List(ids) { SpinePoint(1, 0) }, book.chapters.drop(1).map { it.start })
     }
 
     @Test

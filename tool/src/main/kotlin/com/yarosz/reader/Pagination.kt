@@ -3,7 +3,7 @@ package com.yarosz.reader
 /**
  * One laid-out line: the [SpineItem.text] offset it starts at, its vertical extent in the pixels of the
  * layout that measured it, whether it ends at a legal break (see [endsAtBreak]), and whether it starts
- * inside a heading or the caption right before one ([SpineItem.isHeadingCaption]).
+ * where a Page may not end ([SpineItem.keepsWithNext]).
  */
 data class LineMetrics(val start: Int, val top: Float, val bottom: Float, val endsAtBreak: Boolean, val heading: Boolean)
 

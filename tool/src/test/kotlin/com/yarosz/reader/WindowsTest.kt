@@ -88,17 +88,18 @@ class WindowsTest {
     }
 
     @Test
-    fun `a caption right before a heading starts the window with it, and a caption alone doesn't`() {
+    fun `a caption split out of a heading starts the window with it, and an image caption doesn't`() {
         val paragraph = Block(BlockKind.Paragraph, "x".repeat(100))
-        val caption = Block(BlockKind.Caption, "He rode a black horse.")
+        val caption = Block(BlockKind.Caption, "He rode a black horse.", headingCaption = true)
+        val figure = Block(BlockKind.Caption, "He rode a black horse.")
         val heading = Block(BlockKind.Heading, "Title")
         val chapter = SpineItem("spine", listOf(paragraph, paragraph, caption, heading, paragraph))
         assertEquals(listOf(Window(0, 1, 0, 202), Window(2, 4, 202, 331)), windows(chapter, maxChars = 400))
-        val figure = SpineItem("spine", listOf(paragraph, paragraph, caption, paragraph))
-        assertEquals(listOf(Window(0, 3, 0, 325)), windows(figure, maxChars = 400))
+        val figureBeforeHeading = SpineItem("spine", listOf(paragraph, paragraph, figure, heading, paragraph))
+        assertEquals(listOf(Window(0, 2, 0, 225), Window(3, 4, 225, 331)), windows(figureBeforeHeading, maxChars = 400))
         assertTrue(chapter.isHeadingCaption(2))
         assertFalse(chapter.isHeadingCaption(3))
-        assertFalse(figure.isHeadingCaption(2))
+        assertFalse(figureBeforeHeading.isHeadingCaption(2))
     }
 
     @Test

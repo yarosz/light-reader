@@ -16,7 +16,8 @@ enum class Emphasis { Italic, Bold }
 /** [start, end) offsets are relative to the owning [Block.text]. */
 data class Span(val start: Int, val end: Int, val emphasis: Emphasis)
 
-data class Block(val kind: BlockKind, val text: String, val spans: List<Span> = emptyList())
+/** [headingCaption]: a Caption block the parser split out of the heading after it. */
+data class Block(val kind: BlockKind, val text: String, val spans: List<Span> = emptyList(), val headingCaption: Boolean = false)
 
 /** [spineId] is this Spine item's idref; a Place names its Spine item by it (ADR 0002). */
 data class SpineItem(val spineId: String, val blocks: List<Block>) {
@@ -32,9 +33,12 @@ data class SpineItem(val spineId: String, val blocks: List<Block>) {
     /** Kind of the block holding [offset]; a separating '\n' belongs to the block before it. */
     fun kindAt(offset: Int): BlockKind? = blocks.getOrNull(blockAt(offset))?.kind
 
-    /** Whether block [i] is a caption right before a heading, which windows and Pages keep with that heading. */
+    /** Whether block [i] is a caption split out of the heading right after it, which windows and Pages keep with that heading. */
     fun isHeadingCaption(i: Int): Boolean =
-        blocks.getOrNull(i)?.kind == BlockKind.Caption && blocks.getOrNull(i + 1)?.kind == BlockKind.Heading
+        blocks.getOrNull(i)?.headingCaption == true && blocks.getOrNull(i + 1)?.kind == BlockKind.Heading
+
+    /** Whether a Page may not end after the line at [offset]: it is in a heading or in its [isHeadingCaption]. */
+    fun keepsWithNext(offset: Int): Boolean = blockAt(offset).let { blocks.getOrNull(it)?.kind == BlockKind.Heading || isHeadingCaption(it) }
 }
 
 /**
@@ -337,13 +341,13 @@ internal val WHITESPACE_RUN = Regex("\\s+")
 private val BLOCK_ELEMENTS = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "dt", "dd", "figcaption", "pre")
 private val VERSE_MARKERS = listOf("verse", "poem", "song", "lyrics")
 
-/** What a block's leading and trailing runs are made of. */
-private val TRIMMED = charArrayOf(' ', '\u00A0', '\n')
+/** What a block's leading and trailing runs are made of: spaces, no-break spaces, and line breaks. */
+internal val TRIMMED = charArrayOf(' ', '\u00A0', '\n')
 
 /**
  * Reads one Spine document into [blocks]. [anchors] maps each id in [fragments] that the document has to
- * the offset in its [SpineItem.text] where the element's text begins; an element with no text of its own
- * (whitespace, no-break spaces included, is none) maps to the next text, or to the end of the text when
+ * the offset in its [SpineItem.text] of the first character its element puts in a block's kept text, a
+ * no-break space included; an element with none maps to the next text, or to the end of the text when
  * none follows. An element whose class includes the token `caption` inside a heading, before any of the
  * heading's own text, is its own Caption block, before that text; later, it stays in the heading. A block's
  * leading and trailing line breaks are dropped.
@@ -352,8 +356,11 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     val blocks = mutableListOf<Block>()
     var isBodyMatter = false
     val anchors = mutableMapOf<String, Int>()
-    private val unanchored = mutableListOf<String>()
-    private val blockAnchors = mutableListOf<Pair<String, Int>>() // offsets into [text]
+    private val ids = mutableListOf<String>() // the document's ids in [fragments], in document order
+    private var pending = 0 // ids from this index on wait for text
+    // Runs of ids anchored in the open block: (first id's index, offset into [text]). A run ends where the
+    // next starts, the last at [pending], so a blank block hands its ids back in one step.
+    private val blockAnchors = mutableListOf<Pair<Int, Int>>()
     private var textBefore = 0 // the blocks so far, each with its separating '\n'
 
     private var skipDepth = 0 // inside <head>, <script>, <style>
@@ -380,7 +387,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             skipDepth++
             return
         }
-        attrs.getValue("id")?.takeIf { it in fragments }?.let { unanchored += it }
+        attrs.getValue("id")?.takeIf { it in fragments }?.let { ids += it }
         when {
             name == "body" -> isBodyMatter = "bodymatter" in markers
             name == "hgroup" -> hgroupParts = mutableListOf()
@@ -420,13 +427,13 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             val c = ch[i]
             when {
                 c == '\uFEFF' || c == '\u00AD' -> Unit // zero-width no-break space, soft hyphen
-                c.isWhitespace() && c != ' ' -> {
+                c.isWhitespace() && c != '\u00A0' -> {
                     if (text.isNotEmpty() && text.last() != ' ' && text.last() != '\n') text.append(' ')
                 }
                 else -> {
-                    if (!c.isWhitespace()) {
-                        unanchored.forEach { blockAnchors += it to text.length }
-                        unanchored.clear()
+                    if (pending < ids.size) {
+                        blockAnchors += pending to text.length
+                        pending = ids.size
                     }
                     text.append(c)
                 }
@@ -465,8 +472,8 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     }
 
     private fun anchor(offset: Int) {
-        unanchored.forEach { anchors.putIfAbsent(it, offset) }
-        unanchored.clear()
+        for (i in pending until ids.size) anchors.putIfAbsent(ids[i], offset)
+        pending = ids.size
     }
 
     private fun closeEmphasis() {
@@ -478,52 +485,58 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         while (text.isNotEmpty() && text.last() == ' ') text.setLength(text.length - 1)
     }
 
-    /** Moves the caption that opened at [captionStart] out of [text] into a Caption block of its own. */
+    /** Moves the caption that opened at [captionStart] out of [text] into a Caption block of its own, with the ids anchored so far. */
     private fun splitCaption() {
         val from = captionStart ?: return
         captionStart = null
         val caption = text.substring(from)
         text.setLength(from)
-        val inside = blockAnchors.filter { it.second >= from }
-        blockAnchors.removeAll(inside)
         val captionSpans = (spans + openEmphasis.map { (emphasis, start) -> Span(start, text.length + caption.length, emphasis) })
             .filter { it.end > from }.map { Span(maxOf(it.start - from, 0), it.end - from, it.emphasis) }
         spans.replaceAll { it.copy(end = minOf(it.end, from)) }
         spans.removeAll { it.start >= it.end }
-        emit(BlockKind.Caption, caption, captionSpans, inside.map { it.first to it.second - from })
+        emit(BlockKind.Caption, caption, captionSpans, from, headingCaption = true)
     }
 
     private fun finishBlock() {
         splitCaption()
-        emit(kind!!, text.toString(), spans.toList(), blockAnchors.toList())
+        emit(kind!!, text.toString(), spans.toList(), 0)
         kind = null
         text.setLength(0)
         spans.clear()
         openEmphasis.clear()
-        blockAnchors.clear()
     }
 
     /**
-     * Adds a block of [raw] text, its [spans] and [localAnchors] offsets into [raw], without its leading and
-     * trailing line breaks and the spaces among them. Blank text adds nothing, and its ids go on to the next text.
+     * Adds a block of [raw] text, which starts at offset [base] of [text], with its [spans] (offsets into
+     * [raw]), without its leading and trailing line breaks and the spaces among them, and anchors the ids in
+     * [blockAnchors]. Ids at or past the end of what is kept, all of them for blank text, which adds nothing,
+     * go back to waiting for the next text.
      */
-    private fun emit(blockKind: BlockKind, raw: String, spans: List<Span>, localAnchors: List<Pair<String, Int>>) {
+    private fun emit(blockKind: BlockKind, raw: String, spans: List<Span>, base: Int, headingCaption: Boolean = false) {
         val content = raw.trimEnd(*TRIMMED)
-        if (content.isBlank()) {
-            unanchored.addAll(0, localAnchors.map { it.first })
-            return
-        }
         val first = content.indexOfFirst { it !in TRIMMED }
-        val lead = if ('\n' in content.substring(0, first)) first else 0
+        val lead = if (first > 0 && '\n' in content.substring(0, first)) first else 0
         val kept = content.substring(lead)
         val parts = hgroupParts
         val start = textBefore + (parts?.sumOf { it.length + 2 } ?: 0)
-        localAnchors.forEach { (id, at) -> anchors.putIfAbsent(id, start + (at - lead).coerceIn(0, kept.length)) }
+        for ((run, anchor) in blockAnchors.withIndex()) {
+            val (from, at) = anchor
+            val offset = at - base - lead
+            if (first < 0 || offset >= kept.length) {
+                pending = from
+                break
+            }
+            val end = blockAnchors.getOrNull(run + 1)?.first ?: pending
+            for (i in from until end) anchors.putIfAbsent(ids[i], start + maxOf(offset, 0))
+        }
+        blockAnchors.clear()
+        if (first < 0) return
         if (parts != null) {
             parts += kept
         } else {
             add(Block(blockKind, kept, spans.map { Span(maxOf(it.start - lead, 0), minOf(it.end - lead, kept.length), it.emphasis) }
-                .filter { it.start < it.end }))
+                .filter { it.start < it.end }, headingCaption))
         }
     }
 }

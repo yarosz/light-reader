@@ -182,6 +182,8 @@ class ReadingDataTest {
             Block(BlockKind.Paragraph, "Not all that Mrs Bennet could say."),
             Block(BlockKind.Heading, "\n\nCHAPTER IV."),
             Block(BlockKind.Paragraph, "When Jane and Elizabeth were alone."),
+            Block(BlockKind.Heading, "\nCHAPTER V."),
+            Block(BlockKind.Paragraph, "Within a short walk of Longbourn."),
         ))
         val new = SpineItem("c", listOf(
             before,
@@ -193,11 +195,17 @@ class ReadingDataTest {
             Block(BlockKind.Paragraph, "Not all that Mrs Bennet could say."),
             Block(BlockKind.Heading, "CHAPTER IV."),
             Block(BlockKind.Paragraph, "When Jane and Elizabeth were alone."),
+            Block(BlockKind.Heading, "CHAPTER V."),
+            Block(BlockKind.Paragraph, "Within a short walk of Longbourn."),
         ))
         val book = OpenBook("id", "", listOf(new))
-        for ((oldBlock, newBlock) in listOf(1 to 1, 3 to 4, 5 to 7)) {
+        for ((oldBlock, newBlock) in listOf(1 to 1, 3 to 4, 5 to 7, 7 to 9)) {
             val start = new.blockStarts[newBlock]
-            assertEquals(SpinePoint(0, start), book.resolve(old.placeOf(old.blockStarts[oldBlock], 0)))
+            val lineBreaks = old.blocks[oldBlock].text.takeWhile { it == '\n' }.length
+            for (offset in 0..2) {
+                val expected = start + maxOf(offset - lineBreaks, 0)
+                assertEquals(SpinePoint(0, expected), book.resolve(old.placeOf(old.blockStarts[oldBlock] + offset, 0)), "block $oldBlock offset $offset")
+            }
             assertEquals(SpinePoint(0, start - 12), book.resolve(old.placeOf(old.blockStarts[oldBlock] - 12, 0)))
         }
     }

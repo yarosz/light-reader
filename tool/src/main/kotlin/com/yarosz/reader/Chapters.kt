@@ -41,12 +41,14 @@ fun OpenBook.chapterAt(point: SpinePoint): Int? =
 
 /**
  * The text of the first heading holding or after [from] and before [until] (the end of the Book when null),
- * whitespace-collapsed.
+ * whitespace-collapsed. A block's text holds [from], its separating '\n' doesn't.
  */
 private fun firstHeading(spineItems: List<SpineItem>, from: SpinePoint, until: SpinePoint?): String? {
     for (item in from.item..(until?.item ?: spineItems.lastIndex)) {
         val spineItem = spineItems[item]
-        val first = if (item == from.item) spineItem.blockAt(from.char).coerceAtLeast(0) else 0
+        val first = if (item != from.item) 0 else spineItem.blockAt(from.char).let { block ->
+            if (block >= 0 && from.char < spineItem.blockStarts[block] + spineItem.blocks[block].text.length) block else block + 1
+        }
         for (i in first until spineItem.blocks.size) {
             if (until != null && SpinePoint(item, spineItem.blockStarts[i]) >= until) return null
             val block = spineItem.blocks[i]
@@ -76,7 +78,8 @@ fun readTablesOfContents(zip: ZipFile, pkg: Package): List<List<TableOfContentsE
 /**
  * Reads the first `<nav epub:type="toc">` of a nav document, or with [ncx] the `navMap` of an NCX,
  * resolving hrefs against [dir]. [leaves] stays null when the document has neither. A nav entry's label is
- * its first `<a>` with an href, or its first `<span>` or `<a>` when it has no such `<a>`.
+ * its first `<a>` with an href, or its first `<span>` or `<a>` when it has no such `<a>`; an `<a>` inside
+ * that label gives the entry its href if it has none.
  */
 private class TableOfContentsHandler(private val dir: String, private val ncx: Boolean) : DefaultHandler() {
     var leaves: MutableList<TableOfContentsEntry>? = null
@@ -105,7 +108,10 @@ private class TableOfContentsHandler(private val dir: String, private val ncx: B
         depth++
         val top = open.lastOrNull()
         when {
-            labelDepth > 0 -> labelDepth++
+            labelDepth > 0 -> {
+                labelDepth++
+                if (!ncx && name == "a" && top?.href == null) top?.href = attrs.getValue("href")
+            }
             name == itemName -> {
                 top?.parent = true
                 open.addLast(Entry())
