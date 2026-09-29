@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -65,7 +66,7 @@ class ReaderViewModelTest {
     }
 
     /** Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a Page. */
-    private class LineMeasurer(private val pageHeightPx: Int = 300) : WindowMeasurer {
+    private data class LineMeasurer(private val pageHeightPx: Int = 300) : WindowMeasurer {
         override fun key(fontStep: Int) = LayoutKey(fontStep, 1_000, pageHeightPx)
 
         override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
@@ -661,6 +662,46 @@ class ReaderViewModelTest {
         assertEquals(PRIOR_WPM, speed.wpm)
         vm.readThenTurn()
         assertNotEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    @Test
+    fun `a jump to a Chapter starting mid-line lands on the Page holding that line and names the Chapter chosen`() {
+        val bodies = listOf(
+            "<h1>One</h1><p>First.</p>",
+            "<p>${"word ".repeat(301)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
+        )
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
+        val vm = reading()
+        val two = vm.book.value!!.chapters[1].start
+        vm.jumpTo(1)
+        val shown = vm.frame.value!!
+        assertTrue(vm.pageStart < two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        val landed = vm.frame.value!!
+        vm.jumpTo(1)
+        assertSame(landed.pass, vm.frame.value!!.pass)
+    }
+
+    @Test
+    fun `coming back from Contents to a measurer that lays out alike keeps the Pages shown and cached`() {
+        val vm = reading()
+        repeat(3) { vm.nextPage() }
+        val before = vm.frame.value!!
+        vm.nextPage()
+        val shown = vm.frame.value!!
+        vm.openContents()
+        vm.bind(LineMeasurer())
+        assertSame(shown, vm.frame.value)
+        vm.previousPage()
+        assertEquals(before.page, vm.frame.value!!.page)
+        vm.jumpTo(3)
+        val landed = vm.frame.value
+        vm.bind(LineMeasurer())
+        assertSame(landed, vm.frame.value)
+        vm.bind(LineMeasurer(pageHeightPx = 301))
+        assertNotSame(landed, vm.frame.value)
+        assertEquals(landed!!.page.start, vm.frame.value!!.page.start)
     }
 
     @Test

@@ -146,9 +146,14 @@ class ReaderViewModel(
         }
     }
 
-    /** The view's column and measurer ([Typesetter]). Each binding lays the book out afresh at the Place. */
+    /**
+     * The view's column and measurer ([Typesetter]). A binding lays the book out afresh at the Place, unless
+     * [measurer] lays out like the bound one, as when the Reader comes back from Contents: then the Pages
+     * shown and cached stand, so turning back shows the Pages just read.
+     */
     fun bind(measurer: WindowMeasurer) {
         val spineItems = book.value?.spineItems ?: return
+        if (reading != null && this.measurer?.let(measurer::laysOutLike) == true) return
         this.measurer = measurer
         prefetching?.cancel()
         timer.discard()
@@ -212,7 +217,7 @@ class ReaderViewModel(
     /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
     fun openContents(): Contents? {
         timer.discard()
-        return book.value?.contentsAt(pageStart, atEnd.value)
+        return book.value?.contentsAt(pagePoint, atEnd.value)
     }
 
     /**
@@ -315,12 +320,21 @@ class ReaderViewModel(
         }
     }
 
-    /** The start of the Page on screen, else (before a view binds) the Place. */
-    private val pageStart: SpinePoint get() = frame.value?.let { SpinePoint(it.pass.item, it.page.start) } ?: spinePoint.value
+    /**
+     * The point the Page on screen goes by for its Chapter and minutes: its start, or the start of a Chapter
+     * starting later in its first line (a table of contents may point mid-line), so a jump there names the
+     * Chapter chosen. Before a view binds, the Place.
+     */
+    private val pagePoint: SpinePoint get() {
+        val (pass, page) = frame.value ?: return spinePoint.value
+        val start = SpinePoint(pass.item, page.start)
+        val opened = book.value ?: return start
+        return opened.chapterAt(SpinePoint(pass.item, pass.firstLineEnd(page) - 1))?.let { opened.chapters[it].start }?.takeIf { it > start } ?: start
+    }
 
     private fun publishLines() {
         val opened = book.value ?: return
-        val point = pageStart
+        val point = pagePoint
         val chapter = opened.chapterAt(point).takeUnless { atEnd.value }
         topLine.value = chapter?.let { opened.chapters[it].title } ?: shelfTitle
         progressLine.value = words?.takeUnless { atEnd.value }?.let { opened.minutesLine(it, point, owner.speed.wpm) }

@@ -127,8 +127,9 @@ class ReaderScreen(
             }) {
                 val widthPx = constraints.maxWidth
                 val pageHeightPx = constraints.maxHeight
-                val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx) {
-                    Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx)
+                val density = LocalDensity.current
+                val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx, density) {
+                    Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx, density)
                 }
                 LaunchedEffect(typesetter) { viewModel.bind(typesetter) }
                 val shown = frame ?: return@BoxWithConstraints

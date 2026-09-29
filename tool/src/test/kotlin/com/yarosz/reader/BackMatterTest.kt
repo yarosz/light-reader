@@ -84,11 +84,27 @@ class BackMatterTest {
 
     @Test
     fun `a Chapter listed at the end of the Spine item before Back matter counts as starting it`() {
-        val spineItems = listOf(SpineItem("a", listOf(Block(BlockKind.Paragraph, "One"))), SpineItem("b", listOf(Block(BlockKind.Heading, "Notes"))))
-        val listed = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Notes", SpinePoint(0, 3)))
-        assertEquals(listed, chaptersOf(listed, spineItems, textEnd = SpinePoint(0, 3)))
-        val unlisted = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Later", SpinePoint(0, 1)))
-        assertEquals(unlisted + Chapter("Notes", SpinePoint(1, 0)), chaptersOf(unlisted, spineItems, textEnd = SpinePoint(0, 3)))
+        val spineItems = listOf(
+            SpineItem("a", listOf(Block(BlockKind.Paragraph, "One"), Block(BlockKind.Paragraph, "Two"))),
+            SpineItem("b", listOf(Block(BlockKind.Heading, "Notes"))),
+        )
+        val listed = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Notes", SpinePoint(0, 7)))
+        assertEquals(listed, chaptersOf(listed, spineItems, textEnd = SpinePoint(0, 7)))
+        val unlisted = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Later", SpinePoint(0, 4)))
+        assertEquals(unlisted + Chapter("Notes", SpinePoint(1, 0)), chaptersOf(unlisted, spineItems, textEnd = SpinePoint(0, 7)))
+    }
+
+    @Test
+    fun `Back matter's Chapter goes before a listed Chapter that starts later in Back matter`() {
+        val spineItems = listOf(
+            SpineItem("a", listOf(Block(BlockKind.Paragraph, "One"))),
+            SpineItem("b", listOf(Block(BlockKind.Heading, "Notes"), Block(BlockKind.Heading, "Index"))),
+        )
+        val listed = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Index", SpinePoint(1, 6)))
+        assertEquals(
+            listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Notes", SpinePoint(1, 0)), Chapter("Index", SpinePoint(1, 6))),
+            chaptersOf(listed, spineItems, textEnd = SpinePoint(0, 3)),
+        )
     }
 
     @Test

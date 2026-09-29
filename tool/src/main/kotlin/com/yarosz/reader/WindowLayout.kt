@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
@@ -42,6 +43,9 @@ interface WindowMeasurer {
     fun key(fontStep: Int): LayoutKey
 
     fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout
+
+    /** Whether this lays every window out as [other] does, so Pages laid out by [other] still stand. */
+    fun laysOutLike(other: WindowMeasurer): Boolean = this == other
 }
 
 /**
@@ -68,10 +72,21 @@ fun readingStyle(fontStep: Int): TextStyle {
  * measurer wraps the composition's font resolver, which Compose documents for "creating Paragraph
  * objects on background thread" and whose typeface caches are lock-guarded; with no layout cache the
  * measurer holds no state of its own, and the platform layout it returns is immutable once built.
+ * [density] is the one [measurer] was made with; two Typesetters that agree on it, the caption colour
+ * and the column lay out alike, whatever their measurer instances.
  */
-class Typesetter(private val measurer: TextMeasurer, private val captionColor: Color, val widthPx: Int, val pageHeightPx: Int) : WindowMeasurer {
+class Typesetter(
+    private val measurer: TextMeasurer,
+    private val captionColor: Color,
+    val widthPx: Int,
+    val pageHeightPx: Int,
+    private val density: Density,
+) : WindowMeasurer {
 
     override fun key(fontStep: Int) = LayoutKey(fontStep, widthPx, pageHeightPx)
+
+    override fun laysOutLike(other: WindowMeasurer) = other is Typesetter && captionColor == other.captionColor &&
+        widthPx == other.widthPx && pageHeightPx == other.pageHeightPx && density == other.density
 
     override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
         val style = readingStyle(fontStep)

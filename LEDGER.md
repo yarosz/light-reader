@@ -70,7 +70,7 @@ Ordered. Each item ends on its _done-when_.
   a same-id Spine item can hold other text entirely. (Done in N3's pure core: a Book with no
   `dc:identifier` is hashed over its Spine documents' CRC-32 and length, pinned by a test; with no
   `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: the end page's
-  "Back to Shelf" sets Finished, and turning back or jumping away from the end clears it. At the
+  "Back to Shelf" sets Finished, and turning back from the end, or jumping to a Chapter of the text, clears it. At the
   first release after N2: the upgrade-path test (release N over N-1 with a populated store).
 - **N3 follow-ups.** `ci.sh` checks the size of the alice fixture it pushed, since a host-side cut
   can still install a truncated file. Images: flip `PREFER_IMAGES_EDITION` in `Catalogue.kt` when
@@ -83,8 +83,8 @@ Ordered. Each item ends on its _done-when_.
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,
   "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
-  ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back or jumping away from
-  the end clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
+  ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back from
+  the end, or jumping to a Chapter of the text, clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
   Spine item or a Part heading continues the Chapter before it; with none, each Spine item is a Chapter
   labelled by its first heading, else "Chapter N", never "Section N". Front matter shows the Book title
   and no minutes line. Settled in the pre-N4 domain pass (the N4 review may revisit):
