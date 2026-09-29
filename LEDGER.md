@@ -188,6 +188,13 @@ Ordered. Each item ends on its _done-when_.
   ADR 0003 no-network sentence). The detail page's CopyProtected line then points to About's list.
   _Done when:_ verified with `mise run ui`, including CopyProtected's pointer to About's DRM-free
   list.
+  From the N4 QA walkthrough, for N5 to settle: long Books' Contents (War and Peace: 385 rows,
+  "CHAPTER I" ×17 with no Part named on the row or the top line, ~70 flings end to end; show the
+  enclosing Part where titles repeat, and a way to the start or end); and the top line doesn't read as
+  a control (the overlay's top bar replaces its job, or a cue until then). Parked: identical rows in
+  search results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3, different
+  Editions) want a telling detail; Catalogue author forms keep titles of nobility ("graf Leo Tolstoy"),
+  which could be dropped as life dates are.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
   Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the

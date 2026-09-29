@@ -250,6 +250,19 @@ class ReadingDataTest {
     }
 
     @Test
+    fun `a Place at a refrain is re-found at its own copy, not the nearer one before it`() {
+        val refrain = "Nevermore, quoth the Raven, nevermore, nevermore."
+        val stanza = listOf(Block(BlockKind.Paragraph, refrain), Block(BlockKind.Paragraph, "A line of its own ${"z".repeat(40)}"))
+        val lead = List(5) { Block(BlockKind.Paragraph, "Opening paragraph $it, before the poem begins.") }
+        val old = SpineItem("c", lead + List(6) { stanza }.flatten())
+        val place = old.placeOf(old.blockStarts[5 + 6], 0)
+        for (inserted in listOf(10, 60, 150)) {
+            val new = SpineItem("c", lead + Block(BlockKind.Caption, "y".repeat(inserted)) + List(6) { stanza }.flatten())
+            assertEquals(SpinePoint(0, new.blockStarts[6 + 6]), OpenBook("id", "", listOf(new)).resolve(place), "inserted $inserted")
+        }
+    }
+
+    @Test
     fun `a partial match is looked for only near the Place, so a large Spine item costs no more than a small one`() {
         val blocks = List(20_000) { Block(BlockKind.Paragraph, "Paragraph $it of a very long Spine item, " + "words ".repeat(20)) }
         val large = SpineItem("c", blocks)

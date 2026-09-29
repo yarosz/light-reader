@@ -215,22 +215,25 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
  * Finds [place] in this Book (ADR 0002): at its block and offset when the snippet still matches there.
  * Else the Place is re-found by its text, within its Spine item, nearest its stale spot (the block and
  * offset read in today's blocks), as a new parse or edition moves text only so far:
- * - at the occurrence of the snippet nearest that spot, else of the snippet without a leading run of
- *   spaces that holds a line break and with each run of line breaks as one (a Place saved before blocks
- *   dropped such runs at their ends);
+ * - at the occurrence of the snippet nearest that spot, preferring one at or after its stale block's start
+ *   (a newer parse only moves text later, so a refrain's earlier copy can be nearer), else of the snippet
+ *   without a leading run of spaces that holds a line break and with each run of line breaks as one (a
+ *   Place saved before blocks dropped such runs at their ends);
  * - else, only within [partialWindow], at a match that allows for what a newer parse adds inside it
  *   ([matchFrom]): a Place saved when a list item's paragraphs ran together, or before a caption or table
- *   was read between two of its blocks. The nearest match of the whole of that second snippet wins; else
- *   the nearest match of part of it, at least [MIN_MATCH] characters, or the whole of a shorter snippet,
+ *   was read between two of its blocks, trying the snippet, then the second form. A match of the whole
+ *   snippet spanning the least added text wins, then the nearest; else the nearest match of part of it,
+ *   at least [MIN_MATCH] characters, or the whole of a shorter snippet,
  *   or, for a Place at its block's start, the whole of its first blocks from a block start (a heading
  *   whose next paragraph a new edition changed). A partial match more than [LENGTH_GAP] characters shorter
  *   than the longest is passed over, so a spot sharing only the snippet's first words doesn't win on
  *   nearness alone.
  * A snippet shorter than [SNIPPET_CHARS] - 1 reached its Spine item's end, so the block and offset must
- * still reach it, and among matches one that reaches the text's end wins. Among equally near ones, the
- * one spanning the least added text wins. Where two spots match alike (list items that open alike) only
- * the stale spot tells them apart. With no match it lands at the start of its block, or of its Spine item
- * when the block is gone: a Place whose text a new edition changed or the parser now skips.
+ * still reach it, and among matches one that reaches the text's end wins. Where two spots match alike
+ * (list items that open alike) only the stale spot tells them apart. A Place whose block is gone is
+ * anchored at the Spine item's last block. With no match it lands at the start of its block, or of its
+ * Spine item when the block is gone: a Place whose text a new edition changed, the parser now skips, or
+ * a newer parse moved past [partialWindow].
  *
  * A match that starts on the separator before a block, for a Place no further into its block than the
  * line breaks its snippet starts with, is taken past them: that Place was saved inside a heading's leading
@@ -248,7 +251,9 @@ fun OpenBook.resolve(place: Place): SpinePoint? {
     if (expected != null && text.startsWith(place.snippet, expected) && (!reachedEnd || expected + place.snippet.length == text.length)) {
         return SpinePoint(index, expected)
     }
-    val anchor = expected ?: blockStart ?: 0
+    val anchor = expected ?: blockStart ?: item.blockStarts.lastOrNull() ?: 0
+    val floor = blockStart ?: anchor
+    val exact = compareBy<Match>({ reachedEnd && it.end != text.length }, { it.at < floor }, { abs(it.at - anchor) })
     val nearest = compareBy<Match>({ reachedEnd && it.end != text.length }, { abs(it.at - anchor) }, { it.end - it.at })
     val tightest = compareBy<Match>({ reachedEnd && it.end != text.length }, { it.end - it.at }, { abs(it.at - anchor) })
     fun landing(snippet: String, at: Int): SpinePoint {
@@ -262,7 +267,7 @@ fun OpenBook.resolve(place: Place): SpinePoint? {
     for (snippet in snippets) {
         val found = generateSequence(text.indexOf(snippet).takeIf { it >= 0 }) { from -> text.indexOf(snippet, from + 1).takeIf { it >= 0 } }
             .map { Match(it, snippet.length, it + snippet.length) }
-            .minWithOrNull(nearest) ?: continue
+            .minWithOrNull(exact) ?: continue
         return landing(snippet, found.at)
     }
     val window = item.partialWindow(place.block, anchor)
@@ -288,9 +293,11 @@ private const val LENGTH_GAP = 10
  * The blocks before and after a Place's stale block, and the characters after its stale spot, that
  * [partialWindow] spans. Text only moves later when a newer parse adds blocks or characters before a
  * Place, by the blocks it added before it in its Spine item: a caption per illustration, a block per
- * list item paragraph. 128 blocks and 32,000 characters (a long chapter's illustrations, a notes list's
- * split paragraphs) cover that, and a few blocks back cover blocks the parser now drops or merges.
- * Past that a Place lands at its block's start rather than on a far spot that shares a few words.
+ * list item paragraph. 128 blocks and 32,000 characters cover a long chapter's illustrations and a
+ * short notes list's split paragraphs, and a few blocks back cover a few blocks the parser now drops.
+ * Past that (a list of hundreds of long multi-paragraph items, or many dropped blocks) a Place whose
+ * snippet no longer matches exactly lands at its block's start rather than on a far spot that shares a
+ * few words.
  */
 private const val BLOCKS_BEFORE = 4
 private const val BLOCKS_AFTER = 128
