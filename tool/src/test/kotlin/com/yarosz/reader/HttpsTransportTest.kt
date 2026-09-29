@@ -25,6 +25,7 @@ class HttpsTransportTest {
     /** Written by the test thread, read by the server's. */
     private val routes = ConcurrentHashMap<String, Canned>()
     private val requested: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private val userAgents: MutableList<String?> = Collections.synchronizedList(mutableListOf())
     private val server = ServerSocket(0, 50, InetAddress.getLoopbackAddress())
 
     init {
@@ -40,7 +41,8 @@ class HttpsTransportTest {
     private fun answer(socket: Socket) {
         val reader = socket.getInputStream().bufferedReader()
         val path = reader.readLine().split(' ')[1]
-        while (reader.readLine().orEmpty().isNotEmpty()) Unit
+        val headers = generateSequence { reader.readLine()?.takeIf { it.isNotEmpty() } }.toList()
+        userAgents += headers.firstOrNull { it.startsWith("User-Agent:", ignoreCase = true) }?.substringAfter(':')?.trim()
         requested += path
         val canned = routes[path] ?: Canned(404, null, "")
         val body = canned.body.toByteArray()
@@ -71,6 +73,14 @@ class HttpsTransportTest {
             assertEquals(url("/b"), response.url)
             assertEquals("<feed/>", response.body.readBytes().decodeToString())
         }
+    }
+
+    @Test
+    fun `every request names the Tool, redirects included`() {
+        serve("/a", 302, location = "/b")
+        serve("/b", 200, body = "<feed/>")
+        transport.get(url("/a")).use { it.body.readBytes() }
+        assertEquals(listOf(USER_AGENT, USER_AGENT), userAgents.toList())
     }
 
     @Test

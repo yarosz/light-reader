@@ -136,6 +136,12 @@ fun interface Transport {
 /** A redirect to http://, which the Tool never follows. */
 class InsecureRedirectException(location: String) : IOException("redirected to $location")
 
+/**
+ * Sent on every request, so a server's logs can tell the Tool apart and link to its code. The
+ * version is `versionName` in lighttool.toml (a test keeps them equal).
+ */
+const val USER_AGENT = "Reader/0.1.0 (+https://github.com/yarosz/light-reader)"
+
 /** Redirects followed before the last 3xx is returned as it is. */
 const val MAX_REDIRECTS = 5
 
@@ -144,7 +150,8 @@ private val REDIRECT_STATUSES = setOf(301, 302, 303, 307, 308)
 /**
  * The network over HttpURLConnection. It follows redirects itself, up to [MAX_REDIRECTS], and only
  * to https: one to http:// throws [InsecureRedirectException], and one to any other scheme is
- * returned as its 3xx. [open] exists so a test can point it at a local server.
+ * returned as its 3xx. Every hop sends [USER_AGENT]. [open] exists so a test can point it at a local
+ * server.
  */
 class HttpsTransport(
     private val open: (HttpsUrl) -> HttpURLConnection = { URL(it.value).openConnection() as HttpURLConnection },
@@ -156,6 +163,7 @@ class HttpsTransport(
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS
             connection.instanceFollowRedirects = false
+            connection.setRequestProperty("User-Agent", USER_AGENT)
             try {
                 connection.connect()
                 val status = connection.responseCode
