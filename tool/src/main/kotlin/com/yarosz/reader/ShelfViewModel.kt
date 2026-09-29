@@ -10,11 +10,12 @@ import kotlinx.coroutines.launch
 
 /**
  * The Shelf screen's view onto [owner], which holds the reading data and the downloads; this view
- * model holds only whether the screen is editing. An emptied Shelf leaves Edit, since Edit is
- * hidden then, and a confirmation whose row is gone (a download that arrived under its Book's
- * identifier, or failed) is cleared.
+ * model holds only whether the screen is editing. [connected] is whether the phone reports a
+ * connection, for a download that fails (see [ShelfOwner.download]). An emptied Shelf leaves Edit,
+ * since Edit is hidden then, and a confirmation whose row is gone (a download that arrived under its
+ * Book's identifier, or failed) is cleared.
  */
-class ShelfViewModel(internal val owner: ShelfOwner) : LightViewModel<Unit>() {
+class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -> Boolean? = { null }) : LightViewModel<Unit>() {
     /** What the Shelf knows; the screen shows its [ShelfSnapshot.rows]. Null until the reading data is loaded. */
     val snapshot: StateFlow<ShelfSnapshot?> = owner.snapshot
     val mode = MutableStateFlow<ShelfMode>(ShelfMode.Browsing)
@@ -39,7 +40,7 @@ class ShelfViewModel(internal val owner: ShelfOwner) : LightViewModel<Unit>() {
 
     /** See [ShelfOwner.download]. */
     fun download(source: HttpsUrl, title: String, author: String?, replacing: String? = null): Deferred<DownloadResult> =
-        owner.download(source, title, author, replacing)
+        owner.download(source, title, author, replacing, connected)
 
     /** A row's "tap to retry" or "tap to download again". */
     fun download(tap: RowTap.Download) = download(tap.source, tap.title, tap.author, tap.replacing)
@@ -51,6 +52,11 @@ class ShelfViewModel(internal val owner: ShelfOwner) : LightViewModel<Unit>() {
             snapshot.value?.rows.isNullOrEmpty() -> return
             else -> ShelfMode.Editing()
         }
+    }
+
+    /** Leaving the Shelf for the Catalogues ends Edit, so the Shelf is browsing when the reader comes back. */
+    fun endEdit() {
+        mode.value = ShelfMode.Browsing
     }
 
     /** The row's trailing "Remove" in Edit: the row turns into the confirmation. */

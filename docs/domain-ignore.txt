@@ -68,6 +68,7 @@ NoHttps
 NotAnEpub
 CopyProtected
 UntrustedCertificate
+NoSuchHost
 
 # Catalogue feeds (Atom and OPDS)
 Acquisition
@@ -199,3 +200,10 @@ ContentsChoice
 # "Read" on a Book's detail page hands the Book back to the Shelf (DESIGN.md "Catalogues"). Named to
 # avoid "read", which CONTEXT.md lists under Finished's _Avoid_.
 OpenFromShelf
+
+# A failed Catalogue fetch's log line (DESIGN.md "Catalogues"): the URL is a feed's, not a Book's source,
+# and "feed" is the wire format's word, never copy.
+catalogue fetch failed: ${url.forLog()}: $cause -> $reason
+at ${it.url.forLog()}
+not a feed$at
+HTTP ${it.status}$at

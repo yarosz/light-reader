@@ -27,6 +27,7 @@ const val DETAIL_DOWNLOADING = ROW_DOWNLOADING
 const val RETRY = "Retry"
 
 const val COPY_UNREACHABLE = "Can't reach this Catalogue. Check your connection and try again."
+const val COPY_NO_SUCH_HOST = "Couldn't find that address. Check the spelling."
 const val COPY_NO_HTTPS = "This Catalogue needs an https:// address."
 const val COPY_HTTP_ERROR = "This Catalogue isn't responding properly. Try again later."
 const val COPY_NEEDS_SIGN_IN = "This Catalogue needs a username and password. Sign-in isn't supported yet."
@@ -46,11 +47,16 @@ data class FailureCopy(val text: String, val retry: Boolean)
 /**
  * A Catalogue page, its search or an added address that failed. [shipped] is whether the Catalogue
  * ships with the Tool ([isShipped]): an untrusted certificate there is almost surely public Wi-Fi,
- * while a Catalogue the reader added may also have a private certificate (D15).
+ * while a Catalogue the reader added may also have a private certificate (D15). [typedOnline] is
+ * whether the address was just typed on a phone that reports a connection, the one case where a
+ * host that doesn't resolve is most likely misspelt; offline, or for a Catalogue on the list, it is
+ * Unreachable. It keeps Retry: the phone reporting a connection doesn't mean it has internet (a
+ * Wi-Fi with a dead upstream, or DNS failing for a moment, fails a correct address the same way).
  */
-fun feedFailureCopy(failure: FeedFailure, shipped: Boolean): FailureCopy = when (failure) {
+fun feedFailureCopy(failure: FeedFailure, shipped: Boolean, typedOnline: Boolean = false): FailureCopy = when (failure) {
     is NetworkFailure -> networkFailureCopy(failure, shipped)
     Unreadable -> FailureCopy(COPY_UNREADABLE, retry = false)
+    NoSuchHost -> if (typedOnline) FailureCopy(COPY_NO_SUCH_HOST, retry = true) else networkFailureCopy(Unreachable, shipped)
 }
 
 /** A download from a Catalogue that failed, shown on the Book's detail page. */
