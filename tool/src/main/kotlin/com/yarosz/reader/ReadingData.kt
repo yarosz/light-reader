@@ -26,8 +26,13 @@ const val CURRENT_SCHEMA = 1
 /** Characters of Spine item text kept with a Place so it can be re-found after offsets shift (ADR 0002). */
 const val SNIPPET_CHARS = 40
 
-/** Where the reader is, in memory: [item] indexes the Book's Spine items, and [char] is an offset into that one's [SpineItem.text]. */
-data class SpinePoint(val item: Int, val char: Int)
+/**
+ * Where the reader is, in memory: [item] indexes the Book's Spine items, and [char] is an offset into that
+ * one's [SpineItem.text]. Ordered as the text is read.
+ */
+data class SpinePoint(val item: Int, val char: Int) : Comparable<SpinePoint> {
+    override fun compareTo(other: SpinePoint) = compareValuesBy(this, other, { it.item }, { it.char })
+}
 
 /**
  * A Place as stored (ADR 0002): the Spine item, the block within it, the offset within that

@@ -224,7 +224,7 @@ class ReadingStoreTest {
 
     @Test
     fun `a Place whose snippet would split a surrogate pair survives the file byte for byte`() {
-        val spineItem = SpineItem("c", "", listOf(Block(BlockKind.Paragraph, "x".repeat(44) + "😀" + "y".repeat(20))))
+        val spineItem = SpineItem("c", listOf(Block(BlockKind.Paragraph, "x".repeat(44) + "😀" + "y".repeat(20))))
         val place = spineItem.placeOf(5, 1)
         assertEquals(39, place.snippet.length)
         val store = ReadingStore(dir)

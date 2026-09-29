@@ -146,7 +146,7 @@ class ReadingDataTest {
     fun `a Place whose snippet is gone falls back to its block's start, else the Spine item's`() = forAll { rnd ->
         val spineItem = randomSpineItem(rnd, "ch")
         val place = spineItem.placeOf(rnd.nextInt(0, spineItem.text.length), 0)
-        val replaced = SpineItem("ch", "", List(rnd.nextInt(1, 20)) { Block(BlockKind.Paragraph, digits(rnd, rnd.nextInt(1, 300))) })
+        val replaced = SpineItem("ch", List(rnd.nextInt(1, 20)) { Block(BlockKind.Paragraph, digits(rnd, rnd.nextInt(1, 300))) })
         val expected = replaced.blockStarts.getOrNull(place.block) ?: 0
         assertEquals(SpinePoint(0, expected), OpenBook("id", "", listOf(replaced)).resolve(place))
     }
@@ -156,18 +156,18 @@ class ReadingDataTest {
         val refrain = "Beware the Jabberwock, my son! The jaws"
         val verse = Block(BlockKind.Verse, List(5) { refrain }.joinToString("\n"))
         val heading = Block(BlockKind.Heading, "Jabberwocky")
-        val spineItem = SpineItem("c", "", listOf(heading, verse))
+        val spineItem = SpineItem("c", listOf(heading, verse))
         val third = spineItem.blockStarts[1] + 2 * (refrain.length + 1)
         val place = spineItem.placeOf(third, 0)
         assertEquals(4, Regex(Regex.escape(place.snippet)).findAll(spineItem.text).count())
 
         val note = Block(BlockKind.Paragraph, "(A poem.)")
-        val longer = OpenBook("id", "", listOf(SpineItem("c", "", listOf(heading, note, verse))))
+        val longer = OpenBook("id", "", listOf(SpineItem("c", listOf(heading, note, verse))))
         assertEquals(SpinePoint(0, third + note.text.length + 1), longer.resolve(place))
 
         val cut = 8
         val trimmed = Block(BlockKind.Verse, refrain.dropLast(cut) + "\n" + List(4) { refrain }.joinToString("\n"))
-        val shorter = OpenBook("id", "", listOf(SpineItem("c", "", listOf(heading, trimmed))))
+        val shorter = OpenBook("id", "", listOf(SpineItem("c", listOf(heading, trimmed))))
         assertEquals(SpinePoint(0, third - cut), shorter.resolve(place))
     }
 
@@ -179,7 +179,7 @@ class ReadingDataTest {
 
     @Test
     fun `a snippet never ends inside a surrogate pair`() {
-        val spineItem = SpineItem("c", "", listOf(Block(BlockKind.Paragraph, "x".repeat(39) + "😀" + "y".repeat(5))))
+        val spineItem = SpineItem("c", listOf(Block(BlockKind.Paragraph, "x".repeat(39) + "😀" + "y".repeat(5))))
         assertEquals("x".repeat(39), spineItem.placeOf(0, 0).snippet)
         assertEquals("x".repeat(38) + "😀", spineItem.placeOf(1, 0).snippet)
         assertEquals(SpinePoint(0, 3), OpenBook("id", "", listOf(spineItem)).resolve(spineItem.placeOf(3, 0)))
@@ -196,11 +196,11 @@ class ReadingDataTest {
 
     @Test
     fun `a Place's block and snippet follow the text`() {
-        val spineItem = SpineItem("c", "", listOf(Block(BlockKind.Heading, "One"), Block(BlockKind.Paragraph, "Two words")))
+        val spineItem = SpineItem("c", listOf(Block(BlockKind.Heading, "One"), Block(BlockKind.Paragraph, "Two words")))
         assertEquals(Place("c", 0, 3, "\nTwo words", 7), spineItem.placeOf(3, 7))
         assertEquals(Place("c", 1, 4, "words", 7), spineItem.placeOf(8, 7))
         assertEquals(Place("c", 1, 9, "", 7), spineItem.placeOf(99, 7))
-        assertEquals(Place("c", 0, 0, "", 7), SpineItem("c", "", emptyList()).placeOf(4, 7))
+        assertEquals(Place("c", 0, 0, "", 7), SpineItem("c", emptyList()).placeOf(4, 7))
     }
 
     @Test
@@ -367,7 +367,7 @@ private fun prose(rnd: Random, words: Int) =
 private fun digits(rnd: Random, length: Int) = buildString { repeat(length) { append("0123456789 "[rnd.nextInt(11)]) } }
 
 /** A Spine item of varied prose, so any [SNIPPET_CHARS] of it occur once. */
-private fun randomSpineItem(rnd: Random, spineId: String) = SpineItem(spineId, "", List(rnd.nextInt(1, 30)) { i ->
+private fun randomSpineItem(rnd: Random, spineId: String) = SpineItem(spineId, List(rnd.nextInt(1, 30)) { i ->
     val kind = if (i == 0) BlockKind.Heading else listOf(BlockKind.Paragraph, BlockKind.Paragraph, BlockKind.Verse, BlockKind.Caption).random(rnd)
     Block(kind, prose(rnd, if (kind == BlockKind.Heading) rnd.nextInt(1, 6) else rnd.nextInt(1, 120)))
 })
@@ -387,19 +387,19 @@ private fun shiftedBefore(spineItem: SpineItem, place: Place, rnd: Random): Pair
         0 -> {
             val added = Block(BlockKind.Paragraph, prose(rnd, rnd.nextInt(1, 30)))
             blocks.add(rnd.nextInt(0, place.block + 1), added)
-            SpineItem(spineItem.spineId, "", blocks) to at + added.text.length + 1
+            SpineItem(spineItem.spineId, blocks) to at + added.text.length + 1
         }
         1 -> {
             val cut = rnd.nextInt(0, place.offset + 1)
             val added = " " + prose(rnd, rnd.nextInt(1, 10))
             blocks[place.block] = block.copy(text = block.text.substring(0, cut) + added + block.text.substring(cut))
-            SpineItem(spineItem.spineId, "", blocks) to at + added.length
+            SpineItem(spineItem.spineId, blocks) to at + added.length
         }
         else -> {
             val from = rnd.nextInt(0, place.offset + 1)
             val to = rnd.nextInt(from, place.offset + 1)
             blocks[place.block] = block.copy(text = block.text.removeRange(from, to))
-            SpineItem(spineItem.spineId, "", blocks) to at - (to - from)
+            SpineItem(spineItem.spineId, blocks) to at - (to - from)
         }
     }
 }

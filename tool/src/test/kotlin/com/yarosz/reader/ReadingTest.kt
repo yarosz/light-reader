@@ -148,7 +148,7 @@ class ReadingTest {
 
     @Test
     fun `backwardLanding reuses a cached pass only at the same key and only once it reached the Spine item's end`() {
-        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Paragraph, "x".repeat(500)), Block(BlockKind.Paragraph, "x".repeat(50))))
+        val spineItem = SpineItem("spine", listOf(Block(BlockKind.Paragraph, "x".repeat(500)), Block(BlockKind.Paragraph, "x".repeat(50))))
         val length = spineItem.text.length
         fun pass(key: LayoutKey, windowChars: Int) = Pass<List<LineMetrics>>(0, 0, spineItem, key, windows(spineItem, windowChars), 0) { it }
         fun tenCharLines(window: Window) = List((window.end - window.start) / 10) { i ->
@@ -166,7 +166,7 @@ class ReadingTest {
 
     @Test
     fun `record keeps a window's first layout, so a late background measure can't change packed Pages`() {
-        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Paragraph, "x".repeat(500))))
+        val spineItem = SpineItem("spine", listOf(Block(BlockKind.Paragraph, "x".repeat(500))))
         val pass = Pass<List<LineMetrics>>(0, 0, spineItem, key, windows(spineItem, 1_000), 0) { it }
         fun lines(chars: Int) = List(500 / chars) { i -> LineMetrics(i * chars, i * 10f, i * 10f + 10f, endsAtBreak = true, heading = false) }
         val first = lines(10)

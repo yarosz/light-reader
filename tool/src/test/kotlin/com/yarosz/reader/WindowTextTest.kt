@@ -26,7 +26,7 @@ class WindowTextTest {
 
     @Test
     fun `a window keeps the separator after its last block unless it ends the Spine item`() {
-        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Paragraph, "one"), Block(BlockKind.Paragraph, "two"), Block(BlockKind.Paragraph, "three")))
+        val spineItem = SpineItem("spine", listOf(Block(BlockKind.Paragraph, "one"), Block(BlockKind.Paragraph, "two"), Block(BlockKind.Paragraph, "three")))
         val (first, last) = windows(spineItem, maxChars = 8)
         assertEquals("one${BLOCK_SEPARATOR}two$BLOCK_SEPARATOR", spineItem.windowText(first))
         assertEquals("three", spineItem.windowText(last))
@@ -35,7 +35,7 @@ class WindowTextTest {
 
     @Test
     fun `verse keeps its own line breaks inside a window's text`() {
-        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Verse, "line one\nline two"), Block(BlockKind.Paragraph, "prose")))
+        val spineItem = SpineItem("spine", listOf(Block(BlockKind.Verse, "line one\nline two"), Block(BlockKind.Paragraph, "prose")))
         assertEquals("line one\nline two${BLOCK_SEPARATOR}prose", spineItem.windowText(windows(spineItem).single()))
     }
 
@@ -64,11 +64,11 @@ class WindowTextTest {
     @Test
     fun `a paragraph opening a window still indents when the block before it in the Spine item is a paragraph`() {
         val paragraph = Block(BlockKind.Paragraph, "x".repeat(100))
-        val spineItem = SpineItem("spine", "", listOf(paragraph, paragraph, paragraph))
+        val spineItem = SpineItem("spine", listOf(paragraph, paragraph, paragraph))
         val second = windows(spineItem, maxChars = 150)[1]
         assertEquals(1, second.firstBlock)
         assertTrue(indentsFirstLine(spineItem.blocks, second.firstBlock))
-        val opening = SpineItem("spine", "", listOf(Block(BlockKind.Heading, "x".repeat(100)), paragraph, paragraph))
+        val opening = SpineItem("spine", listOf(Block(BlockKind.Heading, "x".repeat(100)), paragraph, paragraph))
         val afterHeading = windows(opening, maxChars = 150)[1]
         assertEquals(1, afterHeading.firstBlock)
         assertFalse(indentsFirstLine(opening.blocks, afterHeading.firstBlock))
