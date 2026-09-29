@@ -176,10 +176,10 @@ class ShelfOwner(
         when (key) {
             is RowKey.Arriving -> cancel(key.source)
             is RowKey.Shelved -> {
-                val entry = saver.data.books[key.identifier] ?: return
+                val book = saver.data.books[key.identifier] ?: return
                 downloads.filterValues { it.replacing == key.identifier }.keys.forEach(::cancel)
                 saver.change { it.unshelve(key.identifier) }
-                val file = entry.file
+                val file = book.file
                 if (file != null && saver.data.books.values.none { it.onShelf && it.file == file }) {
                     File(filesDir, file).deleteOrLog()
                     fileChanged(file, exists = false)

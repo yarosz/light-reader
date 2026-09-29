@@ -31,7 +31,7 @@ class DownloadTest {
         answer: Answer,
         downloader: (Transport) -> Downloader = { Downloader(it, dir) },
         at: HttpsUrl = link,
-    ): DownloadState.Finished = downloader(serving(answer)).download(at, "From the Catalogue") { progress += it }
+    ): DownloadState.Outcome = downloader(serving(answer)).download(at, "From the Catalogue") { progress += it }
 
     private fun failure(answer: Answer, downloader: (Transport) -> Downloader = { Downloader(it, dir) }, at: HttpsUrl = link) =
         (download(answer, downloader, at) as DownloadState.Failed).reason

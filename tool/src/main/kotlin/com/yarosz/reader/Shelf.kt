@@ -29,24 +29,6 @@ sealed interface RowKey {
 }
 
 /**
- * A foreground download the Shelf shows, keyed by its source. [title] is the one the Book gets: the
- * Catalogue entry's, or for a download from the Shelf, the stored one. [startedAt] is epoch millis.
- * [replacing] is the identifier of the Shelf row that started it, to download a missing file again;
- * null for a download from a Catalogue, which shows as a row of its own until it arrives.
- */
-data class Download(val title: String, val author: String?, val startedAt: Long, val status: Status, val replacing: String? = null) {
-    sealed interface Status {
-        data object Running : Status
-
-        /**
-         * A download from a Catalogue stays on the Shelf only after a retryable failure ([isRetryable]);
-         * a download from the Shelf keeps its row whatever the failure.
-         */
-        data class Failed(val reason: DownloadFailure) : Status
-    }
-}
-
-/**
  * Whether trying again can help: the one rule behind a Shelf row's "tap to retry" and every "Retry"
  * ([FailureCopy.retry]). The network and a full phone can change between tries, and so can an
  * untrusted certificate: public Wi-Fi intercepts TLS until the reader signs in to it (D15). A server
@@ -88,13 +70,13 @@ data class ShelfRow(val key: RowKey, val title: String, val detail: String?, val
  */
 fun shelfRows(data: ReadingData, present: Set<String>, downloads: Map<HttpsUrl, Download>): List<ShelfRow> {
     val shelved = data.books.filterValues { it.onShelf }
-    val books = shelved.map { (identifier, entry) ->
+    val books = shelved.map { (identifier, book) ->
         val download = downloads.entries.firstOrNull { it.value.replacing == identifier }
-        val row = bookRow(identifier, entry, entry.file?.takeIf { it in present }, download)
+        val row = bookRow(identifier, book, book.file?.takeIf { it in present }, download)
         val order = when {
-            entry.place == null -> Order(1, entry.addedAt ?: Long.MIN_VALUE)
-            entry.finished -> Order(2, entry.place.updatedAt)
-            else -> Order(0, entry.place.updatedAt)
+            book.place == null -> Order(1, book.addedAt ?: Long.MIN_VALUE)
+            book.finished -> Order(2, book.place.updatedAt)
+            else -> Order(0, book.place.updatedAt)
         }
         order to row
     }
@@ -109,18 +91,18 @@ fun shelfRows(data: ReadingData, present: Set<String>, downloads: Map<HttpsUrl, 
 /** [group] 0 in progress, 1 never opened, 2 finished; [time] sorts newest first within it. */
 private data class Order(val group: Int, val time: Long)
 
-private fun bookRow(identifier: String, entry: Book, file: String?, download: Map.Entry<HttpsUrl, Download>?): ShelfRow {
+private fun bookRow(identifier: String, book: Book, file: String?, download: Map.Entry<HttpsUrl, Download>?): ShelfRow {
     val key = RowKey.Shelved(identifier)
-    val source = entry.source?.let { HttpsUrl.parse(it) }
+    val source = book.source?.let { HttpsUrl.parse(it) }
     if (download != null && (download.value.status == Download.Status.Running || file == null)) {
-        return ShelfRow(key, entry.title, downloadDetail(download.value.status), downloadTap(download.key, download.value))
+        return ShelfRow(key, book.title, downloadDetail(download.value.status), downloadTap(download.key, download.value))
     }
     return when {
-        file == null && source != null -> ShelfRow(key, entry.title, ROW_FILE_MISSING_SOURCE, RowTap.Download(source, entry.title, entry.author, identifier))
-        file == null -> ShelfRow(key, entry.title, ROW_FILE_MISSING, RowTap.None)
-        entry.place == null -> ShelfRow(key, entry.title, ROW_NOT_STARTED, RowTap.Open(file))
+        file == null && source != null -> ShelfRow(key, book.title, ROW_FILE_MISSING_SOURCE, RowTap.Download(source, book.title, book.author, identifier))
+        file == null -> ShelfRow(key, book.title, ROW_FILE_MISSING, RowTap.None)
+        book.place == null -> ShelfRow(key, book.title, ROW_NOT_STARTED, RowTap.Open(file))
         // In progress or finished: "author · 42%" and "finished" wait for N4's Progress, so the author stands alone.
-        else -> ShelfRow(key, entry.title, entry.author, RowTap.Open(file))
+        else -> ShelfRow(key, book.title, book.author, RowTap.Open(file))
     }
 }
 

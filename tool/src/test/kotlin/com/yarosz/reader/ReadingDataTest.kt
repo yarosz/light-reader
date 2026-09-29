@@ -45,32 +45,32 @@ class ReadingDataTest {
 
     @Test
     fun `the newer Place wins whichever side it is on`() {
-        val older = entry(place = place(updatedAt = 1))
-        val newer = entry(place = place(updatedAt = 2, offset = 9))
+        val older = book(place = place(updatedAt = 1))
+        val newer = book(place = place(updatedAt = 2, offset = 9))
         assertEquals(newer.place, merge(data("b" to older), data("b" to newer)).books.getValue("b").place)
         assertEquals(newer.place, merge(data("b" to newer), data("b" to older)).books.getValue("b").place)
-        assertEquals(older.place, merge(data("b" to entry(place = null)), data("b" to older)).books.getValue("b").place)
-        assertEquals(older.place, merge(data("b" to older), data("b" to entry(place = null))).books.getValue("b").place)
+        assertEquals(older.place, merge(data("b" to book(place = null)), data("b" to older)).books.getValue("b").place)
+        assertEquals(older.place, merge(data("b" to older), data("b" to book(place = null))).books.getValue("b").place)
     }
 
     @Test
     fun `a tie goes to mine`() {
-        val disk = entry(place = place(updatedAt = 5, offset = 1))
-        val mine = entry(place = place(updatedAt = 5, offset = 2))
+        val disk = book(place = place(updatedAt = 5, offset = 1))
+        val mine = book(place = place(updatedAt = 5, offset = 2))
         assertEquals(mine.place, merge(data("b" to disk), data("b" to mine)).books.getValue("b").place)
     }
 
     @Test
     fun `finished travels with the newer Place`() {
-        val disk = entry(place = place(updatedAt = 9), finished = true)
-        val mine = entry(place = place(updatedAt = 1), finished = false)
+        val disk = book(place = place(updatedAt = 9), finished = true)
+        val mine = book(place = place(updatedAt = 1), finished = false)
         assertTrue(merge(data("b" to disk), data("b" to mine)).books.getValue("b").finished)
     }
 
     @Test
     fun `file and Shelf state come from mine`() {
-        val disk = entry(place = place(updatedAt = 9), file = "old.epub", onShelf = true)
-        val mine = entry(place = null, file = "new.epub", onShelf = false)
+        val disk = book(place = place(updatedAt = 9), file = "old.epub", onShelf = true)
+        val mine = book(place = null, file = "new.epub", onShelf = false)
         val merged = merge(data("b" to disk), data("b" to mine)).books.getValue("b")
         assertEquals("new.epub", merged.file)
         assertEquals(false, merged.onShelf)
@@ -78,20 +78,20 @@ class ReadingDataTest {
 
     @Test
     fun `title is mine unless blank`() {
-        assertEquals("Mine", merge(data("b" to entry(title = "Disk")), data("b" to entry(title = "Mine"))).books.getValue("b").title)
-        assertEquals("Disk", merge(data("b" to entry(title = "Disk")), data("b" to entry(title = " "))).books.getValue("b").title)
+        assertEquals("Mine", merge(data("b" to book(title = "Disk")), data("b" to book(title = "Mine"))).books.getValue("b").title)
+        assertEquals("Disk", merge(data("b" to book(title = "Disk")), data("b" to book(title = " "))).books.getValue("b").title)
     }
 
     @Test
     fun `both sides' Books and unknown fields are kept, and schemaVersion never goes down`() {
         val disk = ReadingData(
             schemaVersion = 3,
-            books = mapOf("a" to entry(extras = mapOf("d" to JsonPrimitive(1), "both" to JsonPrimitive("disk")))),
+            books = mapOf("a" to book(extras = mapOf("d" to JsonPrimitive(1), "both" to JsonPrimitive("disk")))),
             settings = Settings(fontStep = 4, extras = mapOf("theme" to JsonPrimitive("dark"))),
             extras = mapOf("sync" to JsonPrimitive(true)),
         )
         val mine = ReadingData(
-            books = mapOf("a" to entry(extras = mapOf("both" to JsonPrimitive("mine"))), "b" to entry()),
+            books = mapOf("a" to book(extras = mapOf("both" to JsonPrimitive("mine"))), "b" to book()),
             settings = Settings(fontStep = 0, extras = mapOf("margin" to JsonPrimitive(2))),
             extras = mapOf("export" to JsonNull),
         )
@@ -204,7 +204,7 @@ class ReadingDataTest {
     }
 
     @Test
-    fun `shelving adds an entry once and keeps its Place`() {
+    fun `shelving adds a Book once and keeps its Place`() {
         val shelved = ReadingData().shelve("id", "Alice", "alice.epub")
         assertEquals(Book("Alice", "alice.epub", null, finished = false, onShelf = true), shelved.books.getValue("id"))
         val placed = shelved.withPlace("id", place(updatedAt = 3))
@@ -214,10 +214,10 @@ class ReadingDataTest {
 
     @Test
     fun `a Book's source, author and date added round-trip, and a file from before them has none`() {
-        val entry = Book("Alice", "a.epub", null, finished = false, onShelf = true, author = "Lewis Carroll", source = "https://books.example.org/a.epub", addedAt = 42)
-        val text = ReadingData(books = mapOf("id" to entry)).encode()
+        val book = Book("Alice", "a.epub", null, finished = false, onShelf = true, author = "Lewis Carroll", source = "https://books.example.org/a.epub", addedAt = 42)
+        val text = ReadingData(books = mapOf("id" to book)).encode()
         assertTrue("\"source\": \"https://books.example.org/a.epub\"" in text, text)
-        assertEquals(entry, decodeReadingData(text).getOrThrow().books.getValue("id"))
+        assertEquals(book, decodeReadingData(text).getOrThrow().books.getValue("id"))
         val older = decodeReadingData("""{"schemaVersion": 1, "books": {"id": {"title": "Alice", "file": "alice.epub", "onShelf": true}}}""").getOrThrow()
         assertEquals(Book("Alice", "alice.epub", null, finished = false, onShelf = true), older.books.getValue("id"))
         assertTrue(decodeReadingData("""{"books": {"id": {"source": 3}}}""").isFailure)
@@ -243,20 +243,20 @@ class ReadingDataTest {
 
     @Test
     fun `a stored file that isn't a plain name inside filesDir reads as missing, and the other Books stay`() {
-        val other = entry(title = "Other", file = "other.epub", place = place(updatedAt = 3))
+        val other = book(title = "Other", file = "other.epub", place = place(updatedAt = 3))
         listOf("../reading-data.json", "a/b.epub", "/data/x.epub", "a\\b.epub", ".", "..", "", "a\u0000.epub").forEach { name ->
-            val bad = entry(file = name, place = place(updatedAt = 5), onShelf = true)
+            val bad = book(file = name, place = place(updatedAt = 5), onShelf = true)
             val text = ReadingData(books = mapOf("id" to bad, "other" to other)).encode()
             assertEquals(mapOf("id" to bad.copy(file = null), "other" to other), decodeReadingData(text).getOrThrow().books, name)
         }
         assertTrue(decodeReadingData("""{"books": {"id": {"file": 3}}}""").isFailure)
-        assertEquals("..a.epub", decodeReadingData(ReadingData(books = mapOf("id" to entry(file = "..a.epub"))).encode()).getOrThrow().books.getValue("id").file)
+        assertEquals("..a.epub", decodeReadingData(ReadingData(books = mapOf("id" to book(file = "..a.epub"))).encode()).getOrThrow().books.getValue("id").file)
     }
 
     @Test
     fun `moving a Book takes its Place, date, title and fields to the new identifier and leaves the old one off the Shelf`() {
-        val old = entry(title = "Stored", place = place(updatedAt = 5), finished = true).copy(addedAt = 3, source = "https://books.example.org/a.epub", extras = mapOf("x" to JsonPrimitive(1)))
-        val data = data("urn:old" to old, "urn:other" to entry(title = "Other"))
+        val old = book(title = "Stored", place = place(updatedAt = 5), finished = true).copy(addedAt = 3, source = "https://books.example.org/a.epub", extras = mapOf("x" to JsonPrimitive(1)))
+        val data = data("urn:old" to old, "urn:other" to book(title = "Other"))
         val moved = data.moveBook("urn:old", "urn:new")
         assertEquals(old, moved.books.getValue("urn:new"))
         assertEquals(old.copy(file = null, onShelf = false), moved.books.getValue("urn:old"))
@@ -266,14 +266,14 @@ class ReadingDataTest {
         val merged = merge(data, moved)
         assertEquals(false, merged.books.getValue("urn:old").onShelf)
         assertEquals(true, merged.books.getValue("urn:new").onShelf)
-        val offShelf = data("urn:old" to old, "urn:new" to entry(title = "Gone", file = null, onShelf = false, place = place(updatedAt = 9)))
+        val offShelf = data("urn:old" to old, "urn:new" to book(title = "Gone", file = null, onShelf = false, place = place(updatedAt = 9)))
         assertEquals(old, offShelf.moveBook("urn:old", "urn:new").books.getValue("urn:new"))
     }
 
     @Test
     fun `moving a Book onto one already on the Shelf keeps that one's title and date, with the newer Place`() {
-        val old = entry(title = "Stored", place = place(updatedAt = 5), finished = true).copy(addedAt = 3)
-        val there = entry(title = "There", file = "there.epub", place = place(updatedAt = 4, offset = 7))
+        val old = book(title = "Stored", place = place(updatedAt = 5), finished = true).copy(addedAt = 3)
+        val there = book(title = "There", file = "there.epub", place = place(updatedAt = 4, offset = 7))
             .copy(addedAt = 8, source = "https://s.example.org/t.epub")
         val movedNewer = data("urn:old" to old, "urn:new" to there).moveBook("urn:old", "urn:new")
         assertEquals(there.copy(place = old.place, finished = true), movedNewer.books.getValue("urn:new"))
@@ -286,8 +286,8 @@ class ReadingDataTest {
 
     @Test
     fun `a merge takes the author and source from mine unless mine has none`() {
-        val disk = entry().copy(author = "Disk", source = "https://d.example.org/d.epub", addedAt = 1)
-        val mine = entry().copy(author = null, source = "https://m.example.org/m.epub", addedAt = 2)
+        val disk = book().copy(author = "Disk", source = "https://d.example.org/d.epub", addedAt = 1)
+        val mine = book().copy(author = null, source = "https://m.example.org/m.epub", addedAt = 2)
         val merged = merge(data("b" to disk), data("b" to mine)).books.getValue("b")
         assertEquals(Triple("Disk", "https://m.example.org/m.epub", 2L), Triple(merged.author, merged.source, merged.addedAt))
     }
@@ -295,7 +295,7 @@ class ReadingDataTest {
 
 private fun place(updatedAt: Long, offset: Int = 0) = Place("chapter-1.xhtml", 2, offset, "snippet", updatedAt)
 
-private fun entry(
+private fun book(
     title: String = "T",
     file: String? = "t.epub",
     place: Place? = null,

@@ -14,7 +14,8 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  * and re-packed as each window lands. [M] is a measured window as the platform keeps it, its layout
  * for drawing and its lines for packing; the pass reads only the lines, through [linesOf]. A Page once
  * packed never changes (see [pack]), so turning back shows the Page just read. [id] is for logs: it
- * is unique within one [Reading] only, so compare passes by identity.
+ * is unique within one [Reading] only, so compare passes by identity. [item] is [spineItem]'s index in
+ * the Book's Spine items.
  */
 class Pass<M>(
     val id: Int,

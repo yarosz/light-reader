@@ -70,12 +70,12 @@ class ShelfViewModelTest {
 
     private fun seed(vararg books: Pair<String, Book>) {
         ReadingStore(dir).save { ReadingData(books = mapOf(*books)) }
-        books.forEach { (_, entry) -> entry.file?.let { File(dir, it).writeText("epub") } }
+        books.forEach { (_, book) -> book.file?.let { File(dir, it).writeText("epub") } }
     }
 
     private fun store(vararg books: Pair<String, Book>) = ReadingStore(dir).save { ReadingData(books = mapOf(*books)) }
 
-    private fun entry(title: String, place: Place? = null, source: String? = null, file: String? = "$title.epub") =
+    private fun book(title: String, place: Place? = null, source: String? = null, file: String? = "$title.epub") =
         Book(title, file, place, finished = false, onShelf = true, source = source)
 
     private fun ShelfViewModel.row(title: String) = snapshot.value!!.rows.single { it.title == title }
@@ -100,7 +100,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `a Book whose file is here opens it, and Edit toggles back to browsing`() {
-        seed("urn:a" to entry("A"))
+        seed("urn:a" to book("A"))
         val vm = shelf()
         assertEquals(RowTap.Open("A.epub"), vm.row("A").tap)
         vm.toggleEdit()
@@ -112,7 +112,7 @@ class ShelfViewModelTest {
     @Test
     fun `Remove asks inline, Cancel keeps the Book, and confirming deletes the file but keeps the Place`() {
         val place = Place("c1", 2, 5, "snippet", 10)
-        seed("urn:a" to entry("A", place), "urn:b" to entry("B"))
+        seed("urn:a" to book("A", place), "urn:b" to book("B"))
         val vm = shelf()
         vm.askToRemove(RowKey.Shelved("urn:a"))
         assertEquals(ShelfMode.Browsing, vm.mode.value)
@@ -130,7 +130,7 @@ class ShelfViewModelTest {
         assertEquals(ShelfMode.Editing(), vm.mode.value)
         assertEquals(listOf("B"), vm.titles())
         assertFalse(File(dir, "A.epub").exists())
-        assertEquals(entry("A", place).copy(file = null, onShelf = false), stored().books.getValue("urn:a"))
+        assertEquals(book("A", place).copy(file = null, onShelf = false), stored().books.getValue("urn:a"))
 
         vm.remove(RowKey.Shelved("urn:b"))
         settle()
@@ -141,7 +141,7 @@ class ShelfViewModelTest {
     @Test
     fun `a download adds the Book under its Catalogue title with its source, author and date, and keeps a Place it had`() {
         val place = Place("c1", 0, 3, "snippet", 10)
-        store("urn:uuid:storm" to entry("Stormy Night", place, file = null).copy(onShelf = false))
+        store("urn:uuid:storm" to book("Stormy Night", place, file = null).copy(onShelf = false))
         val vm = shelf()
         assertEquals(emptyList(), vm.snapshot.value?.rows)
         clock = 5_000
@@ -210,7 +210,7 @@ class ShelfViewModelTest {
     @Test
     fun `a missing file with a source downloads again from it and keeps the Place`() {
         val place = Place("c1", 0, 3, "snippet", 10)
-        store("urn:uuid:storm" to entry("Stormy Night", place, source = link.value, file = stormFile))
+        store("urn:uuid:storm" to book("Stormy Night", place, source = link.value, file = stormFile))
         val transport = serving()
         val vm = shelf(transport)
         assertEquals(ROW_FILE_MISSING_SOURCE, vm.row("Stormy Night").detail)
@@ -228,8 +228,8 @@ class ShelfViewModelTest {
     fun `a Book downloaded again under a new identifier keeps its row, title, Place and date`() {
         val place = Place("c1", 0, 3, "snippet", 10)
         store(
-            "urn:uuid:old-conversion" to entry("Stored Title", place, source = link.value, file = bookFileName("urn:uuid:old-conversion")).copy(addedAt = 7),
-            "urn:other" to entry("Other", source = link.value, file = null),
+            "urn:uuid:old-conversion" to book("Stored Title", place, source = link.value, file = bookFileName("urn:uuid:old-conversion")).copy(addedAt = 7),
+            "urn:other" to book("Other", source = link.value, file = null),
         )
         val vm = shelf()
         val download = vm.downloadAgain("Stored Title")
@@ -248,8 +248,8 @@ class ShelfViewModelTest {
     fun `a Book downloaded again under the identifier of a Book already on the Shelf merges into that row`() {
         val newer = Place("c1", 0, 3, "snippet", 10)
         store(
-            "urn:uuid:old-conversion" to entry("Stored Title", newer, source = link.value, file = bookFileName("urn:uuid:old-conversion")).copy(addedAt = 7),
-            "urn:uuid:storm" to entry("On the Shelf", Place("c1", 0, 9, "older", 5), file = stormFile).copy(addedAt = 3),
+            "urn:uuid:old-conversion" to book("Stored Title", newer, source = link.value, file = bookFileName("urn:uuid:old-conversion")).copy(addedAt = 7),
+            "urn:uuid:storm" to book("On the Shelf", Place("c1", 0, 9, "older", 5), file = stormFile).copy(addedAt = 3),
         )
         File(dir, stormFile).writeText("epub")
         val vm = shelf()
@@ -263,7 +263,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `a permanent failure downloading a missing file again stays on its row, which can only be removed`() {
-        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        store("urn:uuid:storm" to book("Stormy Night", source = link.value, file = stormFile))
         val vm = shelf(serving("<html>moved</html>".toByteArray()))
         val download = vm.downloadAgain("Stormy Night")
         settle()
@@ -276,7 +276,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `a missing file whose source needs a login says so, and the row can only be removed`() {
-        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        store("urn:uuid:storm" to book("Stormy Night", source = link.value, file = stormFile))
         val vm = shelf(FakeTransport(mapOf(link.value to Answer(status = 401))))
         val download = vm.downloadAgain("Stormy Night")
         settle()
@@ -289,7 +289,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `a missing file with no source can only be removed`() {
-        store("urn:a" to entry("A"))
+        store("urn:a" to book("A"))
         val vm = shelf(FakeTransport(emptyMap()))
         assertEquals(ShelfRow(RowKey.Shelved("urn:a"), "A", ROW_FILE_MISSING, RowTap.None), vm.row("A"))
         vm.toggleEdit()
@@ -299,7 +299,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `removing a Book mid-download ends it as removed, never cancelled, and nothing lands`() {
-        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        store("urn:uuid:storm" to book("Stormy Night", source = link.value, file = stormFile))
         lateinit var vm: ShelfViewModel
         val transport = Transport { url ->
             vm.remove(RowKey.Shelved("urn:uuid:storm"))
@@ -330,7 +330,7 @@ class ShelfViewModelTest {
     @Test
     fun `a removal after the body arrived but before the main thread lands it leaves no file`() {
         val place = Place("c1", 0, 3, "snippet", 10)
-        store("urn:uuid:storm" to entry("Stormy Night", place, source = link.value, file = stormFile))
+        store("urn:uuid:storm" to book("Stormy Night", place, source = link.value, file = stormFile))
         val vm = shelf()
         val download = vm.downloadAgain("Stormy Night")
         main.scheduler.runCurrent()
@@ -342,7 +342,7 @@ class ShelfViewModelTest {
         assertEquals(emptyList(), leftovers())
         assertEquals(emptyList(), vm.snapshot.value?.rows)
         vm.onAppPause()
-        assertEquals(entry("Stormy Night", place, source = link.value, file = null).copy(onShelf = false), stored().books.getValue("urn:uuid:storm"))
+        assertEquals(book("Stormy Night", place, source = link.value, file = null).copy(onShelf = false), stored().books.getValue("urn:uuid:storm"))
     }
 
     @Test
@@ -362,7 +362,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `a file check that started before a download landed doesn't hide the Book it landed`() {
-        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        store("urn:uuid:storm" to book("Stormy Night", source = link.value, file = stormFile))
         val vm = shelf()
         vm.downloadAgain("Stormy Night")
         main.scheduler.runCurrent()
@@ -374,7 +374,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `a file this Shelf changed before a check, then deleted outside it, shows missing after the check`() {
-        store("urn:uuid:storm" to entry("Stormy Night", source = link.value, file = stormFile))
+        store("urn:uuid:storm" to book("Stormy Night", source = link.value, file = stormFile))
         val vm = shelf()
         vm.downloadAgain("Stormy Night")
         settle()
@@ -398,7 +398,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `a download started before the Shelf loaded lands on the loaded reading data`() {
-        seed("urn:a" to entry("A"))
+        seed("urn:a" to book("A"))
         val vm = ShelfViewModel(owner(serving()))
         val download = vm.download(link, "Stormy Night", null)
         settle()
@@ -412,7 +412,7 @@ class ShelfViewModelTest {
 
     @Test
     fun `two Shelves in one process share one owner, so a removal in one isn't undone by the other's flush`() {
-        seed("urn:a" to entry("A"), "urn:b" to entry("B"))
+        seed("urn:a" to book("A"), "urn:b" to book("B"))
         val first = shelf()
         val second = ShelfViewModel(ShelfOwner.of(File(dir, ".")) { error("a second owner for the same directory") })
         assertSame(first.owner, second.owner)

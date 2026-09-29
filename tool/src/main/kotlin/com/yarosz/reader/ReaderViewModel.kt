@@ -84,7 +84,7 @@ class ReaderViewModel(
                     if (start != null && opened.spineItems.isNotEmpty()) {
                         val item = start.item.coerceIn(opened.spineItems.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
-                        spinePoint.value = SpinePoint(item, start.offset.coerceIn(0, opened.spineItems[item].text.length))
+                        spinePoint.value = SpinePoint(item, start.char.coerceIn(0, opened.spineItems[item].text.length))
                         val ends = windows(opened.spineItems[item], windowChars).joinToString(",") { it.end.toString() }
                         Log.i(PERF_TAG, "windows item=$item windowChars=$windowChars ends=$ends")
                     } else {
