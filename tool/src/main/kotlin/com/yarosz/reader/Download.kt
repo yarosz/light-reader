@@ -20,9 +20,12 @@ data class Download(val title: String, val author: String?, val startedAt: Long,
 
         /**
          * A download from a Catalogue stays on the Shelf only after a retryable failure ([isRetryable]);
-         * a download from the Shelf keeps its row whatever the failure.
+         * a download from the Shelf keeps its row whatever the failure. [offline] is whether it was
+         * Unreachable while the phone reported no internet connection, which the row then says, so a
+         * retry tapped offline visibly answers instead of reading "tap to retry" unchanged. The row
+         * says it in the past tense, since it stays after the phone reconnects.
          */
-        data class Failed(val reason: DownloadFailure) : Status
+        data class Failed(val reason: DownloadFailure, val offline: Boolean = false) : Status
     }
 }
 

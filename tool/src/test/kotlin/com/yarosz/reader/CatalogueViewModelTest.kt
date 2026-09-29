@@ -47,6 +47,7 @@ class CatalogueViewModelTest {
     private val noImages = url("https://www.gutenberg.org/ebooks/1342.epub.noimages")
     private val pride = zipBytes(epubFiles(identifier = "http://www.gutenberg.org/1342", title = "Pride and Prejudice"))
     private val home = url("https://books.example.org/opds")
+    private val mistyped = "https://books.nonexistent-host.example"
     private val connected = NetworkStatus(isConnected = true, isWifi = true, isMetered = false)
 
     private val answers = mutableMapOf(
@@ -173,6 +174,14 @@ class CatalogueViewModelTest {
     }
 
     @Test
+    fun `a Catalogue on the list whose host doesn't resolve can't be reached, with Retry`() {
+        answers[GUTENBERG.url.value] = Answer(connectFailure = java.net.UnknownHostException("www.gutenberg.org"))
+        val root = page(PageSource.Root)
+        val failed = assertIs<PageState.Failed>(root.state.value)
+        assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), feedFailureCopy(failed.reason, root.shipped))
+    }
+
+    @Test
     fun `a Catalogue that needs a login is its own failure`() {
         answers[GUTENBERG.url.value] = Answer(status = 401)
         assertEquals(PageState.Failed(HttpError(401)), page(PageSource.Root).state.value)
@@ -256,6 +265,26 @@ class CatalogueViewModelTest {
         add.typed("http://slow.example.org/opds")
         settle()
         assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), (add.status.value as AddStatus.Failed).copy)
+    }
+
+    @Test
+    fun `a mistyped host says to check the spelling, still with Retry, when the phone reports a connection`() {
+        answers[mistyped] = Answer(connectFailure = java.net.UnknownHostException("books.nonexistent-host.example"))
+        val add = AddCatalogueViewModel(owner()) { true }
+        add.typed("books.nonexistent-host.example")
+        settle()
+        assertEquals(FailureCopy(COPY_NO_SUCH_HOST, retry = true), (add.status.value as AddStatus.Failed).copy)
+    }
+
+    @Test
+    fun `a host that doesn't resolve while the phone is offline, or can't say, can't be reached, with Retry`() {
+        answers[mistyped] = Answer(connectFailure = java.net.UnknownHostException("books.nonexistent-host.example"))
+        listOf(false, null).forEach { reported ->
+            val add = AddCatalogueViewModel(owner()) { reported }
+            add.typed("books.nonexistent-host.example")
+            settle()
+            assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), (add.status.value as AddStatus.Failed).copy, "reported $reported")
+        }
     }
 
     @Test

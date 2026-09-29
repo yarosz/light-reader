@@ -82,12 +82,13 @@ copy.
 ## Reading
 
 The reading view until N5 moves its chrome into an overlay. Product rulings from the advisor (N4,
-2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book that can't be opened reads "Couldn't
-open this Book." (the reason goes to the log), and one with no text reads "This Book has no text." Under
-either is "Back to Shelf", as on the end page. System back (the LP3's back gesture) leaves the Reader
-from anywhere, to the Shelf, which the Reader always opens over (see "Catalogues"), but a Tool can't show
-it, so every Reader state but the brief "Opening…" has a visible way to the Shelf: "Back to Shelf" where
-there is no Page, and on a Page the top line, then "Shelf" in Contents.
+2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book reads "Opening…" while it opens (a
+long one takes seconds). One that can't be opened reads "Couldn't open this Book." (the reason goes to
+the log), and one with no text reads "This Book has no text." Under each is "Back to Shelf", as on the
+end page. System back (the LP3's back gesture) leaves the Reader from anywhere, to the Shelf, which the
+Reader always opens over (see "Catalogues"), but a Tool can't show it, so every Reader state has a
+visible way to the Shelf: "Back to Shelf" where there is no Page, and on a Page the top line, then
+"Shelf" in Contents.
 
 **Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
 goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
@@ -106,7 +107,11 @@ Contents; to a screen reader it is a button, "Contents: " and the title. Its tap
 width of the screen's top 48 dp, or the top line's full height when that is taller, so it takes the top
 of the Page; the rest of the Page turns Pages. The footer is 48 dp:
 "A−" and "A+" at its ends, each with 8 dp of padding at the sides, each filling the footer's height as
-its tap target, and the Progress line between them.
+its tap target, and the Progress line between them. At the smallest size "A−", and at the largest "A+",
+is drawn in secondary text, ignores taps, and is a disabled button to a screen reader. The Progress
+line is one line, in Detail and secondary text, centred; when its full form, measured as drawn, doesn't
+fit between "A−" and "A+" (large system text), it shows its short form (below), ellipsised only if even
+that doesn't fit.
 The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.
 
 **Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
@@ -114,21 +119,23 @@ end (the next Chapter's start, or the end of the Book's text if that comes first
 reading speed. A word is a whitespace-separated run of text. The words are indexed once, off the main
 thread, when the Book opens, so a turn counts them without reading any text. On the raw minutes m:
 
-| m | Line |
-|---|---|
-| under 1 | "almost done with this chapter" |
-| 1 to under 15 | "about ⌈m⌉ min left in this chapter" |
-| 15 and over | "about ⌈m/5⌉×5 min left in this chapter" |
+| m | Line | Short form |
+|---|---|---|
+| under 1 | "almost done with this chapter" | "under 1 min left" |
+| 1 to under 15 | "about ⌈m⌉ min left in this chapter" | "about ⌈m⌉ min left" |
+| 15 and over | "about ⌈m/5⌉×5 min left in this chapter" | "about ⌈m/5⌉×5 min left" |
 
 "chapter" stays lowercase (see "Copy"). There is no line in front matter, on the end page, or in a
 Chapter whose whole text reads in under a minute at the current speed.
 
 **Reading speed.** 230 words a minute until there are 5 samples, then the median of the newest 20 or
 fewer. A sample is the words on a Page divided by the time on it. It counts only when the Page was
-reached by a forward turn of one Page and left by one, holds at least 20 words, and was on screen for
-2 s to 3 min. A back turn, a font change or relayout, opening Contents, a Chapter jump, reopening the
-Book, or the Tool pausing drops the running timing. Samples belong to the reader: they are shared
-across Books, kept in memory for as long as the Tool runs, and never saved.
+reached by a forward turn of one Page and left by one, holds at least 20 words, was on screen for 2 s
+to 3 min, and was read at 600 words a minute or slower: faster is a skim, or a hunt for a passage (50
+words every 2.5 s is 1,200), and a few minutes of it would drag the Progress line to nothing for as long
+as the Tool runs. A back turn, a font change or relayout, opening Contents, a Chapter jump,
+reopening the Book, or the Tool pausing drops the running timing. Samples belong to the reader: they are
+shared across Books, kept in memory for as long as the Tool runs, and never saved.
 
 **End page.** A forward turn (a tap outside the left third and below the top line's target, or volume
 down) from the Page that reaches the end of the Book's text shows the end page: "The end." centred, and under it "Back to Shelf", which
@@ -200,6 +207,7 @@ set tighter (1.2) than body copy.
 | Never opened | "not started" | opens the Book |
 | Downloading | "downloading…" | nothing |
 | Failed, retryable | "download failed · tap to retry" | downloads again |
+| Failed, Unreachable while the phone reports no internet connection | "download failed while offline · tap to retry" | downloads again |
 | Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" | nothing; the Book can only be removed |
 | Failed for good, the source needs a login (401) | "can't download again · needs a login" | nothing; the Book can only be removed |
 | Finished | "author · finished" (see below) | opens the Book |
@@ -208,7 +216,9 @@ set tighter (1.2) than body copy.
 
 The percent is the Place's `progress`, floored. Under 1%, or with no `progress` (a Place saved before
 N4, until the next page turn), the author stands alone. When there is no author, the state stands
-alone ("42%", "finished"), so an in-progress Book with neither has no second line. A running download
+alone ("42%", "finished"), so an in-progress Book with neither has no second line until it is next
+opened, if its file names one: opening records the author from the Book's file (`dc:creator`), and
+the Shelf never opens a file to find one. A running download
 wins over a Book's file, the file over a failed download (a Book that is here stays readable
 offline), and both over its reading state. Opening a Book counts as reading: it records the first
 Page's Place, so a Book opened but never paged reads as in progress, not "not started".
@@ -220,11 +230,12 @@ itself, inline and not as a modal, into the Book's title, then "Remove from Shel
 if you add it again.", then "Remove" and "Cancel". A confirmation whose row goes away (a download
 that arrives, or fails) is cleared. Row taps don't open Books while editing. Removal deletes the file and keeps the Place
 record, and removing a Book that is downloading cancels the download. Removing the last Book leaves
-Edit.
+Edit, and so does "Add": the Shelf is browsing when the reader comes back from the Catalogues. (The
+Catalogue list's Edit needs no such rule: while editing, its only way out is back, which closes it.)
 
 **Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
 failures (Unreachable, HttpError other than 401, DiskError, and UntrustedCertificate, D15) leave a
-row reading "download failed · tap to retry". An untrusted certificate is retryable because public
+row: "download failed · tap to retry", or the offline form (below). An untrusted certificate is retryable because public
 Wi-Fi intercepts TLS until the reader signs in to it. Permanent failures (CopyProtected, NotAnEpub,
 and also NoHttps and a 401, which a retry can't fix, since sign-in doesn't exist) of a download from a
 Catalogue show their copy on the Book's
@@ -232,11 +243,16 @@ detail page and add nothing to the Shelf. A copy-protected Book must never becom
 downloading a missing file again from the Shelf fails for good, the Book's row says why ("can't
 download again · …", table above) and can then only be removed. That state lives in memory: after a
 relaunch the row reads "file missing · tap to download again" again, and a tap tries once more.
+A download that fails as Unreachable while the phone reports no internet connection reads "download
+failed while offline · tap to retry", so a retry tapped offline visibly answers (it fails at once, too
+fast for "downloading…" to show). It is in the past tense because the row stays after the phone
+reconnects. Any other failure, or one when the phone can't report, reads "tap to retry".
 
 **Offline.** Nothing changes on the Shelf, because everything there works offline: no rows are
 removed and nothing is greyed out. "You're offline. Your Shelf still works." is one line of
 secondary text at the top of the Catalogue list, shown while the phone reports no internet
-connection (see "Catalogues").
+connection (see "Catalogues"). The one offline wording on the Shelf is a download's that failed
+offline, "download failed while offline · tap to retry", which stays true once the phone reconnects.
 
 **Missing file.** A Book whose file is gone reads "file missing · tap to download again", and the tap
 downloads it again from the Book's source, keeping its Place. If the download declares a different
@@ -274,13 +290,19 @@ on your Shelf.", then "Remove" and "Cancel". Any Catalogue can be removed, the s
 Removing the last one leaves Edit.
 
 **Add a Catalogue.** Title "Add a Catalogue", then a field labelled "Catalogue address" with the
-placeholder "https://…", then "Add". Tapping the field opens the SDK's text editor with the LP3
+placeholder "https://…" in secondary text (the SDK's field draws it at full strength, as if typed),
+then "Add". Tapping the field opens the SDK's text editor with the LP3
 keyboard, whose button is also "Add". An address with no scheme is taken as https://; http:// is
 tried once as https://, and a server with no HTTPS reads as NoHttps: a refused connection or a
 failed handshake. A connect timeout stays Unreachable (see the note under the failure copy). The
 Catalogue is stored as https://, so once added it is never "tried as https" again: a later refused
 connection is Unreachable, with Retry. The feed is fetched before
-anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. The
+anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. A host
+that doesn't resolve (no DNS record) is NoSuchHost only while the phone reports an internet
+connection: offline every lookup fails that way, so offline, or when the phone can't report, it is
+Unreachable, with Retry. NoSuchHost keeps Retry too (see the note under the failure copy). A
+Catalogue already on the list never reads NoSuchHost (its host resolved when it was added), only
+Unreachable. The
 name is the feed's title, else its host. An address already on the list reads "This Catalogue is
 already in your list." A failure shows below the field in body text (the SDK's Paragraph size) at
 line height 1.2, smaller than the rows. A failure that trying again can't fix hides "Add" until the address changes;
@@ -325,6 +347,16 @@ beside it ("558 KB"). The page matches the Shelf by source URL, never by title: 
 download links equal to a stored Book's source is that Book. A miss is harmless, because a landing
 download merges into the Book by `dc:identifier`.
 
+The author is the Editions' authors, except that the byline of the row that opened the page wins
+when that row is this Book (its title is the page's first entry's, ignoring case and punctuation)
+and its words are the Editions' author's, ignoring case, order and punctuation, or the Editions name
+no author. So a list and its detail page name the author alike: Gutenberg's lists say "graf Leo
+Tolstoy" (the entry's content), where its Book pages say "Tolstoy, Leo, graf" (the OPDS author, which
+isn't the simple inverted form the Tool un-inverts). A row's second line isn't always an author
+(Gutenberg's "Our most popular books.", a Calibre category's "1 book", a description), hence both
+checks. A download records it only when the Book's file names no author (`dc:creator`), which
+otherwise wins when the file lands.
+
 | Match | Action | Beside it |
 |---|---|---|
 | None | "Add to Shelf" | the size |
@@ -348,6 +380,7 @@ N5; until then it shows its one line.
 | Failure | Copy | Retry |
 |---|---|---|
 | Unreachable | "Can't reach this Catalogue. Check your connection and try again." | yes |
+| NoSuchHost (a typed address, the phone connected) | "Couldn't find that address. Check the spelling." | yes |
 | NoHttps | "This Catalogue needs an https:// address." | no |
 | HttpError | "This Catalogue isn't responding properly. Try again later." | yes |
 | HttpError 401 | "This Catalogue needs a username and password. Sign-in isn't supported yet." | no |
@@ -363,3 +396,12 @@ connections to port 443 times out, but so does a network with no internet. The S
 `LightConnectivity` reports only whether the network claims internet, not whether Android validated
 it, and asking Android directly needs a Context, which a Light Tool can't hold. So the Tool can't
 tell, and every connect timeout reads as Unreachable, with Retry.
+
+NoSuchHost keeps Retry for the same reason: the phone reporting a connection means only that the
+network claims internet. A Wi-Fi with a dead upstream, DNS failing for a moment, or a redirect to a
+host that is down fails a correctly typed address the same way, and trying again can fix those.
+
+Every failed Catalogue fetch (a page, "More", a search description) logs one line under the `Reader`
+tag: the URL, the HTTP status (with where redirects ended) or the exception, and the failure it
+became. Each URL is logged without its user info, query (shown as "?…") or fragment, so neither a
+search's terms nor credentials reach the log.
