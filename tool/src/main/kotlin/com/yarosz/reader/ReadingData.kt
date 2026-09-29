@@ -192,8 +192,11 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
 /**
  * Finds [place] in this Book: at its block and offset when the snippet still matches there, else at
  * the snippet's occurrence nearest that spot (a new edition or parser change shifted the text), else
- * at the start of its block, or of its Spine item when the block is gone. Null only when no Spine item has
- * the Place's Spine item.
+ * at the nearest occurrence of the snippet without its leading line breaks and with each run of line
+ * breaks as one (a Place saved before blocks dropped their leading and trailing line breaks), else at the
+ * start of its block, or of its Spine item when the block is gone. A Place at a block's start whose snippet
+ * starts with line breaks was saved before then (no block starts with one now), so it lands after them,
+ * not on the separator that ends the block before. Null only when no Spine item has the Place's Spine item.
  */
 fun OpenBook.resolve(place: Place): SpinePoint? {
     val index = spineItems.indexOfFirst { it.spineId == place.spineId }.takeIf { it >= 0 } ?: return null
@@ -201,15 +204,18 @@ fun OpenBook.resolve(place: Place): SpinePoint? {
     val blockStart = spineItems[index].blockStarts.getOrNull(place.block)
     val expected = blockStart?.plus(place.offset)?.takeIf { it in 0..text.length }
     if (expected != null && text.startsWith(place.snippet, expected)) return SpinePoint(index, expected)
-    if (place.snippet.isNotEmpty()) {
-        val anchor = expected ?: blockStart ?: 0
-        val nearest = generateSequence(text.indexOf(place.snippet).takeIf { it >= 0 }) { from ->
-            text.indexOf(place.snippet, from + 1).takeIf { it >= 0 }
+    val anchor = expected ?: blockStart ?: 0
+    for (snippet in listOf(place.snippet, place.snippet.trimStart('\n').replace(LINE_BREAK_RUN, "\n")).distinct()) {
+        if (snippet.isEmpty()) continue
+        val nearest = generateSequence(text.indexOf(snippet).takeIf { it >= 0 }) { from ->
+            text.indexOf(snippet, from + 1).takeIf { it >= 0 }
         }.minByOrNull { abs(it - anchor) }
-        if (nearest != null) return SpinePoint(index, nearest)
+        if (nearest != null) return SpinePoint(index, nearest + if (place.offset == 0) snippet.length - snippet.trimStart('\n').length else 0)
     }
     return SpinePoint(index, blockStart ?: 0)
 }
+
+private val LINE_BREAK_RUN = Regex("\n+")
 
 /**
  * Combines the file on disk with this process's data before a save. What it protects: the Books and

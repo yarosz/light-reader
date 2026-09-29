@@ -26,11 +26,15 @@ data class SpineItem(val spineId: String, val blocks: List<Block>) {
     /** Offset of each block's first character within [text]. */
     val blockStarts: List<Int> = blocks.runningFold(0) { acc, b -> acc + b.text.length + 1 }.dropLast(1)
 
+    /** Index of the block holding [offset], -1 before the first; a separating '\n' belongs to the block before it. */
+    fun blockAt(offset: Int): Int = blockStarts.binarySearch(offset).let { if (it >= 0) it else -it - 2 }
+
     /** Kind of the block holding [offset]; a separating '\n' belongs to the block before it. */
-    fun kindAt(offset: Int): BlockKind? {
-        val found = blockStarts.binarySearch(offset)
-        return blocks.getOrNull(if (found >= 0) found else -found - 2)?.kind
-    }
+    fun kindAt(offset: Int): BlockKind? = blocks.getOrNull(blockAt(offset))?.kind
+
+    /** Whether block [i] is a caption right before a heading, which windows and Pages keep with that heading. */
+    fun isHeadingCaption(i: Int): Boolean =
+        blocks.getOrNull(i)?.kind == BlockKind.Caption && blocks.getOrNull(i + 1)?.kind == BlockKind.Heading
 }
 
 /**
@@ -55,27 +59,32 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
  * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does).
- * Chapters come from its table of contents ([readTableOfContents]): an entry naming a dropped Spine
- * item is dropped with it. An entry whose fragment its Spine item doesn't have starts at that Spine item's
- * start, or at the previous entry's start if that is later in the same Spine item.
+ * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
+ * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
+ * its Spine item doesn't have starts at that Spine item's start, or at the previous entry's start if that
+ * is later in the same Spine item.
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
 fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): OpenBook = ZipFile(file).use { zip ->
     val pkg = readPackage(zip, fallbackTitle)
-    val entries = readTableOfContents(zip, pkg)
-    val fragments = entries.mapNotNullTo(HashSet()) { it.fragment }
+    val tables = readTablesOfContents(zip, pkg)
+    val fragments = tables.flatten().mapNotNullTo(HashSet()) { it.fragment }
     val docs = pkg.spine.map { item -> item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
     val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
-    val listed = mutableListOf<Chapter>()
-    for (entry in entries) {
-        val index = body.indexOfFirst { it.first.path == entry.path }.takeIf { it >= 0 } ?: continue
-        val char = entry.fragment?.let { fragment ->
-            body[index].second.anchors[fragment] ?: listed.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
-        } ?: 0
-        listed += Chapter(entry.label, SpinePoint(index, char))
-    }
+    val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
+    val listed = tables.firstNotNullOfOrNull { entries ->
+        val resolved = mutableListOf<Chapter>()
+        for (entry in entries) {
+            val index = indexOfPath[entry.path] ?: continue
+            val char = entry.fragment?.let { fragment ->
+                body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
+            } ?: 0
+            resolved += Chapter(entry.label, SpinePoint(index, char))
+        }
+        resolved.ifEmpty { null }
+    }.orEmpty()
     OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems))
 }
 
@@ -328,11 +337,15 @@ internal val WHITESPACE_RUN = Regex("\\s+")
 private val BLOCK_ELEMENTS = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "dt", "dd", "figcaption", "pre")
 private val VERSE_MARKERS = listOf("verse", "poem", "song", "lyrics")
 
+/** What a block's leading and trailing runs are made of. */
+private val TRIMMED = charArrayOf(' ', '\u00A0', '\n')
+
 /**
  * Reads one Spine document into [blocks]. [anchors] maps each id in [fragments] that the document has to
  * the offset in its [SpineItem.text] where the element's text begins; an element with no text of its own
- * maps to the next text, or to the end of the text when none follows. An element whose class includes the
- * token `caption` inside a heading is its own Caption block, before the heading's own text. A block's
+ * (whitespace, no-break spaces included, is none) maps to the next text, or to the end of the text when
+ * none follows. An element whose class includes the token `caption` inside a heading, before any of the
+ * heading's own text, is its own Caption block, before that text; later, it stays in the heading. A block's
  * leading and trailing line breaks are dropped.
  */
 private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler() {
@@ -373,7 +386,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             name == "hgroup" -> hgroupParts = mutableListOf()
             kind != null -> {
                 blockDepth++
-                if (kind == BlockKind.Heading && hgroupParts == null && captionStart == null &&
+                if (kind == BlockKind.Heading && hgroupParts == null && captionStart == null && text.isBlank() &&
                     "caption" in attrs.getValue("class").orEmpty().split(WHITESPACE_RUN)
                 ) {
                     captionStart = text.length
@@ -411,8 +424,10 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                     if (text.isNotEmpty() && text.last() != ' ' && text.last() != '\n') text.append(' ')
                 }
                 else -> {
-                    unanchored.forEach { blockAnchors += it to text.length }
-                    unanchored.clear()
+                    if (!c.isWhitespace()) {
+                        unanchored.forEach { blockAnchors += it to text.length }
+                        unanchored.clear()
+                    }
                     text.append(c)
                 }
             }
@@ -430,9 +445,9 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         }
         when {
             kind != null && blockDepth > 0 -> {
+                if (name in setOf("em", "i", "cite", "strong", "b")) closeEmphasis()
                 if (blockDepth == captionDepth) splitCaption()
                 blockDepth--
-                if (name in setOf("em", "i", "cite", "strong", "b")) closeEmphasis()
             }
             kind != null -> finishBlock()
             name == "hgroup" -> {
@@ -471,7 +486,8 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         text.setLength(from)
         val inside = blockAnchors.filter { it.second >= from }
         blockAnchors.removeAll(inside)
-        val captionSpans = spans.filter { it.end > from }.map { Span(it.start - from, it.end - from, it.emphasis) }
+        val captionSpans = (spans + openEmphasis.map { (emphasis, start) -> Span(start, text.length + caption.length, emphasis) })
+            .filter { it.end > from }.map { Span(maxOf(it.start - from, 0), it.end - from, it.emphasis) }
         spans.replaceAll { it.copy(end = minOf(it.end, from)) }
         spans.removeAll { it.start >= it.end }
         emit(BlockKind.Caption, caption, captionSpans, inside.map { it.first to it.second - from })
@@ -489,15 +505,15 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
 
     /**
      * Adds a block of [raw] text, its [spans] and [localAnchors] offsets into [raw], without its leading and
-     * trailing line breaks. Blank text adds nothing, and its ids go on to the next text.
+     * trailing line breaks and the spaces among them. Blank text adds nothing, and its ids go on to the next text.
      */
     private fun emit(blockKind: BlockKind, raw: String, spans: List<Span>, localAnchors: List<Pair<String, Int>>) {
-        val content = raw.trimEnd(' ', '\n')
+        val content = raw.trimEnd(*TRIMMED)
         if (content.isBlank()) {
             unanchored.addAll(0, localAnchors.map { it.first })
             return
         }
-        val first = content.indexOfFirst { it != ' ' && it != '\n' }
+        val first = content.indexOfFirst { it !in TRIMMED }
         val lead = if ('\n' in content.substring(0, first)) first else 0
         val kept = content.substring(lead)
         val parts = hgroupParts

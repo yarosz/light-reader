@@ -172,6 +172,37 @@ class ReadingDataTest {
     }
 
     @Test
+    fun `a Place saved at a heading's leading line breaks or caption finds the heading's text after the parser dropped them`() {
+        val before = Block(BlockKind.Paragraph, "He was the tallest.")
+        val old = SpineItem("c", listOf(
+            before,
+            Block(BlockKind.Heading, "\nShe rode a grey mare.\n\nCHAPTER II."),
+            Block(BlockKind.Paragraph, "Long ago."),
+            Block(BlockKind.Heading, "\nMrs Bennet and her two youngest girls.\n\nCHAPTER III."),
+            Block(BlockKind.Paragraph, "Not all that Mrs Bennet could say."),
+            Block(BlockKind.Heading, "\n\nCHAPTER IV."),
+            Block(BlockKind.Paragraph, "When Jane and Elizabeth were alone."),
+        ))
+        val new = SpineItem("c", listOf(
+            before,
+            Block(BlockKind.Caption, "She rode a grey mare."),
+            Block(BlockKind.Heading, "CHAPTER II."),
+            Block(BlockKind.Paragraph, "Long ago."),
+            Block(BlockKind.Caption, "Mrs Bennet and her two youngest girls."),
+            Block(BlockKind.Heading, "CHAPTER III."),
+            Block(BlockKind.Paragraph, "Not all that Mrs Bennet could say."),
+            Block(BlockKind.Heading, "CHAPTER IV."),
+            Block(BlockKind.Paragraph, "When Jane and Elizabeth were alone."),
+        ))
+        val book = OpenBook("id", "", listOf(new))
+        for ((oldBlock, newBlock) in listOf(1 to 1, 3 to 4, 5 to 7)) {
+            val start = new.blockStarts[newBlock]
+            assertEquals(SpinePoint(0, start), book.resolve(old.placeOf(old.blockStarts[oldBlock], 0)))
+            assertEquals(SpinePoint(0, start - 12), book.resolve(old.placeOf(old.blockStarts[oldBlock] - 12, 0)))
+        }
+    }
+
+    @Test
     fun `a Place in a Spine item the Book no longer has resolves to nothing`() {
         val book = randomBook(Random(1))
         assertNull(book.resolve(Place("gone.xhtml", 0, 0, "", 0)))

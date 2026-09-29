@@ -6,6 +6,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Chapters from a Book's table of contents (ADR 0004), and which Chapter a SpinePoint is in. */
 class ChaptersTest {
@@ -220,12 +221,138 @@ class ChaptersTest {
     }
 
     @Test
-    fun `a label is titled by the heading only when it has more before it`() {
+    fun `a label is titled by the heading only after a caption, and only when it has more before the heading`() {
+        val caption = "<span class=\"caption\">A caption.</span><br/>"
         val book = open(
-            listOf("<h2>One</h2>", "<h2>Chapter Two</h2>", "<h2>Three</h2>"),
-            nav = nav(li("The First", "text/c0.xhtml"), li("Chapter Two", "text/c1.xhtml"), li("Part Three", "text/c2.xhtml")),
+            listOf("<h2>One</h2>", "<h2>1</h2>", "<h2>Night</h2>", "<h2>${caption}Four</h2>", "<h2>${caption}Five</h2>", "<h2>${caption}Six</h2>"),
+            nav = nav(
+                li("The First", "text/c0.xhtml"),
+                li("Chapter 1", "text/c1.xhtml"),
+                li("Part Two: The Long Night", "text/c2.xhtml"),
+                li("A caption. Four", "text/c3.xhtml"),
+                li("Five", "text/c4.xhtml"),
+                li("Chapter Six", "text/c5.xhtml"),
+            ),
         )
-        assertEquals(listOf("The First", "Chapter Two", "Three"), book.chapters.map { it.title })
+        assertEquals(listOf("The First", "Chapter 1", "Part Two: The Long Night", "Four", "Five", "Six"), book.chapters.map { it.title })
+    }
+
+    @Test
+    fun `Pride and Prejudice's CHAPTER III heading gives a caption, then the heading, with both ids at the caption`() {
+        val bodies = listOf(
+            "<p>One</p>",
+            "<p>Front</p><h2 id=\"x\"><span id=\"y\"></span><br/><span class=\"caption\">He rode a black horse.</span><br/><br/>CHAPTER III.</h2><p>Not all.</p>",
+        )
+        for (id in listOf("x", "y")) {
+            val book = open(bodies, nav = nav(li("One", "text/c0.xhtml"), li("He rode a black horse. CHAPTER III.", "text/c1.xhtml#$id")))
+            assertEquals(listOf(Block(BlockKind.Caption, "He rode a black horse."), Block(BlockKind.Heading, "CHAPTER III.")), book.spineItems[1].blocks.subList(1, 3))
+            assertEquals(Chapter("CHAPTER III.", book.startOf("He rode")), book.chapters[1])
+        }
+    }
+
+    @Test
+    fun `a caption after the heading's own text stays in the heading, and the Chapter starts at the heading`() {
+        val book = open(
+            listOf("<p>One</p>", "<p>Front</p><h2 id=\"q\">CHAPTER V. <span class=\"caption\">Cap</span></h2><p>Five</p>"),
+            nav = nav(li("One", "text/c0.xhtml"), li("Five", "text/c1.xhtml#q")),
+        )
+        assertEquals(Block(BlockKind.Heading, "CHAPTER V. Cap"), book.spineItems[1].blocks[1])
+        assertEquals(book.startOf("CHAPTER V."), book.chapters[1].start)
+    }
+
+    @Test
+    fun `a caption keeps its emphasis, whether it is the emphasis element or inside one`() {
+        val book = open(listOf(
+            "<h2><i class=\"caption\">Cap one</i><br/>CHAPTER I.</h2>" +
+                "<h2><em><span class=\"caption\">Cap two</span><br/>CHAPTER</em> II.</h2>",
+        ))
+        assertEquals(
+            listOf(
+                Block(BlockKind.Caption, "Cap one", listOf(Span(0, 7, Emphasis.Italic))),
+                Block(BlockKind.Heading, "CHAPTER I."),
+                Block(BlockKind.Caption, "Cap two", listOf(Span(0, 7, Emphasis.Italic))),
+                Block(BlockKind.Heading, "CHAPTER II.", listOf(Span(0, 7, Emphasis.Italic))),
+            ),
+            book.spineItems[0].blocks,
+        )
+    }
+
+    @Test
+    fun `a caption inside an hgroup stays in the heading, and ids after it keep their offsets`() {
+        val book = open(
+            listOf("<p>One</p>", "<hgroup><h2><span class=\"caption\">Cap</span> One</h2><h3 id=\"z\">Two</h3></hgroup><p id=\"w\">Text</p>"),
+            nav = nav(li("One", "text/c0.xhtml"), li("Z", "text/c1.xhtml#z"), li("W", "text/c1.xhtml#w")),
+        )
+        assertEquals(listOf(Block(BlockKind.Heading, "Cap One: Two"), Block(BlockKind.Paragraph, "Text")), book.spineItems[1].blocks)
+        assertEquals(listOf(book.startOf("Two"), book.startOf("Text")), book.chapters.drop(1).map { it.start })
+    }
+
+    @Test
+    fun `a Chapter starting inside a heading is titled by that heading`() {
+        val book = open(
+            listOf("<p>One</p>", "<hgroup><h2>Part</h2><h3 id=\"f\">Three</h3></hgroup><p>Text</p>", "<h2>CHAPTER <span id=\"s\">VI.</span></h2><p>Six</p>"),
+            nav = nav(li("One", "text/c0.xhtml"), li("", "text/c1.xhtml#f"), li("", "text/c2.xhtml#s")),
+        )
+        assertEquals(listOf("One", "Part: Three", "CHAPTER VI."), book.chapters.map { it.title })
+    }
+
+    @Test
+    fun `a whitespace-only element's id goes to the next text`() {
+        val book = open(
+            listOf("<p>One</p>", "<p>Hello<span id=\"x\">&#160;</span></p><p>World</p>"),
+            nav = nav(li("One", "text/c0.xhtml"), li("X", "text/c1.xhtml#x")),
+        )
+        assertEquals(book.startOf("World"), book.chapters[1].start)
+    }
+
+    @Test
+    fun `a no-break space doesn't keep a heading's leading line breaks`() {
+        val book = open(
+            listOf("<p>One</p>", "<p>Front</p><h2 id=\"j\">&#160;<br/><br/>CHAPTER IV.&#160;</h2>"),
+            nav = nav(li("One", "text/c0.xhtml"), li("CHAPTER IV.", "text/c1.xhtml#j")),
+        )
+        assertEquals(Block(BlockKind.Heading, "CHAPTER IV."), book.spineItems[1].blocks[1])
+        assertEquals(book.startOf("CHAPTER IV."), book.chapters[1].start)
+    }
+
+    @Test
+    fun `a nav entry's link wins over a span before it`() {
+        val numbered = "<li><span class=\"num\">1.</span> <a href=\"text/c0.xhtml\">Loomings</a></li>" +
+            "<li><span class=\"num\">2.</span> <a href=\"text/c1.xhtml\">The Carpet-Bag</a></li>"
+        val book = open(listOf("<p>One</p>", "<p>Two</p>"), nav = nav(numbered))
+        assertEquals(listOf(Chapter("Loomings", SpinePoint(0, 0)), Chapter("The Carpet-Bag", SpinePoint(1, 0))), book.chapters)
+    }
+
+    private val ncxChapters = ncx(navPoint("NCX one", "text/c0.xhtml"), navPoint("NCX two", "text/c1.xhtml"))
+
+    @Test
+    fun `a nav that gives no entry, or none that resolves, or has no toc nav gives way to the NCX`() {
+        val bodies = listOf("<p>One</p>", "<p>Two</p>")
+        val landmarksOnly = """<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>""" +
+            """<nav epub:type="landmarks"><ol><li><a href="text/c0.xhtml">Start</a></li></ol></nav></body></html>"""
+        for (nav in listOf(nav(), nav(li("Gone", "text/gone.xhtml"), li("Also gone", "text/c9.xhtml")), landmarksOnly)) {
+            assertEquals(listOf("NCX one", "NCX two"), open(bodies, nav = nav, ncx = ncxChapters).chapters.map { it.title })
+        }
+    }
+
+    @Test
+    fun `an NCX that doesn't parse counts as no table of contents`() {
+        assertEquals(perSpineItem, open(unlisted, ncx = ncxChapters.substringBefore("</navMap>")).chapters)
+    }
+
+    @Test
+    fun `thousands of anchored blocks in one Spine item, each with an entry, open well under a second`() {
+        val n = 8_000
+        val body = (0 until n).joinToString("") { "<div id=\"e$it\"></div><p>&#160;</p><h2 id=\"c$it\">$it</h2>" }
+        val entries = (0 until n).flatMap { listOf(li("E$it", "text/c1.xhtml#e$it"), li("", "text/c1.xhtml#c$it")) }
+        val bodies = listOf("<p>One</p>", body)
+        open(bodies, nav = nav(li("One", "text/c0.xhtml")))
+        val started = System.nanoTime()
+        val book = open(bodies, nav = nav(li("One", "text/c0.xhtml"), *entries.toTypedArray()))
+        val millis = (System.nanoTime() - started) / 1_000_000
+        assertEquals(2 * n + 1, book.chapters.size)
+        assertEquals("${n - 1}", book.chapters.last().title)
+        assertTrue(millis < 1_000, "took $millis ms")
     }
 
     @Test

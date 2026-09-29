@@ -15,8 +15,9 @@ const val WINDOW_CHARS = 10_000
 
 /**
  * Cuts [spineItem] into windows of at most [maxChars] characters that tile its text. Blocks are packed
- * greedily; a single block longer than [maxChars] gets a window to itself. A heading starts a new window
- * once the current one is at least half full, so windows tend to begin where Chapters do.
+ * greedily; a single block longer than [maxChars] gets a window to itself. A heading, or the caption right
+ * before one ([SpineItem.isHeadingCaption]), starts a new window once the current one is at least half full,
+ * so windows tend to begin where Chapters do.
  */
 fun windows(spineItem: SpineItem, maxChars: Int = WINDOW_CHARS): List<Window> {
     val blocks = spineItem.blocks
@@ -27,7 +28,9 @@ fun windows(spineItem: SpineItem, maxChars: Int = WINDOW_CHARS): List<Window> {
     var first = 0
     for (next in 1 until blocks.size) {
         val overflows = endOf(next) - starts[first] > maxChars
-        val headingCut = blocks[next].kind == BlockKind.Heading && starts[next] - starts[first] >= maxChars / 2
+        val opensHeading = spineItem.isHeadingCaption(next) ||
+            blocks[next].kind == BlockKind.Heading && !spineItem.isHeadingCaption(next - 1)
+        val headingCut = opensHeading && starts[next] - starts[first] >= maxChars / 2
         if (overflows || headingCut) {
             out += Window(first, next - 1, starts[first], starts[next])
             first = next

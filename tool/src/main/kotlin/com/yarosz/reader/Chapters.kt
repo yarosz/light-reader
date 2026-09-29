@@ -13,18 +13,20 @@ data class Chapter(val title: String, val start: SpinePoint)
  * of contents lists at least two, in reading order; text before the first is front matter. Otherwise each
  * Spine item is a Chapter from its start, and there is no front matter. A Chapter with no title takes its
  * first heading, else "Chapter N", N counting Chapters from 1. A Chapter's first heading is the first
- * Heading block at or after its start and before the next Chapter's start. When a label, whitespace-
- * collapsed, ends with a space and then its Chapter's first heading's text, whitespace-collapsed, the
- * Chapter's title is that heading's text. Case and punctuation are the Book's own.
+ * Heading block holding or after its start and before the next Chapter's start. When a Chapter starts in a
+ * Caption block (a Gutenberg Chapter's illustration caption) and its label, whitespace-collapsed, ends with
+ * a space and then its first heading's text, whitespace-collapsed, the Chapter's title is that heading's
+ * text. Case and punctuation are the Book's own.
  */
 fun chaptersOf(listed: List<Chapter>, spineItems: List<SpineItem>): List<Chapter> {
     val usable = listed.size > 1 && listed.zipWithNext().none { (a, b) -> b.start < a.start }
     val chapters = if (usable) listed else spineItems.indices.map { Chapter("", SpinePoint(it, 0)) }
     return chapters.mapIndexed { i, chapter ->
         val heading = firstHeading(spineItems, chapter.start, chapters.getOrNull(i + 1)?.start)
+        val atCaption = spineItems[chapter.start.item].kindAt(chapter.start.char) == BlockKind.Caption
         when {
             chapter.title.isEmpty() -> chapter.copy(title = heading ?: "Chapter ${i + 1}")
-            heading != null && chapter.title.endsWith(" $heading") -> chapter.copy(title = heading)
+            heading != null && atCaption && chapter.title.endsWith(" $heading") -> chapter.copy(title = heading)
             else -> chapter
         }
     }
@@ -37,14 +39,18 @@ fun chaptersOf(listed: List<Chapter>, spineItems: List<SpineItem>): List<Chapter
 fun OpenBook.chapterAt(point: SpinePoint): Int? =
     (-chapters.binarySearch { if (it.start <= point) -1 else 1 } - 2).takeIf { it >= 0 }
 
-/** The text of the first heading at or after [from] and before [until] (the end of the Book when null), whitespace-collapsed. */
+/**
+ * The text of the first heading holding or after [from] and before [until] (the end of the Book when null),
+ * whitespace-collapsed.
+ */
 private fun firstHeading(spineItems: List<SpineItem>, from: SpinePoint, until: SpinePoint?): String? {
     for (item in from.item..(until?.item ?: spineItems.lastIndex)) {
         val spineItem = spineItems[item]
-        spineItem.blocks.forEachIndexed { i, block ->
-            val at = SpinePoint(item, spineItem.blockStarts[i])
-            if (until != null && at >= until) return null
-            if (block.kind == BlockKind.Heading && at >= from) return block.text.replace(WHITESPACE_RUN, " ").trim()
+        val first = if (item == from.item) spineItem.blockAt(from.char).coerceAtLeast(0) else 0
+        for (i in first until spineItem.blocks.size) {
+            if (until != null && SpinePoint(item, spineItem.blockStarts[i]) >= until) return null
+            val block = spineItem.blocks[i]
+            if (block.kind == BlockKind.Heading) return block.text.replace(WHITESPACE_RUN, " ").trim()
         }
     }
     return null
@@ -54,22 +60,23 @@ private fun firstHeading(spineItems: List<SpineItem>, from: SpinePoint, until: S
 data class TableOfContentsEntry(val label: String, val path: String, val fragment: String?)
 
 /**
- * The leaf entries of the Book's table of contents, in document order: its EPUB 3 nav document's toc nav,
- * else its EPUB 2 NCX's navMap. A document that is missing, has none, or doesn't parse gives way to the
- * next; with neither there are no entries. An entry without an href is left out.
+ * The leaf entries of each of the Book's tables of contents, in document order, most preferred first: its
+ * EPUB 3 nav document's toc nav, then its EPUB 2 NCX's navMap. A document that is missing, has no toc nav
+ * or navMap, or doesn't parse is left out. An entry without an href is left out.
  */
-fun readTableOfContents(zip: ZipFile, pkg: Package): List<TableOfContentsEntry> {
+fun readTablesOfContents(zip: ZipFile, pkg: Package): List<List<TableOfContentsEntry>> {
     fun read(path: String?, ncx: Boolean): List<TableOfContentsEntry>? {
         val entry = path?.let(zip::getEntry) ?: return null
         val handler = TableOfContentsHandler(directoryOf(path), ncx)
         return runCatching { parseUntrusted(zip.getInputStream(entry), handler, MAX_PACKAGE_XML_BYTES) }.getOrNull()?.let { handler.leaves }
     }
-    return read(pkg.nav, ncx = false) ?: read(pkg.ncx, ncx = true).orEmpty()
+    return listOfNotNull(read(pkg.nav, ncx = false), read(pkg.ncx, ncx = true))
 }
 
 /**
  * Reads the first `<nav epub:type="toc">` of a nav document, or with [ncx] the `navMap` of an NCX,
- * resolving hrefs against [dir]. [leaves] stays null when the document has neither.
+ * resolving hrefs against [dir]. [leaves] stays null when the document has neither. A nav entry's label is
+ * its first `<a>` with an href, or its first `<span>` or `<a>` when it has no such `<a>`.
  */
 private class TableOfContentsHandler(private val dir: String, private val ncx: Boolean) : DefaultHandler() {
     var leaves: MutableList<TableOfContentsEntry>? = null
@@ -104,6 +111,12 @@ private class TableOfContentsHandler(private val dir: String, private val ncx: B
                 open.addLast(Entry())
             }
             top == null -> Unit
+            !ncx && name == "a" && top.href == null && attrs.getValue("href") != null -> {
+                top.label.setLength(0)
+                top.labelled = true
+                labelDepth = 1
+                top.href = attrs.getValue("href")
+            }
             !top.labelled && (if (ncx) name == "text" else name == "a" || name == "span") -> {
                 top.labelled = true
                 labelDepth = 1

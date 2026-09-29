@@ -3,6 +3,7 @@ package com.yarosz.reader
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Property tests of how a Spine item is cut into layout windows (ADR 0007), over thousands of random Spine items. */
@@ -84,6 +85,20 @@ class WindowsTest {
         val spineItem = SpineItem("spine", listOf(paragraph, paragraph, heading, paragraph))
         assertEquals(listOf(Window(0, 1, 0, 202), Window(2, 3, 202, 308)), windows(spineItem, maxChars = 400))
         assertEquals(listOf(Window(0, 3, 0, 308)), windows(spineItem, maxChars = 1_000))
+    }
+
+    @Test
+    fun `a caption right before a heading starts the window with it, and a caption alone doesn't`() {
+        val paragraph = Block(BlockKind.Paragraph, "x".repeat(100))
+        val caption = Block(BlockKind.Caption, "He rode a black horse.")
+        val heading = Block(BlockKind.Heading, "Title")
+        val chapter = SpineItem("spine", listOf(paragraph, paragraph, caption, heading, paragraph))
+        assertEquals(listOf(Window(0, 1, 0, 202), Window(2, 4, 202, 331)), windows(chapter, maxChars = 400))
+        val figure = SpineItem("spine", listOf(paragraph, paragraph, caption, paragraph))
+        assertEquals(listOf(Window(0, 3, 0, 325)), windows(figure, maxChars = 400))
+        assertTrue(chapter.isHeadingCaption(2))
+        assertFalse(chapter.isHeadingCaption(3))
+        assertFalse(figure.isHeadingCaption(2))
     }
 
     @Test
