@@ -13,14 +13,17 @@ class Answer(
     val readFailureAfter: Int? = null,
 )
 
-/** Answers GETs from [answers] by URL; an unknown URL can't be reached. Records what was asked and closed. */
+/**
+ * Answers GETs from [answers] by URL; an unknown URL refuses the connection. A test that means a host
+ * with no DNS record answers with an UnknownHostException. Records what was asked and closed.
+ */
 class FakeTransport(private val answers: Map<String, Answer>) : Transport {
     val asked = mutableListOf<HttpsUrl>()
     var closed = 0
 
     override fun get(url: HttpsUrl): Response {
         asked += url
-        val answer = answers[url.value] ?: throw java.net.UnknownHostException(url.value)
+        val answer = answers[url.value] ?: throw java.net.ConnectException("refused: ${url.value}")
         answer.connectFailure?.let { throw it }
         val body = answer.body.inputStream().let { stream -> answer.readFailureAfter?.let { FailingStream(stream, it) } ?: stream }
         return Response(answer.status, answer.landsAt?.let { HttpsUrl.parse(it) } ?: url, answer.length, body) { closed++ }

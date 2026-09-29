@@ -124,21 +124,37 @@ Ordered. Each item ends on its _done-when_.
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
   - Text outside the known blocks (loose `<div>` text, tables, `<pre>` line breaks) reaches a Page
     (`DESIGN.md` "What a Book shows"): Gutenberg's HTML contents table, War and Peace's cipher table, the
-    whole license. A table of inline text is one block (split at rows past a window); one whose cells hold
-    blocks is read block by block. Each paragraph in a list item is its own block; hidden, `<svg>` and
-    `<math>` text is skipped; Spine items marked `linear="no"` are skipped. Gutenberg's end-of-book lines
-    now sit between `textEnd` and the listed license, so the first Chapter after Back matter's start moves
-    back to it when no Chapter already starts there and no heading comes between (no second, "Chapter N"
-    row). Standard Ebooks Books keep their `backmatter` Spine items (colophon, uncopyright) as Back matter;
-    front matter stays dropped. Existing Places are re-found by their text (ADR 0002), by their own
-    block's text when a new block now sits within their snippet; the Shelf percent can shift slightly on
-    the next page turn, as the Book has more characters. Pride and Prejudice keeps 63 Chapters in both
-    Gutenberg editions, War and Peace 385 with one license row. The images EPUB 3 has 8 Spine items, the
-    last Gutenberg's cover wrapper page, whose "back" link shows after the license: Gutenberg doesn't mark
-    it `linear="no"`, so it stays (drop it before the images flip, with the drop caps).
-    _Open product question:_ Standard Ebooks' dedications, epigraphs, forewords and introductions are
-    marked `frontmatter` and dropped even when its table of contents lists them, while `CONTEXT.md` says a
-    listed preface is a Chapter. Keep dropping them, or keep listed front matter as Chapters?
+    whole license. A table of inline text is one block (split at rows past a window, and at a row where
+    the license starts); one whose cells hold blocks is read block by block. Each paragraph in a list
+    item is its own block; hidden, `<svg>` and `<math>` text is skipped; Spine items marked `linear="no"`
+    are skipped unless a table of contents lists them. Gutenberg's end-of-book lines now sit between
+    `textEnd` and the listed license, so the first Chapter after Back matter's start moves back to it when
+    no Chapter already starts there and no heading comes between (no second, "Chapter N" row). Standard
+    Ebooks Books keep their `backmatter` Spine items (colophon, uncopyright) as Back matter, and their
+    dedication, epigraph, foreword and other front matter: only the title page, half-title, imprint and
+    table of contents are dropped. Listed ones are Chapters, and the Book opens at its start, the first of
+    them (Alice on its epigraph; `scripts/ci.sh`'s dev start moves to Chapter I, the text it opened on).
+    Existing Places are re-found by their text (ADR 0002): where the most of the snippet still matches,
+    passing over the line breaks and whole blocks the parser now adds inside it (a list item's paragraphs
+    that ran together, a caption now read between two blocks). A Place still lands at its block's start
+    when its text is gone (text the parser now skips, or a new edition's), and where two spots match its
+    snippet equally (list items that open alike) only the stale block index tells them apart, so it can
+    land on the other. The Shelf percent can shift slightly on the next page turn, as the Book has more
+    characters. Pride and Prejudice keeps 63 Chapters in both Gutenberg editions, War and Peace 385 with
+    one license row. The images EPUB 3 has 8 Spine items, the last Gutenberg's cover wrapper page, whose
+    "back" link shows after the license: Gutenberg doesn't mark it `linear="no"`, so it stays (drop it
+    before the images flip, with the drop caps). _Decided:_ the owner wants dedications, epigraphs and
+    forewords readable, so a listed one is a Chapter, as `CONTEXT.md` says of a listed preface.
+  - QA fixes, Catalogue and Shelf: failed Catalogue fetches log their URL (no query, user info or
+    fragment) and cause under `Reader`; a typed host that doesn't resolve on a connected phone reads
+    "Couldn't find that address. Check the spelling.", still with Retry; a download that fails
+    Unreachable while the phone reports no internet connection reads "download failed while offline ·
+    tap to retry"; "Add" ends the Shelf's Edit; Add a Catalogue's placeholder is secondary text; a
+    detail page names the author as the list row did when that row is the Book and names the same
+    person. A pre-N4 Book with no author gets one when next opened, if its file names one (already so).
+    Note: Gutenberg search's intermittent HttpError is its own. The search template points at
+    m.gutenberg.org, which intermittently answers 504 (after about 5 s) instead of its usual 301 to
+    www.gutenberg.org; a retry a little later works. Fetching www directly is a possible follow-up.
   - Footer and speed fixes from the N4 walkthrough: a Page read faster than 600 wpm gives no speed
     sample (skimming had dragged the Progress line near zero for as long as the Tool ran); "Opening…"
     has "Back to Shelf" (a long Book takes seconds to open); the Progress line falls back to a short

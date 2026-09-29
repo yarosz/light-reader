@@ -99,6 +99,36 @@ class CataloguePagesTest {
     }
 
     @Test
+    fun `the detail page names the author as the Book's row did when it names the same person`() {
+        val editions = bookPage.entries.map { it.copy(title = "War and Peace", authors = listOf("Tolstoy, Leo, graf")) }
+        val opener = popular.entries.first().copy(title = "War and Peace", byline = "graf Leo Tolstoy")
+        val source = PageSource.Feed(url("https://www.gutenberg.org/ebooks/2600.opds"), opener)
+        assertEquals("graf Leo Tolstoy", detailAuthor(editions, source.opener))
+        assertEquals("Tolstoy, Leo, graf", detailAuthor(editions, PageSource.Root.opener), "no row opened it")
+        val release = newReleases.entries.first()
+        assertEquals(release, PageSource.Entry(release).opener)
+    }
+
+    @Test
+    fun `a row's byline that isn't the Editions' author, or a row that isn't the Book, never names the author`() {
+        val editions = bookPage.entries
+        val described = popular.entries.first().copy(byline = "A story of manners.")
+        assertEquals("Jane Austen", detailAuthor(editions, described), "a content line, with an Edition author")
+        val otherBook = popular.entries.first().copy(title = "War and Peace", byline = "graf Leo Tolstoy")
+        assertEquals("Jane Austen", detailAuthor(editions, otherBook), "a row titled as another Book")
+        val root = fixture("gutenberg-root.xml", "https://www.gutenberg.org/ebooks.opds/").entries.first()
+        val unnamed = editions.map { it.copy(authors = emptyList(), byline = null) }
+        assertNull(detailAuthor(unnamed, root), "a navigation row (\"${root.byline}\") that opened a one-Book feed")
+    }
+
+    @Test
+    fun `with no Edition author, the Book's row's byline names it`() {
+        val unnamed = bookPage.entries.map { it.copy(authors = emptyList(), byline = null) }
+        val opener = popular.entries.first().copy(byline = "Jane Austen")
+        assertEquals("Jane Austen", detailAuthor(unnamed, opener))
+    }
+
+    @Test
     fun `an entry with nothing to open or download goes nowhere`() {
         assertNull(entryTarget(popular.entries.first().copy(opens = null)))
     }

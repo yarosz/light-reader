@@ -68,6 +68,7 @@ NoHttps
 NotAnEpub
 CopyProtected
 UntrustedCertificate
+NoSuchHost
 
 # Catalogue feeds (Atom and OPDS)
 Acquisition
@@ -202,3 +203,10 @@ OpenFromShelf
 
 # The EPUB parser holds a table's SAX events back until it knows whether the table is one block.
 HeldEvent
+
+# A failed Catalogue fetch's log line (DESIGN.md "Catalogues"): the URL is a feed's, not a Book's source,
+# and "feed" is the wire format's word, never copy.
+catalogue fetch failed: ${url.forLog()}: $cause -> $reason
+at ${it.url.forLog()}
+not a feed$at
+HTTP ${it.status}$at

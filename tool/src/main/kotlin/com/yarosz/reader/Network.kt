@@ -1,5 +1,7 @@
 package com.yarosz.reader
 
+import android.util.Log
+import com.thelightphone.sdk.LightConnectivity
 import java.io.Closeable
 import java.io.IOException
 import java.io.InputStream
@@ -8,6 +10,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URL
+import java.net.UnknownHostException
 import java.security.cert.CertPathBuilderException
 import java.security.cert.CertPathValidatorException
 import java.security.cert.CertificateException
@@ -85,6 +88,13 @@ data object UntrustedCertificate : NetworkFailure
 
 /** The server answered with a status outside 2xx, such as 401 for a Catalogue that needs a login. */
 data class HttpError(val status: Int) : NetworkFailure
+
+/**
+ * The address's host has no DNS record, as a mistyped address has. Offline, every lookup fails the
+ * same way, so only an address the reader just typed, on a phone that reports a connection, reads as
+ * this (see [feedFailureCopy]); anywhere else it reads as Unreachable. Downloads never tell it apart.
+ */
+data object NoSuchHost : FeedFailure
 
 /** The response isn't an Atom feed (or an OpenSearch description with an Atom template). */
 data object Unreadable : FeedFailure
@@ -218,25 +228,79 @@ private fun isCertificateFailure(e: IOException): Boolean =
         it is CertificateException || it is CertPathValidatorException || it is CertPathBuilderException
     }
 
-fun fetchPage(transport: Transport, url: HttpsUrl): Fetched<CataloguePage> = fetch(transport, url, ::parseFeed)
+/**
+ * Asks whether the phone reports an internet connection, answering null when it can't say (the
+ * permission missing, say), so a caller never claims more than the phone did. The function holds
+ * only this connectivity, not the screen that made it, since a download keeps it until it lands.
+ */
+fun LightConnectivity.reporter(): () -> Boolean? = {
+    try {
+        currentStatus.isConnected
+    } catch (e: RuntimeException) {
+        null
+    }
+}
 
-/** The search template from an OpenSearch description, the document a [CataloguePage.search] names. */
-fun fetchSearch(transport: Transport, description: HttpsUrl): Fetched<SearchTemplate> = fetch(transport, description, ::parseOpenSearch)
+private const val TAG = "Reader"
 
-private fun <T> fetch(transport: Transport, url: HttpsUrl, read: (InputStream, HttpsUrl) -> T?): Fetched<T> {
+/** Logs why a Catalogue fetch failed; "Couldn't open" logs its reason the same way. */
+private fun logFeedFailure(line: String) {
+    Log.w(TAG, line)
+}
+
+/**
+ * This URL as a log may keep it: no userinfo, no fragment, and its query replaced by "?…", so a
+ * search's terms and any credentials stay out of logcat.
+ */
+internal fun HttpsUrl.forLog(): String = urlForLog(value)
+
+private fun urlForLog(url: String): String {
+    val bare = url.substringBefore('#')
+    val rest = bare.substringAfter("://")
+    val authorityEnd = rest.indexOfFirst { it == '/' || it == '?' }.let { if (it < 0) rest.length else it }
+    val tail = rest.substring(authorityEnd)
+    return bare.substringBefore("://") + "://" + rest.substring(0, authorityEnd).substringAfterLast('@') +
+        if ('?' in tail) tail.substringBefore('?') + "?…" else tail
+}
+
+/** [e] for a log line, each URL its message names (a redirect to http:// names its target) cut as [forLog] cuts one. */
+private fun exceptionForLog(e: Exception): String = URL_IN_TEXT.replace(e.toString()) { urlForLog(it.value) }
+
+private val URL_IN_TEXT = Regex("""\b[A-Za-z][A-Za-z0-9+.-]*://\S*[^\s.,;:)\]"'>]""")
+
+/**
+ * Fetches a Catalogue page. Each failure is logged through [log], with the URL (as [forLog] cuts it)
+ * and the status or exception behind it, since the copy the reader sees can't say which server
+ * answered or how.
+ */
+fun fetchPage(transport: Transport, url: HttpsUrl, log: (String) -> Unit = ::logFeedFailure): Fetched<CataloguePage> =
+    fetch(transport, url, log, ::parseFeed)
+
+/** The search template from an OpenSearch description, the document a [CataloguePage.search] names; logs a failure as [fetchPage] does. */
+fun fetchSearch(transport: Transport, description: HttpsUrl, log: (String) -> Unit = ::logFeedFailure): Fetched<SearchTemplate> =
+    fetch(transport, description, log, ::parseOpenSearch)
+
+private fun <T> fetch(transport: Transport, url: HttpsUrl, log: (String) -> Unit, read: (InputStream, HttpsUrl) -> T?): Fetched<T> {
+    fun failed(reason: FeedFailure, cause: String): Fetched.Failed {
+        log("catalogue fetch failed: ${url.forLog()}: $cause -> $reason")
+        return Fetched.Failed(reason)
+    }
     val response = try {
         transport.get(url)
+    } catch (e: UnknownHostException) {
+        return failed(NoSuchHost, exceptionForLog(e))
     } catch (e: IOException) {
-        return Fetched.Failed(unreachable(url, e))
+        return failed(unreachable(url, e), exceptionForLog(e))
     }
     return response.use {
-        if (it.status !in 200..299) return Fetched.Failed(HttpError(it.status))
+        val at = if (it.url == url) "" else " at ${it.url.forLog()}"
+        if (it.status !in 200..299) return failed(HttpError(it.status), "HTTP ${it.status}$at")
         try {
-            read(it.body, it.url)?.let { value -> Fetched.Ok(value) } ?: Fetched.Failed(Unreadable)
+            read(it.body, it.url)?.let { value -> Fetched.Ok(value) } ?: failed(Unreadable, "not a feed$at")
         } catch (e: SAXException) {
-            Fetched.Failed(Unreadable)
+            failed(Unreadable, exceptionForLog(e) + at)
         } catch (e: IOException) {
-            Fetched.Failed(Unreachable)
+            failed(Unreachable, exceptionForLog(e) + at)
         }
     }
 }

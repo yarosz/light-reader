@@ -148,8 +148,59 @@ class NetworkTest {
         assertEquals(Unreachable, reason("https://a.example.org/refused"))
         assertEquals(NoHttps, reason("http://a.example.org/refused"))
         assertEquals(Unreachable, reason("https://a.example.org/io"))
-        assertEquals(Unreachable, reason("https://offline.example.org/"))
+        assertEquals(Unreachable, reason("https://unlisted.example.org/"))
+        val noDns = FakeTransport(mapOf("https://nowhere.example.org/" to Answer(connectFailure = UnknownHostException("nowhere.example.org"))))
+        assertEquals(NoSuchHost, assertIs<Fetched.Failed>(fetchPage(noDns, url("https://nowhere.example.org/"))).reason)
         assertEquals(4, transport.closed)
+    }
+
+    @Test
+    fun `each failed fetch is logged with its URL, the status or exception behind it, and the failure it became`() {
+        val answers = mapOf(
+            "https://a.example.org/busy" to Answer(status = 504, landsAt = "https://www.example.org/busy"),
+            "https://a.example.org/html" to Answer(body = "<html/>".toByteArray()),
+            "https://a.example.org/text" to Answer(body = "Hello".toByteArray()),
+            "https://a.example.org/refused" to Answer(connectFailure = ConnectException("refused")),
+            "https://nowhere.example.org/osd" to Answer(connectFailure = UnknownHostException("nowhere.example.org")),
+        )
+        val transport = FakeTransport(answers)
+        val lines = mutableListOf<String>()
+        listOf("busy", "html", "text", "refused").forEach { fetchPage(transport, url("https://a.example.org/$it"), lines::add) }
+        fetchSearch(transport, url("https://nowhere.example.org/osd"), lines::add)
+        assertEquals(
+            listOf(
+                "catalogue fetch failed: https://a.example.org/busy: HTTP 504 at https://www.example.org/busy -> HttpError(status=504)",
+                "catalogue fetch failed: https://a.example.org/html: not a feed -> Unreadable",
+                "catalogue fetch failed: https://a.example.org/text: org.xml.sax.SAXParseException; lineNumber: 1; columnNumber: 1; " +
+                    "Content is not allowed in prolog. -> Unreadable",
+                "catalogue fetch failed: https://a.example.org/refused: java.net.ConnectException: refused -> Unreachable",
+                "catalogue fetch failed: https://nowhere.example.org/osd: java.net.UnknownHostException: nowhere.example.org -> NoSuchHost",
+            ),
+            lines,
+        )
+        fetchPage(FakeTransport(mapOf("https://a.example.org/" to Answer(body = atom))), url("https://a.example.org/"), lines::add)
+        assertEquals(5, lines.size, "a fetch that works logs nothing")
+    }
+
+    @Test
+    fun `a logged URL keeps no search terms, credentials or fragment, nor does an exception that names one`() {
+        val search = "https://me:secret@m.example.org/search.opds/?query=private%20terms#top"
+        val answers = mapOf(
+            search to Answer(status = 504, landsAt = "https://www.example.org/search.opds/?query=private%20terms"),
+            "https://a.example.org/osd?key=secret" to Answer(connectFailure = InsecureRedirectException("http://u:pw@b.example.org/x?query=private#f")),
+        )
+        val transport = FakeTransport(answers)
+        val lines = mutableListOf<String>()
+        fetchSearch(transport, url(search), lines::add)
+        fetchSearch(transport, url("https://a.example.org/osd?key=secret"), lines::add)
+        assertEquals(
+            listOf(
+                "catalogue fetch failed: https://m.example.org/search.opds/?…: HTTP 504 at https://www.example.org/search.opds/?… -> HttpError(status=504)",
+                "catalogue fetch failed: https://a.example.org/osd?…: com.yarosz.reader.InsecureRedirectException: redirected to " +
+                    "http://b.example.org/x?… -> NoHttps",
+            ),
+            lines,
+        )
     }
 
     @Test

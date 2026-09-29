@@ -89,7 +89,7 @@ class ShelfOwner(
     private var fileChanges = 0L
     private val changedAt = mutableMapOf<String, Long>()
 
-    private class Running(val job: Job, val result: CompletableDeferred<DownloadResult>)
+    private class Running(val job: Job, val result: CompletableDeferred<DownloadResult>, val connected: () -> Boolean?)
 
     private val loaded = scope.async(start = CoroutineStart.LAZY) {
         val (fromDisk, start) = withContext(io) { store.load() to devStartFile() }
@@ -125,9 +125,16 @@ class ShelfOwner(
      * over its Place and date (see [moveBook]). A retryable failure leaves "download failed · tap to
      * retry"; a permanent one leaves a [replacing] row that is on the Shelf saying why, and otherwise
      * nothing, for the caller to show. Removing the row ends the download
-     * as [DownloadResult.Removed].
+     * as [DownloadResult.Removed]. [connected] is whether the phone reports a connection (null when it
+     * can't say), asked when the download fails: see [Download.Status.Failed.offline].
      */
-    fun download(source: HttpsUrl, title: String, author: String?, replacing: String? = null): Deferred<DownloadResult> {
+    fun download(
+        source: HttpsUrl,
+        title: String,
+        author: String?,
+        replacing: String? = null,
+        connected: () -> Boolean? = { null },
+    ): Deferred<DownloadResult> {
         running[source]?.let { return it.result }
         downloads[source] = Download(title, author, downloads[source]?.startedAt ?: now(), Download.Status.Running, replacing)
         val result = CompletableDeferred<DownloadResult>()
@@ -144,7 +151,7 @@ class ShelfOwner(
             }
         }
         job.invokeOnCompletion { result.complete(DownloadResult.Removed) }
-        running[source] = Running(job, result)
+        running[source] = Running(job, result, connected)
         job.start()
         publish()
         return result
@@ -202,7 +209,7 @@ class ShelfOwner(
             (fetched as? Checked)?.discard()
             return DownloadResult.Removed
         }
-        running.remove(source)
+        val connected = running.remove(source)?.connected
         val download = downloads.getValue(source)
         val ended = when (fetched) {
             is Checked -> downloader.keep(fetched)
@@ -229,7 +236,8 @@ class ShelfOwner(
             }
             is DownloadState.Failed -> {
                 val replacesRow = download.replacing?.let { saver.data.books[it]?.onShelf } == true
-                if (ended.reason.isRetryable || replacesRow) downloads[source] = download.copy(status = Download.Status.Failed(ended.reason))
+                val offline = ended.reason == Unreachable && connected?.invoke() == false
+                if (ended.reason.isRetryable || replacesRow) downloads[source] = download.copy(status = Download.Status.Failed(ended.reason, offline))
                 else downloads.remove(source)
                 DownloadResult.Failed(ended.reason)
             }
