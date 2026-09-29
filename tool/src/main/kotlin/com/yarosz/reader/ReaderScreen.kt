@@ -51,6 +51,7 @@ import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.designVerticalPxToSp
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
+import kotlin.math.sign
 
 /** Reads the Book in [file], opened from the Shelf; back returns there. See [ReaderViewModel] for [start]. */
 class ReaderScreen(
@@ -226,13 +227,25 @@ class ReaderScreen(
     }
 }
 
-/** Whether changing the size from [step] by [delta] changes anything: not A− at the smallest size, nor A+ at the largest. */
-fun canChangeFont(step: Int, delta: Int): Boolean = step + delta in FONT_SIZES.indices
+/**
+ * Whether there is a size in [delta]'s direction from [step]: not for A− at the smallest size, nor A+ at the
+ * largest. A larger step than one is clamped by [ReaderViewModel.changeFont], so only its sign counts here.
+ */
+fun canChangeFont(step: Int, delta: Int): Boolean = step + delta.sign in FONT_SIZES.indices
+
+/** Which of a [ProgressLine]'s forms the footer shows. */
+enum class ProgressForm { Full, Short }
+
+/** The full form when its one line, [fullWidthPx] wide as drawn, fits in [availableWidthPx], else the short. */
+fun progressForm(fullWidthPx: Int, availableWidthPx: Int): ProgressForm =
+    if (fullWidthPx <= availableWidthPx) ProgressForm.Full else ProgressForm.Short
 
 /**
  * The footer's Progress line, one line in Detail and secondary text, centred: [line]'s full form when it fits
  * the width, measured as drawn at the system font scale, else its short form, ellipsised if even that
- * doesn't fit. The form not shown isn't placed, so a screen reader hears only the one on screen.
+ * doesn't fit. The form not shown isn't placed, so a screen reader hears only the one on screen. Its
+ * measure policy is a lambda, so it doesn't support intrinsic measurement: don't put it where a parent
+ * asks for intrinsics.
  */
 @Composable
 private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
@@ -247,8 +260,12 @@ private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
     )
     Layout(content = { Form(line?.full.orEmpty()); Form(line?.short.orEmpty()) }, modifier = modifier) { measurables, constraints ->
         val full = measurables[0].measure(constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity))
-        val shown = if (full.width <= constraints.maxWidth) full else measurables[1].measure(constraints.copy(minWidth = 0))
-        layout(constraints.maxWidth, shown.height) { shown.place((constraints.maxWidth - shown.width) / 2, 0) }
+        val shown = when (progressForm(full.width, constraints.maxWidth)) {
+            ProgressForm.Full -> full
+            ProgressForm.Short -> measurables[1].measure(constraints.copy(minWidth = 0))
+        }
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else shown.width
+        layout(width, shown.height) { shown.place((width - shown.width) / 2, 0) }
     }
 }
 

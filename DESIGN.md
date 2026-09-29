@@ -96,7 +96,7 @@ thread, when the Book opens, so a turn counts them without reading any text. On 
 
 | m | Line | Short form |
 |---|---|---|
-| under 1 | "almost done with this chapter" | "almost done" |
+| under 1 | "almost done with this chapter" | "under 1 min left" |
 | 1 to under 15 | "about ⌈m⌉ min left in this chapter" | "about ⌈m⌉ min left" |
 | 15 and over | "about ⌈m/5⌉×5 min left in this chapter" | "about ⌈m/5⌉×5 min left" |
 
@@ -106,9 +106,9 @@ Chapter whose whole text reads in under a minute at the current speed.
 **Reading speed.** 230 words a minute until there are 5 samples, then the median of the newest 20 or
 fewer. A sample is the words on a Page divided by the time on it. It counts only when the Page was
 reached by a forward turn of one Page and left by one, holds at least 20 words, was on screen for 2 s
-to 3 min, and was read at 600 words a minute or slower: faster is a skim, or a hunt for a place (a
-turn every 2.5 s is about 1,200), and a few minutes of it would drag every minutes line to nothing for
-the rest of the session. A back turn, a font change or relayout, opening Contents, a Chapter jump,
+to 3 min, and was read at 600 words a minute or slower: faster is a skim, or a hunt for a passage (50
+words every 2.5 s is 1,200), and a few minutes of it would drag the Progress line to nothing for as long
+as the Tool runs. A back turn, a font change or relayout, opening Contents, a Chapter jump,
 reopening the Book, or the Tool pausing drops the running timing. Samples belong to the reader: they are
 shared across Books, kept in memory for as long as the Tool runs, and never saved.
 

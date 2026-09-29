@@ -8,6 +8,7 @@ import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SimpleLightScreen
 import java.io.File
 import java.util.Locale
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -131,6 +132,8 @@ class ReaderViewModel(
                     publishLines()
                 }
                 .onFailure {
+                    // Leaving the Reader mid-open cancels it: that isn't a Book that couldn't be opened.
+                    if (it is CancellationException) throw it
                     Log.w(TAG, "couldn't open ${file.name}", it)
                     status.value = READING_COULDNT_OPEN
                 }
@@ -165,8 +168,8 @@ class ReaderViewModel(
     }
 
     fun changeFont(delta: Int) {
-        if (!canChangeFont(fontStep.value, delta)) return
-        val step = fontStep.value + delta
+        val step = (fontStep.value + delta).coerceIn(FONT_SIZES.indices)
+        if (step == fontStep.value) return
         fontStep.value = step
         saver.change { it.copy(settings = it.settings.copy(fontStep = step)) }
         timer.discard()

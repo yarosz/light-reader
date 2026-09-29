@@ -123,13 +123,11 @@ Ordered. Each item ends on its _done-when_.
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
   - Footer and speed fixes from the N4 walkthrough: a Page read faster than 600 wpm gives no speed
-    sample (skimming had dragged the minutes line to "almost done" for the session); "Opening…" has
-    "Back to Shelf" (a long Book takes seconds to open); the Progress line falls back to a short form
-    ("about 10 min left", "almost done") when the full one doesn't fit, as at font scale 1.5; A− and A+
-    show disabled at the smallest and largest sizes.
-  A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
-  book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
-  `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's
+    sample (skimming had dragged the Progress line near zero for as long as the Tool ran); "Opening…"
+    has "Back to Shelf" (a long Book takes seconds to open); the Progress line falls back to a short
+    form ("about 10 min left", "under 1 min left") when the full one doesn't fit, as at font scale 1.5;
+    A− and A+ show disabled at the smallest and largest sizes.
+  _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's
   no-images EPUB 2) shows its 61 novel Chapters, "Chapter I." to "CHAPTER LXI.", plus the title page and
   license its table of contents lists, across 15 Spine items; the images EPUB 3 gives the same 63
   Chapters across 7.

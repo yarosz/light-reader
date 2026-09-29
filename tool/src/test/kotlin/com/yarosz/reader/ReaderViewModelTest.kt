@@ -1,6 +1,7 @@
 package com.yarosz.reader
 
 import android.view.KeyEvent
+import androidx.lifecycle.viewModelScope
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
@@ -17,12 +18,17 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
-/** Time on a Page in the speed tests: a [LineMeasurer] Page holds about 900 words, 360 a minute at this. */
+/**
+ * Time on a Page in the speed tests: a [LineMeasurer] Page at [DEFAULT_FONT_STEP] holds about 900 words, 360 a
+ * minute at this, under [SAMPLE_MAX_WPM]. The headroom holds only there: a step-0 Page is about 1,800 words,
+ * 720 a minute.
+ */
 private const val READ_MS = 150_000L
 
 /**
@@ -445,7 +451,7 @@ class ReaderViewModelTest {
     fun `leaving the last Page for the end page gives no sample, since the end page isn't a Page`() {
         val vm = reading()
         vm.toLastPage()
-        assertTrue(vm.shownWords >= SAMPLE_MIN_WORDS)
+        assertTrue(sampleWpm(vm.shownWords, READ_MS) != null, "the last Page would otherwise count")
         repeat(MEASURED_AFTER - 1) { speed.record(100, 20_000) }
         vm.readThenTurn()
         assertTrue(vm.atEnd.value)
@@ -475,6 +481,31 @@ class ReaderViewModelTest {
         assertTrue(canChangeFont(FONT_SIZES.lastIndex, -1))
         assertFalse(canChangeFont(FONT_SIZES.lastIndex, +1))
         assertTrue(canChangeFont(DEFAULT_FONT_STEP, -1) && canChangeFont(DEFAULT_FONT_STEP, +1))
+    }
+
+    @Test
+    fun `a change of 3 steps goes as far as the sizes go, and only its direction decides whether it can`() {
+        assertTrue(canChangeFont(DEFAULT_FONT_STEP, +3) && canChangeFont(DEFAULT_FONT_STEP, -3))
+        assertFalse(canChangeFont(0, -3))
+        assertFalse(canChangeFont(FONT_SIZES.lastIndex, +3))
+        val vm = reading()
+        vm.changeFont(-3)
+        assertEquals(0, vm.fontStep.value)
+        vm.changeFont(+3)
+        assertEquals(3, vm.fontStep.value)
+        vm.changeFont(+3)
+        assertEquals(FONT_SIZES.lastIndex, vm.fontStep.value)
+    }
+
+    @Test
+    fun `leaving the Reader mid-open does nothing, neither "couldn't open" nor a Book`() {
+        val vm = reader()
+        vm.openBook()
+        main.scheduler.runCurrent()
+        vm.viewModelScope.cancel()
+        settle()
+        assertEquals(READING_OPENING, vm.status.value)
+        assertNull(vm.book.value)
     }
 
     /**
@@ -560,7 +591,7 @@ class ReaderViewModelTest {
         assertTrue(vm.inBackMatter)
         assertEquals(bookEnd, vm.pageEnd)
         val words = WordIndex(book.spineItems).between(vm.pageStart, vm.pageEnd)
-        assertTrue(words >= SAMPLE_MIN_WORDS, "the last Page has $words words")
+        assertTrue(sampleWpm(words, READ_MS) != null, "the last Page, $words words, would otherwise count")
         repeat(MEASURED_AFTER - 1) { speed.record(100, 20_000) }
         vm.readThenTurn()
         assertSame(shown, vm.frame.value)

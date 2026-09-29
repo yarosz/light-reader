@@ -11,7 +11,7 @@ const val READING_COULDNT_OPEN = "Couldn't open this Book."
 const val END_PAGE_TEXT = "The end."
 const val BACK_TO_SHELF = "Back to Shelf"
 const val MINUTES_ALMOST_DONE = "almost done with this chapter"
-const val MINUTES_ALMOST_DONE_SHORT = "almost done"
+const val MINUTES_UNDER_ONE_SHORT = "under 1 min left"
 const val CONTENTS_TITLE = "Contents"
 const val CONTENTS_HERE = "you're here"
 const val CONTENTS_SHELF = "Shelf"
@@ -33,7 +33,7 @@ const val SAMPLE_MIN_MS = 2_000L
 const val SAMPLE_MAX_MS = 180_000L
 
 /**
- * A Page read faster than this gives no sample: it was skimmed, or turned past while hunting for a place,
+ * A Page read faster than this gives no sample: it was skimmed, or turned past while hunting for a passage,
  * and a few minutes of that would otherwise drag the median, and every minutes line, down for the session.
  */
 const val SAMPLE_MAX_WPM = 600.0
@@ -113,7 +113,7 @@ fun OpenBook.minutesLine(words: WordIndex, point: SpinePoint, wpm: Double): Prog
 fun minutesLeftCopy(raw: Double): ProgressLine {
     val minutes = (raw * 1e9).roundToLong() / 1e9
     val shown = when {
-        minutes < 1 -> return ProgressLine(MINUTES_ALMOST_DONE, MINUTES_ALMOST_DONE_SHORT)
+        minutes < 1 -> return ProgressLine(MINUTES_ALMOST_DONE, MINUTES_UNDER_ONE_SHORT)
         minutes < 15 -> ceil(minutes).toInt()
         else -> ceil(minutes / 5).toInt() * 5
     }
