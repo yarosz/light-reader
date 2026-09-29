@@ -114,6 +114,11 @@ Ordered. Each item ends on its _done-when_.
     Chapter of the text); a jump lands on a Page starting exactly at the Chapter, laid out afresh, as the
     Place, untimed; it clears Finished in the text and keeps it in Back matter. Opening Contents drops
     the Page's timing. The volume keys stay LightOS's there until N5.
+  - Leaving a Book: every Reader state but "Opening…" shows a way to the Shelf, since the back gesture
+    can't be seen. Contents has "Shelf" on the right of its bar (ignoring taps for half a second, so a
+    double tap on the top line stays in Contents); "Couldn't open this Book." and "This Book has no
+    text." have "Back to Shelf" under them, as the end page does. `scripts/ci.sh` checks that Contents'
+    Shelf reaches the Shelf on the emulator and the LP3.
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's

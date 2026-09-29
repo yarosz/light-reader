@@ -64,7 +64,11 @@ copy.
 
 The reading view until N5 moves its chrome into an overlay. Product rulings from the advisor (N4,
 2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book that can't be opened reads "Couldn't
-open this Book." (the reason goes to the log), and one with no text reads "This Book has no text."
+open this Book." (the reason goes to the log), and one with no text reads "This Book has no text." Under
+either is "Back to Shelf", as on the end page. System back (the LP3's back gesture) leaves the Reader
+from anywhere, but a Tool can't show it, so every Reader state but the brief "Opening…" has a visible way
+to the Shelf: "Back to Shelf" where there is no Page, and on a Page the top line, then "Shelf" in
+Contents.
 
 **Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
 goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
@@ -115,16 +119,19 @@ Book's last Page does nothing, and no second end page shows. A Place saved there
 
 **Contents.** Tapping the top line opens it, from a Page, the end page, front matter or Back matter, and
 drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
-with the bar's back, and one row per Chapter in order, each the Chapter's title verbatim at full
-strength; Back matter's rows follow the text's with no divider. The current row alone has the detail
-line "you're here": the Chapter holding the Place (of two starting at one point, the later), or on the
-end page the last Chapter of the text. In front matter no row is current. The list opens with the row
-before the current one at the top, so the current row is second, or with the current row at the top
-when it is first; with no current row it opens at the top. Tapping a row goes to the Page that starts
-at that Chapter's start, laid out afresh from there so its heading tops the Page, even for the current
-Chapter; the Pages before it may tile differently, as after a font change. That Page is the Place, it
-is untimed, and the jump leaves the end page. Back, from the bar or the system, changes nothing else. The
-volume keys stay LightOS's on this screen.
+with the bar's back on the left and "Shelf" on the right, and one row per Chapter in order, each the
+Chapter's title verbatim at full strength; Back matter's rows follow the text's with no divider. The
+current row alone has the detail line "you're here": the Chapter holding the Place (of two starting at
+one point, the later), or on the end page the last Chapter of the text. In front matter no row is
+current. The list opens with the row before the current one at the top, so the current row is second, or
+with the current row at the top when it is first; with no current row it opens at the top. Tapping a row
+goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
+Page, even for the current Chapter; the Pages before it may tile differently, as after a font change.
+That Page is the Place, it is untimed, and the jump leaves the end page. Back, from the bar or the
+system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
+no frame of the reading view, and keeps the Place and Finished as they were. For half a second after
+Contents opens, "Shelf" does nothing, so a double tap on the top line stays in Contents. The volume keys
+stay LightOS's on this screen.
 
 **Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
 either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so
