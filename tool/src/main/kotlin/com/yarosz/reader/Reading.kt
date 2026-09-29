@@ -95,7 +95,7 @@ fun backwardLanding(cached: Pass<*>?, key: LayoutKey, length: Int): Landing {
 }
 
 /**
- * The reading session's layout state: the passes of recently read Spine items at the current [LayoutKey],
+ * The open Book's layout state: the passes of recently read Spine items at the current [LayoutKey],
  * the Page being shown, and which Page follows or precedes it. Measuring is injected so this stays
  * pure: [measure] runs synchronously when a Page can't show without it, and [prefetchTarget] names the
  * window worth measuring in the background. Passes are cached per Spine item, most recently shown last,
@@ -108,7 +108,7 @@ class Reading<M>(
     private val windowChars: Int = WINDOW_CHARS,
 ) {
     private val passes = LinkedHashMap<Int, Pass<M>>()
-    /** Passes this session has started; also the next pass's id. */
+    /** Passes this Reading has started; also the next pass's id. */
     var passesStarted = 0
         private set
     private var shown: Shown<M>? = null

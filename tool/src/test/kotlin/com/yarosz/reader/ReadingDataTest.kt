@@ -352,7 +352,7 @@ private fun randomData(rnd: Random) = ReadingData(
     extras = randomExtras(rnd, setOf("schemaVersion", "settings", "books")),
 )
 
-/** Another process's view of [disk]: some of its Books with changed entries, plus Books of its own. */
+/** Another process's view of [disk]: some of its Books with changed fields, plus Books of its own. */
 private fun overlapping(disk: ReadingData, rnd: Random): ReadingData {
     val other = randomData(rnd)
     val shared = disk.books.keys.filter { rnd.nextBoolean() }.associateWith { randomEntry(rnd) }

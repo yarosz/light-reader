@@ -64,14 +64,14 @@ _Avoid_: transfer
 
 **Chapter**:
 A division named in the Book's own table of contents, running until the next one or the end of the
-Book. When the table of contents nests, only its innermost divisions are Chapters. When a Book has no
-usable table of contents, each Spine item counts as a Chapter.
+Book. When the table of contents nests, only divisions with none nested under them are Chapters. When
+a Book has no usable table of contents, each Spine item counts as a Chapter.
 _Avoid_: section
 
 **Front matter**:
 The part of a Book before its first Chapter, such as the title page and copyright page. It belongs to
-no Chapter.
-_Avoid_: preface, intro
+no Chapter. A preface the table of contents lists is a Chapter, not front matter.
+_Avoid_: prelims
 
 **Spine item**:
 One of the documents a Book is made of, in reading order. A Spine item may hold several Chapters,
