@@ -198,14 +198,20 @@ shelf_check() {  # serial: after the round trip, the reading data must be byte-i
 }
 clear_starts() {  # on any exit: a dev-start left behind would open every later launch at Alice's Chapter I, and
                   # the Reader it launched saves nothing, so stop it before anyone reads in it. The Alice
-                  # fixture goes only from devices this run pushed it to.
+                  # fixture goes only from devices this run pushed it to, and never while the reading data
+                  # names it as a Book's file: that Shelf row would read "file missing".
   for s in $dev_started; do
     "$adb" -s "$s" shell run-as $pkg rm -f files/dev-start || echo "ci: could not remove files/dev-start on $s" >&2
     "$adb" -s "$s" shell am force-stop $pkg || echo "ci: could not stop $pkg on $s" >&2
   done
   for s in $pushed_alice; do
-    "$adb" -s "$s" shell run-as $pkg rm -f files/alice.epub files/alice.epub.ci \
-      || echo "ci: could not remove the Alice fixture on $s" >&2
+    if "$adb" -s "$s" shell run-as $pkg grep -q alice.epub files/reading-data.json 2>/dev/null; then
+      "$adb" -s "$s" shell run-as $pkg rm -f files/alice.epub.ci
+      echo "ci: kept the Alice fixture on $s: the Shelf lists it" >&2
+    else
+      "$adb" -s "$s" shell run-as $pkg rm -f files/alice.epub files/alice.epub.ci \
+        || echo "ci: could not remove the Alice fixture on $s" >&2
+    fi
   done
 }
 dev_started=""
