@@ -202,7 +202,8 @@ Chapter's title verbatim at full strength; Back matter's rows follow the text's 
 current row alone has the detail line "you're here": the Chapter the Page goes by, as the top line
 names it (of two starting at one point, the later), or on the end page the last Chapter of the text.
 In Front matter no row is current. The list opens with the row before the current one at the top, so the current row is second, or
-with the current row at the top when it is first; with no current row it opens at the top. Tapping a row
+with the current row at the top when it is first; with no current row it opens at the top. The list has a top and a bottom; "start" and "end" stay the
+Book's and a Chapter's. Tapping a row
 goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
 Page (Back matter's first row may open on Back matter's opening lines instead), even for the current
 Chapter, and even when that line starts mid-word (a Chapter anchored inside a paragraph): a jump never
@@ -211,8 +212,7 @@ after a font change. That Page is the Place, it is untimed, and the jump leaves 
 the bar or the system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
 no frame of the reading view, and keeps the Place and Finished as they were. For half a second after
 Contents opens, "Shelf" does nothing, so a double tap on the top line stays in Contents. The volume keys
-stay LightOS's on this screen. The list has a top and a bottom; "start" and "end" stay the Book's and a
-Chapter's.
+stay LightOS's on this screen.
 
 **Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
 either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so
@@ -234,9 +234,9 @@ comes from it (see "Shelf"). The minutes left in a Chapter are never stored.
 The Tool's first screen: the Books on this phone. Product rulings from the advisor (2026-09-27); copy
 is verbatim, and `Shelf.kt` holds it.
 
-**Top bar.** `LightTopBar` with "Reader" in the centre, which opens About (N5). The left slot is "Edit", free because the Shelf
-is the root screen; it reads "Done" while editing and is hidden when the Shelf is empty. The right
-button is "Add", which opens the list of Catalogues.
+**Top bar.** `LightTopBar` with "Reader" in the centre, which opens About (N5). The left slot is "Edit",
+free because the Shelf is the root screen; it reads "Done" while editing and is hidden when the Shelf is
+empty. The right button is "Add", which opens the list of Catalogues.
 
 **Order.** Books in progress by most recently read, then never-opened Books by date added, then
 finished Books at the bottom. The top row is "continue reading", so there is no separate row. Within
@@ -417,11 +417,11 @@ otherwise wins when the file lands.
 of them between, so leaving the Reader (system back, "Shelf" in Contents, "Back to Shelf") always lands
 on the Shelf. Where the reader was in the Catalogue (a search, say) isn't kept: "Add" opens the list
 afresh. The page stays while a download runs and follows it: "downloading…", then "Read" when it lands.
-The download belongs to the Shelf, so leaving the page doesn't stop it, and the Shelf shows it as a
-row meanwhile. A failure shows its copy above the action: a retryable one turns the action into
-"Retry", and a permanent one (CopyProtected, NotAnEpub, NoHttps) removes it and adds nothing to the
-Shelf. CopyProtected will point to About's list of places to find DRM-free Books, which arrives with
-N5; until then it shows its one line.
+The download belongs to the Shelf, so leaving the page doesn't stop it, and the Shelf shows it as a row
+meanwhile. A failure shows its copy above the action: a retryable one turns the action into "Retry", and
+a permanent one (CopyProtected, NotAnEpub, NoHttps) removes it and adds nothing to the Shelf.
+CopyProtected will point to About's list of places to find Books without copy protection, which arrives
+with N5; until then it shows its one line.
 
 **Failure copy.** One plain line, with "Retry" wherever retrying can help and never a dead button.
 
