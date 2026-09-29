@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -65,6 +67,7 @@ class ReaderScreen(
         val book by viewModel.book.collectAsState()
         val status by viewModel.status.collectAsState()
         val measurer = rememberTextMeasurer(cacheSize = 0)
+        val source = MeasurerSource(LocalDensity.current, LocalFontFamilyResolver.current, LocalLayoutDirection.current)
         LaunchedEffect(measurer) { viewModel.warmUp(measurer) }
 
         LightTheme(colors = themeColors) {
@@ -75,7 +78,7 @@ class ReaderScreen(
                     when {
                         opened == null -> LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
                         opened.spineItems.isEmpty() -> LightText(text = READING_NO_TEXT, variant = LightTextVariant.Copy, lighten = true)
-                        else -> Reader(measurer, topLineHeight)
+                        else -> Reader(measurer, source, topLineHeight)
                     }
                 }
                 if (opened != null && opened.spineItems.isNotEmpty()) {
@@ -105,7 +108,7 @@ class ReaderScreen(
      * which opens Contents, lies over it and the top of the Page ([contentsTargetHeight]).
      */
     @Composable
-    private fun Reader(measurer: TextMeasurer, topLineHeight: Dp) {
+    private fun Reader(measurer: TextMeasurer, source: MeasurerSource, topLineHeight: Dp) {
         val frame by viewModel.frame.collectAsState()
         val atEnd by viewModel.atEnd.collectAsState()
         val topLine by viewModel.topLine.collectAsState()
@@ -127,9 +130,8 @@ class ReaderScreen(
             }) {
                 val widthPx = constraints.maxWidth
                 val pageHeightPx = constraints.maxHeight
-                val density = LocalDensity.current
-                val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx, density) {
-                    Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx, density)
+                val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx) {
+                    Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx, source)
                 }
                 LaunchedEffect(typesetter) { viewModel.bind(typesetter) }
                 val shown = frame ?: return@BoxWithConstraints

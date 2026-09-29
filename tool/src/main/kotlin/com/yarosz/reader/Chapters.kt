@@ -56,7 +56,8 @@ fun OpenBook.chapterAt(point: SpinePoint): Int? =
 data class Contents(val titles: List<String>, val current: Int?)
 
 /**
- * Contents for a reader at [place], the start of the Page being read, or on the end page when [atEnd]. The
+ * Contents for a reader at [place], the point the Page being read goes by (its start, or a Chapter starting
+ * later in its first line), or on the end page when [atEnd]. The
  * current row is the Chapter holding [place] ([chapterAt]), in text or Back matter, and on the end page the
  * last Chapter of the text, the last starting before [OpenBook.textEnd]; in front matter no row is current.
  */

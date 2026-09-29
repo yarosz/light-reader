@@ -66,9 +66,10 @@ The reading view until N5 moves its chrome into an overlay. Product rulings from
 2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book that can't be opened reads "Couldn't
 open this Book." (the reason goes to the log), and one with no text reads "This Book has no text."
 
-**Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter holding the
-Page's start, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the
-end and centred. It is one Detail line high: the style's line height at the system font scale, so the
+**Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
+goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
+centred. A Page goes by its start, or, when a Chapter starts later in its first line (a table of contents
+may point mid-line), by the last Chapter starting there, so a jump names the Chapter chosen. It is one Detail line high: the style's line height at the system font scale, so the
 large-text setting grows it and nothing clips, but no title changes it (a script drawn in a fallback
 font with a taller line would otherwise re-pack the Pages at a Chapter change). It has 4 dp below it.
 In front matter, and on the end page, it shows the Book's title as the Shelf shows it. Tapping it opens
@@ -78,7 +79,7 @@ that is taller, so it takes the top of the Page; the rest of the Page turns Page
 its tap target, and the Progress line between them.
 The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.
 
-**Progress line.** The minutes left in the Chapter: the words from the Page's start to the Chapter's
+**Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
 end (the next Chapter's start, or the end of the Book's text if that comes first), divided by the
 reading speed. A word is a whitespace-separated run of text. The words are indexed once, off the main
 thread, when the Book opens, so a turn counts them without reading any text. On the raw minutes m:
