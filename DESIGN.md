@@ -48,6 +48,12 @@ it is a legal end, with the same 70% guard: every Page end is legal unless the g
 remains asymmetric: a backward pass may tile a stretch differently (but as legally) from a forward
 one, and a cold backward crossing may leave a short first Page in the Spine item (ADR 0007).
 
+They hold at the Place too. After a font change the Place can fall on a line that starts mid-word (the
+tail of "hor-/rors"); the Page then starts on the nearest line above that starts a word, so the Page
+before it ends legally, and the Place sits a line or two down that Page. Guard: if that line is more
+than 30% of a Page above the Place's line (a long cascade), the Place's own line starts the Page. The
+Place itself doesn't move, so repeated font changes can't drift it.
+
 ## Paragraph indent
 
 A paragraph gets a first-line indent only when it follows another paragraph (Standard Ebooks' p + p

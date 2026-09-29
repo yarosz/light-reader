@@ -54,6 +54,32 @@ class PaginationTest {
         assertEquals(listOf(0..2, 3..11), pagesBefore(lines(headings = setOf(1))))
     }
 
+    /** Packed from [anchor]: the line range of the Page above the anchor's Page, and the anchor's Page's first line. */
+    private fun around(lines: List<LineMetrics>, anchor: Int): Pair<IntRange?, Int> {
+        val packed = pack(listOf(wholeWindow(150)), listOf(lines), anchor, 100f)
+        return lineRanges(lines, packed.before).lastOrNull() to lineRanges(lines, packed.fromAnchor).first().first
+    }
+
+    @Test
+    fun `a Place right after a soft-hyphen break starts its Page on the line with the word's first half`() {
+        assertEquals(1..10 to 11, around(lines(midWord = setOf(11)), 120))
+    }
+
+    @Test
+    fun `a Place inside the second half of a hyphenated word starts its Page on the word's first half`() {
+        assertEquals(1..10 to 11, around(lines(midWord = setOf(11)), 123))
+    }
+
+    @Test
+    fun `a Place under a cascade starts its Page above the whole cascade while that is within 30 percent of a Page`() {
+        assertEquals(0..9 to 10, around(lines(midWord = setOf(10, 11)), 125))
+    }
+
+    @Test
+    fun `a Place under a cascade reaching further than 30 percent of a Page keeps its own line`() {
+        assertEquals(2..11 to 12, around(lines(midWord = setOf(8, 9, 10, 11)), 120))
+    }
+
     @Test
     fun `endsAtBreak accepts whitespace and paragraph ends, rejects mid-word breaks`() {
         assertTrue(endsAtBreak("the quick", 4))

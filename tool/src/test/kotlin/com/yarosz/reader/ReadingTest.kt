@@ -112,6 +112,34 @@ class ReadingTest {
         assertTrue(book.measures > measures, "a fresh pass measures")
     }
 
+    /**
+     * A+ up to the largest size and A− down to the smallest, at a Place the font changes never move: every
+     * Page shown holds the Place and starts on a word, except on the Place's own line when the word's first
+     * half lies more than 30% of a Page above it (a long cascade of hyphenated lines).
+     */
+    @Test
+    fun `font changes at a Place show a Page holding it that starts on a word whenever the guard allows`() {
+        repeat(200) { seed ->
+            val book = Fixture(seed, count = 1, windowChars = 3_000)
+            val place = Random(seed).nextInt(0, book.spineItems[0].text.length)
+            for (step in (DEFAULT_FONT_STEP..FONT_SIZES.lastIndex) + (FONT_SIZES.lastIndex - 1 downTo 0)) {
+                val (pass, page) = book.reading.open(0, place, key.copy(fontStep = step))
+                assertTrue(place >= page.start && place < page.end, "seed $seed step $step: $place not on $page")
+                val lines = book.linesOf(pass)[page.bands.first().window]
+                val first = lines.indexOfFirst { it.start == page.start }
+                if (first == 0 || lines[first - 1].endsAtBreak) continue
+                var wordStart = first
+                while (wordStart > 0 && !lines[wordStart - 1].endsAtBreak) wordStart--
+                assertEquals(lines.indexContaining(place) { it.start }, first, "seed $seed step $step: $page starts mid-word above the Place's line")
+                val reach = (1 - MIN_PAGE_FILL) * key.pageHeightPx
+                assertTrue(
+                    lines[first].top - lines[wordStart].top > reach || lines[first].bottom - lines[wordStart].top > key.pageHeightPx,
+                    "seed $seed step $step: $page starts mid-word",
+                )
+            }
+        }
+    }
+
     @Test
     fun `background targets cover two windows past the Page first, then two before, and follow the reader`() {
         val book = (0..200).asSequence().map { Fixture(it, count = 1, windowChars = 1_500) }.first { windows(it.spineItems[0], 1_500).size >= 8 }

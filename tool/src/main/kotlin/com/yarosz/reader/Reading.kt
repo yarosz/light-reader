@@ -132,8 +132,8 @@ class Reading<M>(
     /**
      * Shows the Page whose first line holds [offset] in Spine item [item] at [key], as a jump to a Chapter
      * needs: from a cached pass only when it has such a Page, else a new pass anchored there, whose first Page
-     * starts on [offset]'s line ([pack]). At a line start, as Chapters mostly are, that Page starts exactly at
-     * [offset]. An [offset] at the end of a Spine item jumps to the next one's start.
+     * starts on [offset]'s line ([pack]; a line or two above when that line starts mid-word, which a block
+     * start never does). At a line start, as Chapters mostly are, that Page starts exactly at [offset]. An [offset] at the end of a Spine item jumps to the next one's start.
      */
     fun jump(item: Int, offset: Int, key: LayoutKey): Shown<M> {
         passes.values.removeAll { it.key != key }

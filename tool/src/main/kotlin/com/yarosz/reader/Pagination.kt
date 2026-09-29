@@ -20,7 +20,8 @@ data class Page(val start: Int, val end: Int, val bands: List<Band>)
 
 /**
  * Pages packed outward from an anchor. [before] ends where [fromAnchor] begins, and [fromAnchor]'s
- * first page starts on the line holding the anchor. [needBefore] and [needAfter] are null when no
+ * first page starts on the line holding the anchor, or a line or two above it where that line starts
+ * mid-word (see [pack]). [needBefore] and [needAfter] are null when no
  * unmeasured window can add pages on that side; otherwise the index of the next one that could, or the
  * anchor's own window, which must be measured first.
  *
@@ -58,7 +59,8 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  * for a window not measured yet, one entry per window. A negative anchor packs from the Spine item's start;
  * one at or past its end packs everything backward.
  *
- * The line holding the anchor starts a page. Forward from it, each page ends on the last fitting line
+ * The line holding the anchor starts a page, or, when that line starts mid-word, the nearest line above it
+ * that starts a word, if that is within 1 − [MIN_PAGE_FILL] of a page (see [wordStart]). Forward from it, each page ends on the last fitting line
  * that ends at a legal break and isn't a heading, or, if no such line leaves the page at least
  * [MIN_PAGE_FILL] full, on the last line that fits. Backward from it the rules mirror: each page ends
  * where the page below starts, and takes the earliest fitting start whose preceding line is such a legal
@@ -93,7 +95,7 @@ fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pa
     while (hi < windows.lastIndex && lines[hi + 1] != null) hi++
     val stacked = stack(lines.subList(lo, hi + 1).filterNotNull(), lo, at - lo)
     val runEnd = windows[hi].end
-    val from = if (anchor >= runEnd) stacked.size else stacked.indexContaining(anchor) { it.line.start }
+    val from = if (anchor >= runEnd) stacked.size else wordStart(stacked, stacked.indexContaining(anchor) { it.line.start }, pageHeight)
 
     fun page(first: Int, last: Int): Page {
         val end = if (last < stacked.lastIndex) stacked[last + 1].line.start else runEnd
@@ -142,6 +144,21 @@ fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pa
         needBefore = (lo - 1).takeIf { lo > 0 },
         needAfter = (hi + 1).takeIf { hi < windows.lastIndex },
     )
+}
+
+/**
+ * The line a page anchored on line [line] starts on: the nearest line at or above it that starts a word,
+ * so a Place from another layout that falls on the tail of a hyphenated word ("hor-/rors") shows the whole
+ * word, and the page above ends at a legal break. Only when that line is more than 1 − [MIN_PAGE_FILL] of
+ * a page up (a long cascade), or would push [line] off the page, does [line] itself start the page. A
+ * window's first line always starts a word (windows are cut at blocks), so the answer never depends on
+ * the window above, and the packer stays deterministic.
+ */
+private fun wordStart(stacked: List<Stacked>, line: Int, pageHeight: Float): Int {
+    var start = line
+    while (start > 0 && stacked[start - 1].window == stacked[start].window && !stacked[start - 1].line.endsAtBreak) start--
+    val fits = stacked[line].y - stacked[start].y <= (1 - MIN_PAGE_FILL) * pageHeight && stacked[line].yEnd - stacked[start].y <= pageHeight
+    return if (fits) start else line
 }
 
 /**

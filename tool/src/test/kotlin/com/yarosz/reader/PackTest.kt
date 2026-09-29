@@ -36,12 +36,26 @@ class PackTest {
 
     private fun anchorLine(case: Case, anchor: Int) = case.lines.indexContaining(anchor) { it.start }
 
+    /**
+     * The line the anchor's Page starts on: the nearest line at or above the anchor's that starts a word
+     * (the line above ends at a legal break), when that is at most 30% of a Page higher and keeps the
+     * anchor's line on the Page; otherwise the anchor's own line.
+     */
+    private fun startLine(lines: List<LineMetrics>, anchorLine: Int, height: Float): Int {
+        var s = anchorLine
+        while (s > 0 && !lines[s - 1].endsAtBreak) s--
+        val fits = lines[anchorLine].top - lines[s].top <= (1 - MIN_PAGE_FILL) * height && lines[anchorLine].bottom - lines[s].top <= height
+        return if (fits) s else anchorLine
+    }
+
+    private fun startLine(case: Case, anchor: Int) = startLine(case.lines, anchorLine(case, anchor), case.height)
+
     private fun textRanges(pages: List<Page>) = pages.map { it.start to it.end }
 
     private fun lineCount(case: Case, page: Page) = case.lines.count { it.start >= page.start && it.start < page.end }
 
     @Test
-    fun `with every window measured, pages tile the Spine item on line starts and the anchor's page starts at its line`() = forAll { rnd ->
+    fun `with every window measured, pages tile the Spine item on line starts and the anchor's page starts at its start line`() = forAll { rnd ->
         val case = randomCase(rnd)
         val anchor = randomAnchor(rnd, case)
         val packed = pack(case.windows, case.cut, anchor, case.height)
@@ -53,7 +67,7 @@ class PackTest {
         val lineStarts = case.lines.map { it.start }.toSet()
         packed.pages.forEach { assertTrue(it.start in lineStarts, "page $it starts mid-line") }
         if (anchor < case.length) {
-            assertEquals(case.lines[anchorLine(case, anchor)].start, packed.anchorPage?.start)
+            assertEquals(case.lines[startLine(case, anchor)].start, packed.anchorPage?.start)
         } else {
             assertNull(packed.anchorPage)
             assertEquals(emptyList(), packed.fromAnchor)
@@ -89,7 +103,7 @@ class PackTest {
      * lays out a whole Spine item, so a one-ulp seam difference there would not be a product fault).
      */
     @Test
-    fun `the window split changes no page, and forward pages match the whole-Spine-item pagination from the anchor line`() = forAll { rnd ->
+    fun `the window split changes no page, and forward pages match the whole-Spine-item pagination from the start line`() = forAll { rnd ->
         val case = randomCase(rnd)
         val anchor = randomAnchor(rnd, case)
         val split = pack(case.windows, case.cut, anchor, case.height)
@@ -97,7 +111,7 @@ class PackTest {
         assertEquals(textRanges(whole.before), textRanges(split.before))
         assertEquals(textRanges(whole.fromAnchor), textRanges(split.fromAnchor))
         assertEquals(whole.pages.map { it.height }, split.pages.map { it.height })
-        val from = if (anchor >= case.length) case.lines.size else anchorLine(case, anchor)
+        val from = if (anchor >= case.length) case.lines.size else startLine(case, anchor)
         val expected = referencePaginate(case.lines, from, case.length, case.height)
         assertEquals(expected, split.fromAnchor.map { Triple(it.start, it.end, it.height) })
     }
@@ -239,6 +253,39 @@ class PackTest {
         val shown = after.pages[pageIndexFor(after.pages, anchor)]
         assertEquals(after.anchorPage, shown)
         assertTrue(anchor >= shown.start && anchor < shown.end, "anchor $anchor not on $shown")
+    }
+
+    /**
+     * The QA case at every width the fixture draws: a Place from another layout lands on a line that starts
+     * mid-word (the tail of "hor-/rors"), at the line's start or inside it. The Place's Page starts on a
+     * word and holds the Place, and the Page above ends at a legal break, unless the word's first half
+     * lies more than 30% of a Page up (a long cascade), where the Place's own line starts the Page.
+     * Measuring windows in any order still changes no Page once shown.
+     */
+    @Test
+    fun `a Place on a line starting mid-word starts its Page on the word's first half, holding the Place, at any width`() = forAll { rnd ->
+        val case = randomCase(rnd)
+        val lines = case.lines
+        val tails = lines.indices.filter { it > 0 && !lines[it - 1].endsAtBreak }
+        if (tails.isEmpty()) return@forAll
+        val tail = tails.random(rnd)
+        val lineEnd = lines.getOrNull(tail + 1)?.start ?: case.length
+        val anchor = if (rnd.nextBoolean()) lines[tail].start else rnd.nextInt(lines[tail].start, lineEnd)
+        val steps = measureInRandomOrder(case, anchor, rnd)
+        val packed = steps.last().packed
+        val page = packed.anchorPage!!
+        assertTrue(anchor >= page.start && anchor < page.end, "anchor $anchor not on $page")
+        val first = lines.indexOfFirst { it.start == page.start }
+        var wordStart = tail
+        while (wordStart > 0 && !lines[wordStart - 1].endsAtBreak) wordStart--
+        val reachable = lines[tail].top - lines[wordStart].top <= (1 - MIN_PAGE_FILL) * case.height &&
+            lines[tail].bottom - lines[wordStart].top <= case.height
+        if (reachable) {
+            assertEquals(wordStart, first, "page $page starts mid-word")
+            assertEquals(page.start, packed.before.lastOrNull()?.end ?: 0)
+        } else {
+            assertEquals(tail, first)
+        }
     }
 
     /**

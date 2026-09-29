@@ -119,6 +119,8 @@ Ordered. Each item ends on its _done-when_.
     double tap on the top line stays in Contents); "Couldn't open this Book." and "This Book has no
     text." have "Back to Shelf" under them, as the end page does. `scripts/ci.sh` checks that Contents'
     Shelf reaches the Shelf on the emulator and the LP3.
+  - Font changes: a Place that falls on the tail of a hyphenated word ("hor-/rors") no longer starts the
+    Page mid-word; the Page starts on the word's first line (30% guard), the Place unmoved (`pack`).
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
