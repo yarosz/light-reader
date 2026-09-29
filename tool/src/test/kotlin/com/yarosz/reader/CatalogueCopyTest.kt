@@ -34,6 +34,13 @@ class CatalogueCopyTest {
     }
 
     @Test
+    fun `a host that doesn't resolve is a misspelling, with no Retry, only for an address typed on a connected phone`() {
+        assertEquals(FailureCopy("Couldn't find that address. Check the spelling.", retry = false), feedFailureCopy(NoSuchHost, shipped = false, typedOnline = true))
+        assertEquals(feedFailureCopy(Unreachable, shipped = false), feedFailureCopy(NoSuchHost, shipped = false))
+        assertEquals(feedFailureCopy(Unreachable, shipped = true), feedFailureCopy(NoSuchHost, shipped = true))
+    }
+
+    @Test
     fun `each download failure has its copy, and only the ones a retry can fix offer Retry`() {
         val expected = listOf(
             NotAnEpub to FailureCopy("This file isn't an EPUB the Reader can open.", retry = false),
@@ -52,7 +59,7 @@ class CatalogueCopyTest {
     @Test
     fun `copy capitalises Book, Shelf and Catalogue, and the domain terms are never lowercase in a sentence`() {
         val sentences = listOf(
-            COPY_UNREACHABLE, COPY_NO_HTTPS, COPY_HTTP_ERROR, COPY_NEEDS_SIGN_IN, COPY_UNREADABLE, COPY_UNTRUSTED,
+            COPY_UNREACHABLE, COPY_NO_SUCH_HOST, COPY_NO_HTTPS, COPY_HTTP_ERROR, COPY_NEEDS_SIGN_IN, COPY_UNREADABLE, COPY_UNTRUSTED,
             COPY_UNTRUSTED_SELF_HOSTED, COPY_NOT_AN_EPUB, COPY_COPY_PROTECTED, COPY_DISK_FULL, CATALOGUES_OFFLINE,
             CATALOGUES_CONFIRM_REMOVE, ADD_CATALOGUE_DUPLICATE, CATALOGUES_ADD, DETAIL_ADD, DETAIL_ON_SHELF,
         )

@@ -165,7 +165,8 @@ class CatalogueViewModelTest {
     fun `a failed page shows why, and Retry fetches it again`() {
         answers.remove(GUTENBERG.url.value)
         val root = page(PageSource.Root)
-        assertEquals(PageState.Failed(Unreachable), root.state.value)
+        val failed = assertIs<PageState.Failed>(root.state.value)
+        assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), feedFailureCopy(failed.reason, root.shipped), "a Catalogue on the list whose host doesn't resolve")
         answers[GUTENBERG.url.value] = Answer(body = fixture("gutenberg-root.xml"))
         root.load()
         settle()
@@ -212,7 +213,7 @@ class CatalogueViewModelTest {
         val first = (list.state.value as PageState.Listing)
         list.more()
         settle()
-        assertEquals(More.Failed(Unreachable), (list.state.value as PageState.Listing).more)
+        assertEquals(More.Failed(NoSuchHost), (list.state.value as PageState.Listing).more)
         answers[first.next!!.value] = Answer(body = fixture("gutenberg-popular.xml"))
         list.more()
         settle()
@@ -256,6 +257,24 @@ class CatalogueViewModelTest {
         add.typed("http://slow.example.org/opds")
         settle()
         assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), (add.status.value as AddStatus.Failed).copy)
+    }
+
+    @Test
+    fun `a mistyped host says to check the spelling, with no Retry, when the phone reports a connection`() {
+        val add = AddCatalogueViewModel(owner()) { true }
+        add.typed("books.nonexistent-host.example")
+        settle()
+        assertEquals(FailureCopy(COPY_NO_SUCH_HOST, retry = false), (add.status.value as AddStatus.Failed).copy)
+    }
+
+    @Test
+    fun `a host that doesn't resolve while the phone is offline, or can't say, can't be reached, with Retry`() {
+        listOf(false, null).forEach { reported ->
+            val add = AddCatalogueViewModel(owner()) { reported }
+            add.typed("books.nonexistent-host.example")
+            settle()
+            assertEquals(FailureCopy(COPY_UNREACHABLE, retry = true), (add.status.value as AddStatus.Failed).copy, "reported $reported")
+        }
     }
 
     @Test

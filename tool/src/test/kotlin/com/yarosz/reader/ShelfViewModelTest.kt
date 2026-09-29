@@ -62,8 +62,8 @@ class ShelfViewModelTest {
 
     private fun owner(transport: Transport) = ShelfOwner.of(dir) { ShelfOwner(dir, io, transport) { clock } }
 
-    private fun shelf(transport: Transport = serving()): ShelfViewModel =
-        ShelfViewModel(owner(transport)).also {
+    private fun shelf(transport: Transport = serving(), connected: () -> Boolean? = { null }): ShelfViewModel =
+        ShelfViewModel(owner(transport), connected).also {
             it.refresh()
             settle()
         }
@@ -205,6 +205,47 @@ class ShelfViewModelTest {
         assertEquals(ROW_DOWNLOADING, vm.row("Stormy Night").detail)
         settle()
         assertEquals(listOf(RowTap.Open(stormFile)), vm.snapshot.value!!.rows.map { it.tap })
+    }
+
+    @Test
+    fun `a retry tapped while the phone is offline says so on the row, and one tapped back online lands`() {
+        var connected: Boolean? = true
+        val answers = mutableMapOf(link.value to Answer(status = 500))
+        val vm = shelf(FakeTransport(answers)) { connected }
+        vm.download(link, "Stormy Night", null)
+        settle()
+        assertEquals(ROW_DOWNLOAD_FAILED, vm.row("Stormy Night").detail)
+        connected = false
+        answers[link.value] = Answer(connectFailure = java.net.UnknownHostException("books.example.org"))
+        vm.downloadAgain("Stormy Night")
+        settle()
+        assertEquals(ROW_DOWNLOAD_FAILED_OFFLINE, vm.row("Stormy Night").detail)
+        connected = true
+        answers[link.value] = Answer(body = storm)
+        vm.downloadAgain("Stormy Night")
+        settle()
+        assertEquals(listOf(RowTap.Open(stormFile)), vm.snapshot.value!!.rows.map { it.tap })
+    }
+
+    @Test
+    fun `an unreachable download reads as offline only when the phone reports no connection`() {
+        listOf(true, null).forEach { reported ->
+            val vm = shelf(FakeTransport(emptyMap())) { reported }
+            vm.download(link, "Stormy Night", null)
+            settle()
+            assertEquals(ROW_DOWNLOAD_FAILED, vm.row("Stormy Night").detail, "reported $reported")
+            vm.remove(vm.row("Stormy Night").key)
+        }
+    }
+
+    @Test
+    fun `leaving the Shelf for the Catalogues ends Edit`() {
+        seed("urn:a" to book("A"))
+        val vm = shelf()
+        vm.toggleEdit()
+        vm.askToRemove(RowKey.Shelved("urn:a"))
+        vm.endEdit()
+        assertEquals(ShelfMode.Browsing, vm.mode.value)
     }
 
     @Test

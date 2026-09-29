@@ -43,7 +43,7 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
     override val viewModelClass: Class<ShelfViewModel>
         get() = ShelfViewModel::class.java
 
-    override fun createViewModel() = ShelfViewModel(ShelfOwner.of(lightContext.filesDir))
+    override fun createViewModel() = ShelfViewModel(ShelfOwner.of(lightContext.filesDir)) { lightContext.connectivity.reported() }
 
     @Composable
     override fun Content() {
@@ -91,6 +91,7 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
 
     /** Opens the Catalogues; a Book opened from one comes back here, and the Reader opens over the Shelf. */
     private fun openCatalogues() {
+        viewModel.endEdit()
         navigateTo({ CatalogueListScreen(it) }) { opened -> open(File(lightContext.filesDir, opened.file)) }
     }
 

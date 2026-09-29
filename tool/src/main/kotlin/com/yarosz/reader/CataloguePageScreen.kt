@@ -33,6 +33,7 @@ class CataloguePageViewModel(
     private val owner: ShelfOwner,
     val catalogue: Catalogue,
     val source: PageSource,
+    private val connected: () -> Boolean? = { null },
 ) : LightViewModel<OpenFromShelf>() {
     val state = MutableStateFlow<PageState>(if (source is PageSource.Entry) PageState.Book(listOf(source.entry)) else PageState.Loading)
     val shipped = isShipped(catalogue.url)
@@ -101,7 +102,7 @@ class CataloguePageViewModel(
     fun download(action: DetailAction.Download) {
         val entries = (state.value as? PageState.Book)?.entries ?: return
         failure.value = null
-        val result = owner.download(action.link.url, entries.first().title, detailAuthor(entries), action.replacing)
+        val result = owner.download(action.link.url, entries.first().title, detailAuthor(entries, source.byline), action.replacing, connected)
         viewModelScope.launch {
             (result.await() as? DownloadResult.Failed)?.let { failure.value = it.reason }
         }
@@ -117,7 +118,7 @@ class CataloguePageScreen(
     override val viewModelClass: Class<CataloguePageViewModel>
         get() = CataloguePageViewModel::class.java
 
-    override fun createViewModel() = CataloguePageViewModel(ShelfOwner.of(lightContext.filesDir), catalogue, source)
+    override fun createViewModel() = CataloguePageViewModel(ShelfOwner.of(lightContext.filesDir), catalogue, source) { lightContext.connectivity.reported() }
 
     @Composable
     override fun Content() {
@@ -164,7 +165,7 @@ class CataloguePageScreen(
     private fun Detail(entries: List<CatalogueEntry>, detail: BookDetail) {
         Column(rowPadding()) {
             BookTitle(entries.first().title, maxLines = 4)
-            detailAuthor(entries)?.let { SecondaryLine(it, maxLines = 2) }
+            detailAuthor(entries, source.byline)?.let { SecondaryLine(it, maxLines = 2) }
         }
         detail.problem?.let { LightText(text = it.text, variant = LightTextVariant.Copy, modifier = rowPadding()) }
         when (val action = detail.action) {
@@ -173,7 +174,7 @@ class CataloguePageScreen(
             DetailAction.Downloading -> SecondaryLine(DETAIL_DOWNLOADING, rowPadding())
             DetailAction.None -> Unit
         }
-        detailSummary(entries)?.let { LightText(text = it, variant = LightTextVariant.Detail, modifier = rowPadding()) }
+        detailSummary(entries, source.byline)?.let { LightText(text = it, variant = LightTextVariant.Detail, modifier = rowPadding()) }
     }
 
     /** The detail page's one button, with [note] (the size, or "On your Shelf") as secondary text beside it. */

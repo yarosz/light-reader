@@ -174,6 +174,7 @@ set tighter (1.2) than body copy.
 | Never opened | "not started" | opens the Book |
 | Downloading | "downloading…" | nothing |
 | Failed, retryable | "download failed · tap to retry" | downloads again |
+| Failed, unreachable while the phone reported no connection | "download failed · you're offline" | downloads again |
 | Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" | nothing; the Book can only be removed |
 | Failed for good, the source needs a login (401) | "can't download again · needs a login" | nothing; the Book can only be removed |
 | Finished | "author · finished" (see below) | opens the Book |
@@ -182,7 +183,9 @@ set tighter (1.2) than body copy.
 
 The percent is the Place's `progress`, floored. Under 1%, or with no `progress` (a Place saved before
 N4, until the next page turn), the author stands alone. When there is no author, the state stands
-alone ("42%", "finished"), so an in-progress Book with neither has no second line. A running download
+alone ("42%", "finished"), so an in-progress Book with neither has no second line until it is next
+opened, which records the author from the Book's file (`dc:creator`); the Shelf never opens a file to
+find one, so a Book stored before N4 shows its author only after that. A running download
 wins over a Book's file, the file over a failed download (a Book that is here stays readable
 offline), and both over its reading state. Opening a Book counts as reading: it records the first
 Page's Place, so a Book opened but never paged reads as in progress, not "not started".
@@ -194,7 +197,8 @@ itself, inline and not as a modal, into the Book's title, then "Remove from Shel
 if you add it again.", then "Remove" and "Cancel". A confirmation whose row goes away (a download
 that arrives, or fails) is cleared. Row taps don't open Books while editing. Removal deletes the file and keeps the Place
 record, and removing a Book that is downloading cancels the download. Removing the last Book leaves
-Edit.
+Edit, and so does "Add": the Shelf is browsing when the reader comes back from the Catalogues. (The
+Catalogue list's Edit needs no such rule: while editing, its only way out is back, which closes it.)
 
 **Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
 failures (Unreachable, HttpError other than 401, DiskError, and UntrustedCertificate, D15) leave a
@@ -206,6 +210,10 @@ detail page and add nothing to the Shelf. A copy-protected Book must never becom
 downloading a missing file again from the Shelf fails for good, the Book's row says why ("can't
 download again · …", table above) and can then only be removed. That state lives in memory: after a
 relaunch the row reads "file missing · tap to download again" again, and a tap tries once more.
+A download that fails as Unreachable while the phone reports no internet connection reads "download
+failed · you're offline" instead of "tap to retry", so a retry tapped offline visibly answers (it
+fails at once, too fast for "downloading…" to show); a tap still retries. When the phone can't
+report, the row reads "tap to retry".
 
 **Offline.** Nothing changes on the Shelf, because everything there works offline: no rows are
 removed and nothing is greyed out. "You're offline. Your Shelf still works." is one line of
@@ -248,13 +256,18 @@ on your Shelf.", then "Remove" and "Cancel". Any Catalogue can be removed, the s
 Removing the last one leaves Edit.
 
 **Add a Catalogue.** Title "Add a Catalogue", then a field labelled "Catalogue address" with the
-placeholder "https://…", then "Add". Tapping the field opens the SDK's text editor with the LP3
+placeholder "https://…" in secondary text (the SDK's field draws it at full strength, as if typed),
+then "Add". Tapping the field opens the SDK's text editor with the LP3
 keyboard, whose button is also "Add". An address with no scheme is taken as https://; http:// is
 tried once as https://, and a server with no HTTPS reads as NoHttps: a refused connection or a
 failed handshake. A connect timeout stays Unreachable (see the note under the failure copy). The
 Catalogue is stored as https://, so once added it is never "tried as https" again: a later refused
 connection is Unreachable, with Retry. The feed is fetched before
-anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. The
+anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. A host
+that doesn't resolve (no DNS record) is NoSuchHost only while the phone reports an internet
+connection: offline every lookup fails that way, so offline, or when the phone can't report, it is
+Unreachable, with Retry. A Catalogue already on the list never reads NoSuchHost (its host resolved
+when it was added), only Unreachable. The
 name is the feed's title, else its host. An address already on the list reads "This Catalogue is
 already in your list." A failure shows below the field in body text (the SDK's Paragraph size) at
 line height 1.2, smaller than the rows. A failure that trying again can't fix hides "Add" until the address changes;
@@ -299,6 +312,12 @@ beside it ("558 KB"). The page matches the Shelf by source URL, never by title: 
 download links equal to a stored Book's source is that Book. A miss is harmless, because a landing
 download merges into the Book by `dc:identifier`.
 
+The author is the byline of the row that opened the page, so a list and its detail page name the
+author alike: Gutenberg's lists say "graf Leo Tolstoy" (the entry's content), where its Book pages
+say "Tolstoy, Leo, graf" (the OPDS author, which isn't the simple inverted form the Tool
+un-inverts). A page no row opened takes its Editions' authors. A download from the page records the
+same author until the Book's own `dc:creator` replaces it.
+
 | Match | Action | Beside it |
 |---|---|---|
 | None | "Add to Shelf" | the size |
@@ -322,6 +341,7 @@ N5; until then it shows its one line.
 | Failure | Copy | Retry |
 |---|---|---|
 | Unreachable | "Can't reach this Catalogue. Check your connection and try again." | yes |
+| NoSuchHost (a typed address, the phone connected) | "Couldn't find that address. Check the spelling." | no |
 | NoHttps | "This Catalogue needs an https:// address." | no |
 | HttpError | "This Catalogue isn't responding properly. Try again later." | yes |
 | HttpError 401 | "This Catalogue needs a username and password. Sign-in isn't supported yet." | no |
@@ -337,3 +357,9 @@ connections to port 443 times out, but so does a network with no internet. The S
 `LightConnectivity` reports only whether the network claims internet, not whether Android validated
 it, and asking Android directly needs a Context, which a Light Tool can't hold. So the Tool can't
 tell, and every connect timeout reads as Unreachable, with Retry.
+
+Every failed Catalogue fetch (a page, "More", a search description) logs one line under the `Reader`
+tag: the URL, the HTTP status (with where redirects ended) or the exception, and the failure it
+became. Gutenberg's intermittent "isn't responding properly" on some searches is its own: the search
+template points at m.gutenberg.org, which sometimes answers 504 after about 5 s instead of its
+usual 301 to www.gutenberg.org, and a retry a little later works.

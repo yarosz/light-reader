@@ -99,6 +99,17 @@ class CataloguePagesTest {
     }
 
     @Test
+    fun `the detail page names the author as the row that opened it did, whatever form its Editions use`() {
+        val opener = popular.entries.first().copy(title = "War and Peace", byline = "graf Leo Tolstoy")
+        val editions = bookPage.entries.map { it.copy(authors = listOf("Tolstoy, Leo, graf")) }
+        val source = PageSource.Feed(url("https://www.gutenberg.org/ebooks/2600.opds"), opener)
+        assertEquals("graf Leo Tolstoy", detailAuthor(editions, source.byline))
+        assertEquals("Tolstoy, Leo, graf", detailAuthor(editions, PageSource.Root.byline), "no row opened it")
+        val release = newReleases.entries.first()
+        assertEquals(release.byline, PageSource.Entry(release).byline)
+    }
+
+    @Test
     fun `an entry with nothing to open or download goes nowhere`() {
         assertNull(entryTarget(popular.entries.first().copy(opens = null)))
     }

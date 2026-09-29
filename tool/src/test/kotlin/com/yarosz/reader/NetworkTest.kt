@@ -148,8 +148,35 @@ class NetworkTest {
         assertEquals(Unreachable, reason("https://a.example.org/refused"))
         assertEquals(NoHttps, reason("http://a.example.org/refused"))
         assertEquals(Unreachable, reason("https://a.example.org/io"))
-        assertEquals(Unreachable, reason("https://offline.example.org/"))
+        assertEquals(NoSuchHost, reason("https://offline.example.org/"))
         assertEquals(4, transport.closed)
+    }
+
+    @Test
+    fun `each failed fetch is logged with its URL, the status or exception behind it, and the failure it became`() {
+        val answers = mapOf(
+            "https://a.example.org/busy" to Answer(status = 504, landsAt = "https://www.example.org/busy"),
+            "https://a.example.org/html" to Answer(body = "<html/>".toByteArray()),
+            "https://a.example.org/text" to Answer(body = "Hello".toByteArray()),
+            "https://a.example.org/refused" to Answer(connectFailure = ConnectException("refused")),
+        )
+        val transport = FakeTransport(answers)
+        val lines = mutableListOf<String>()
+        listOf("busy", "html", "text", "refused").forEach { fetchPage(transport, url("https://a.example.org/$it"), lines::add) }
+        fetchSearch(transport, url("https://nowhere.example.org/osd"), lines::add)
+        assertEquals(
+            listOf(
+                "catalogue fetch failed: https://a.example.org/busy: HTTP 504 at https://www.example.org/busy -> HttpError(status=504)",
+                "catalogue fetch failed: https://a.example.org/html: not a feed -> Unreadable",
+                "catalogue fetch failed: https://a.example.org/text: org.xml.sax.SAXParseException; lineNumber: 1; columnNumber: 1; " +
+                    "Content is not allowed in prolog. -> Unreadable",
+                "catalogue fetch failed: https://a.example.org/refused: java.net.ConnectException: refused -> Unreachable",
+                "catalogue fetch failed: https://nowhere.example.org/osd: java.net.UnknownHostException: https://nowhere.example.org/osd -> NoSuchHost",
+            ),
+            lines,
+        )
+        fetchPage(FakeTransport(mapOf("https://a.example.org/" to Answer(body = atom))), url("https://a.example.org/"), lines::add)
+        assertEquals(5, lines.size, "a fetch that works logs nothing")
     }
 
     @Test

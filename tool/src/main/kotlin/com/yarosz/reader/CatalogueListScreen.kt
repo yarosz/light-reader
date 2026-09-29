@@ -6,6 +6,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewModelScope
+import com.thelightphone.sdk.LightConnectivity
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.NetworkStatus
@@ -76,6 +77,16 @@ class CatalogueListViewModel(private val owner: ShelfOwner, networkStatus: Flow<
         owner.removeCatalogue(url)
         cancelRemove()
     }
+}
+
+/**
+ * Whether the phone reports an internet connection now, or null when it can't say (the permission
+ * missing, say), so a caller never claims more than the phone did.
+ */
+fun LightConnectivity.reported(): Boolean? = try {
+    currentStatus.isConnected
+} catch (e: RuntimeException) {
+    null
 }
 
 /** How long [CatalogueListViewModel.offline] keeps following the network after its screen stops collecting, which rides out a recomposition. */

@@ -122,6 +122,12 @@ Ordered. Each item ends on its _done-when_.
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
+  - QA fixes, Catalogue and Shelf: failed Catalogue fetches log their URL and cause under `Reader`
+    (Gutenberg search's intermittent HttpError is m.gutenberg.org answering 504); a typed host that
+    doesn't resolve on a connected phone reads "Couldn't find that address. Check the spelling." with
+    no Retry; a download failing offline reads "download failed · you're offline"; "Add" ends the
+    Shelf's Edit; Add a Catalogue's placeholder is secondary text; a detail page names the author as
+    the list row did. A pre-N4 Book with no author gets one when next opened (already so).
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's

@@ -16,6 +16,7 @@ const val ROW_NOT_STARTED = "not started"
 const val ROW_FINISHED = "finished"
 const val ROW_DOWNLOADING = "downloading…"
 const val ROW_DOWNLOAD_FAILED = "download failed · tap to retry"
+const val ROW_DOWNLOAD_FAILED_OFFLINE = "download failed · you're offline"
 const val ROW_FILE_MISSING = "file missing"
 const val ROW_FILE_MISSING_SOURCE = "file missing · tap to download again"
 const val ROW_CANT_DOWNLOAD_COPY_PROTECTED = "can't download again · copy-protected"
@@ -130,7 +131,7 @@ private fun percent(progress: Double): String? {
 
 private fun downloadDetail(status: Download.Status) = when (status) {
     Download.Status.Running -> ROW_DOWNLOADING
-    is Download.Status.Failed -> failedDetail(status.reason)
+    is Download.Status.Failed -> if (status.offline) ROW_DOWNLOAD_FAILED_OFFLINE else failedDetail(status.reason)
 }
 
 /** "download failed · tap to retry" when retrying can help ([isRetryable]), else why it can't. */

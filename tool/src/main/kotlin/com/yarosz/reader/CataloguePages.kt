@@ -96,16 +96,29 @@ fun entryTarget(entry: CatalogueEntry): PageSource? = when {
 fun searchPlaceholder(catalogue: Catalogue): String =
     if (catalogue.url.catalogueKey == STANDARD_EBOOKS_NEW_RELEASES.url.catalogueKey) SEARCH_STANDARD_EBOOKS else SEARCH
 
-/** A Book's author on its detail page: the first Edition that names one, else the first entry's second line. */
-fun detailAuthor(entries: List<CatalogueEntry>): String? =
-    entries.firstNotNullOfOrNull { entry -> entry.authors.takeIf { it.isNotEmpty() }?.joinToString(", ") } ?: entries.firstOrNull()?.byline
+/** The byline of the row the reader tapped to open this page, which its detail page repeats; null for none. */
+val PageSource.byline: String?
+    get() = when (this) {
+        is PageSource.Feed -> opener.byline
+        is PageSource.Entry -> entry.byline
+        PageSource.Root, is PageSource.Search -> null
+    }
+
+/**
+ * A Book's author on its detail page: [listed], the byline of the row that opened it, so a list and
+ * the detail page name the author alike (Gutenberg's lists say "graf Leo Tolstoy" where its Book
+ * pages say "Tolstoy, Leo, graf"); else the first Edition that names one; else the first entry's
+ * second line.
+ */
+fun detailAuthor(entries: List<CatalogueEntry>, listed: String? = null): String? =
+    listed ?: entries.firstNotNullOfOrNull { entry -> entry.authors.takeIf { it.isNotEmpty() }?.joinToString(", ") } ?: entries.firstOrNull()?.byline
 
 /**
  * A Book's summary on its detail page: the first prose summary (the parser drops metadata dumps,
  * D14.4), unless it only repeats the author, as a Gutenberg list entry's short content does.
  */
-fun detailSummary(entries: List<CatalogueEntry>): String? {
-    val author = detailAuthor(entries)
+fun detailSummary(entries: List<CatalogueEntry>, listed: String? = null): String? {
+    val author = detailAuthor(entries, listed)
     return entries.firstNotNullOfOrNull { it.summary?.takeIf { summary -> summary != author } }
 }
 
