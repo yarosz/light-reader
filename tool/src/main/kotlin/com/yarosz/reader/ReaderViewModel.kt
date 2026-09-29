@@ -29,14 +29,15 @@ const val SAVE_DEBOUNCE_MS = 1_000L
 /**
  * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font step
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
- * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened; tests pass one
- * they control.
+ * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened, and [now] is the
+ * monotonic millis that time Pages for the reading speed; tests pass ones they control.
  */
 class ReaderViewModel(
     private val file: File,
     private val owner: ShelfOwner,
     private val start: DevStart? = null,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : LightViewModel<Unit>() {
     /**
      * The owner's saver, or in a dev-start session one that starts empty and writes nothing, so perf
@@ -91,21 +92,23 @@ class ReaderViewModel(
             runCatching {
                 withContext(io) {
                     val opened = parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension)
-                    opened to WordIndex(opened.spineItems)
+                    val wordsStart = System.nanoTime()
+                    val index = WordIndex(opened.spineItems)
+                    Triple(opened, index, System.nanoTime() - wordsStart)
                 }
             }
-                .onSuccess { (opened, index) ->
-                    val parseMs = ms(System.nanoTime() - parseStart)
+                .onSuccess { (opened, index, wordsNs) ->
+                    val parseMs = ms(System.nanoTime() - parseStart - wordsNs)
                     val largest = opened.spineItems.indices.maxByOrNull { opened.spineItems[it].text.length }
                     if (largest != null) {
                         Log.i(PERF_TAG, "book chapters=${opened.spineItems.size} tocChapters=${opened.chapters.size} largest=$largest " +
-                            "largestChars=${opened.spineItems[largest].text.length} parseMs=$parseMs")
+                            "largestChars=${opened.spineItems[largest].text.length} parseMs=$parseMs wordsMs=${ms(wordsNs)}")
                     }
-                    val now = System.currentTimeMillis()
+                    val openedAt = System.currentTimeMillis()
                     val title = saver.data.books[opened.identifier]?.title?.takeIf { it.isNotBlank() } ?: opened.title
                     shelfTitle = title
                     words = index
-                    saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = now) }
+                    saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = openedAt) }
                     if (start == null) fontStep.value = saver.data.settings.fontStep.coerceIn(FONT_SIZES.indices)
                     if (start != null && opened.spineItems.isNotEmpty()) {
                         val item = start.item.coerceIn(opened.spineItems.indices)
@@ -118,7 +121,7 @@ class ReaderViewModel(
                         place?.let(opened::resolve)?.let { spinePoint.value = it }
                         // Opening counts as reading: the first Page starts at the Place, so a Book opened but never paged sorts as in progress.
                         if (place == null && opened.spineItems.isNotEmpty()) {
-                            saver.change { it.withPlace(opened.identifier, opened.placeAt(spinePoint.value, now)) }
+                            saver.change { it.withPlace(opened.identifier, opened.placeAt(spinePoint.value, openedAt)) }
                         }
                     }
                     book.value = opened
@@ -161,28 +164,32 @@ class ReaderViewModel(
 
     /**
      * A forward turn: the next Page, or from the Page reaching [OpenBook.textEnd] the end page, which
-     * sets Finished; nothing on the end page. Leaving a Page this way gives a speed sample when it was
-     * reached this way too ([PageTimer]).
+     * sets Finished; nothing on the end page. Leaving a Page for the next one gives a speed sample when
+     * it was reached that way too ([PageTimer]); the end page is not a Page, so leaving for it gives none.
+     * The next Page is timed from when it shows, so its layout doesn't count as reading.
      */
     fun nextPage() {
-        val opened = book.value ?: return
         val shown = frame.value ?: return
         if (atEnd.value) return
-        val now = monotonicMs()
-        timer.finish(now)
-        if (SpinePoint(shown.pass.item, shown.page.end) >= opened.textEnd) {
+        if (reachesEnd(shown)) {
+            timer.discard()
             atEnd.value = true
             stamp(finished = true)
             publishLines()
             return
         }
+        timer.finish(now())
         val next = turn(clearsFinished = false) { it.next() } ?: return
         val words = words ?: return
-        timer.start(now, words.between(SpinePoint(next.pass.item, next.page.start), SpinePoint(next.pass.item, next.page.end)))
+        timer.start(now(), words.between(SpinePoint(next.pass.item, next.page.start), SpinePoint(next.pass.item, next.page.end)))
     }
 
-    /** A back turn: from the end page to the last Page, else to the Page before. Either clears Finished. */
+    /**
+     * A back turn: from the end page to the last Page, else to the Page before. Either clears Finished,
+     * even on the first Page, which has no Page before it.
+     */
     fun previousPage() {
+        if (frame.value == null) return
         timer.discard()
         if (atEnd.value) {
             atEnd.value = false
@@ -225,19 +232,33 @@ class ReaderViewModel(
         super.onCleared()
     }
 
-    /** A pass at the Place (a cached one when it holds the Place's Page) at the current font and column. */
+    /**
+     * A pass at the Place (a cached one when it holds the Place's Page) at the current font and column.
+     * The end page stays only while the Page at the Place still reaches [OpenBook.textEnd]; otherwise
+     * that Page shows and Finished stays, so forward turns reach the end page again.
+     */
     private fun open(reason: String) {
         val measurer = measurer ?: return
         val (item, char) = spinePoint.value
-        show(reason) { it.open(item, char, measurer.key(fontStep.value)) }
+        val shown = show(reason) { it.open(item, char, measurer.key(fontStep.value)) } ?: return
+        if (atEnd.value && !reachesEnd(shown)) {
+            atEnd.value = false
+            publishLines()
+        }
     }
 
-    /** Shows the Page [step] finds and records it as the Place; [clearsFinished] clears Finished too. */
+    private fun reachesEnd(shown: Shown<WindowLayout>): Boolean =
+        book.value?.let { SpinePoint(shown.pass.item, shown.page.end) >= it.textEnd } == true
+
+    /**
+     * Shows the Page [step] finds and records it as the Place. [clearsFinished] clears Finished too,
+     * re-stamping the Place even when [step] finds no Page.
+     */
     private fun turn(clearsFinished: Boolean, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
-        val shown = show("turn", step) ?: return null
-        spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
-        val finished = book.value?.let { saver.data.books[it.identifier]?.finished } == true
-        stamp(finished = if (clearsFinished && finished) false else null)
+        val shown = show("turn", step)
+        if (shown != null) spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
+        val clears = clearsFinished && book.value?.let { saver.data.books[it.identifier]?.finished } == true
+        if (shown != null || clears) stamp(finished = if (clears) false else null)
         return shown
     }
 
@@ -313,8 +334,6 @@ class ReaderViewModel(
             "chars=${pass.windows[window].let { it.end - it.start }} measureMs=${ms(System.nanoTime() - start)} sync=$sync")
         return layout
     }
-
-    private fun monotonicMs() = System.nanoTime() / 1_000_000
 
     private fun ms(ns: Long) = "%.1f".format(Locale.ROOT, ns / 1e6)
 }

@@ -55,7 +55,10 @@ data class OpenBook(
     val author: String? = null,
     val chapters: List<Chapter> = chaptersOf(emptyList(), spineItems),
     val textEnd: SpinePoint = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0),
-)
+) {
+    /** The characters before each Spine item, and last the Book's total: summed once, so [progressAt] on a turn sums nothing. */
+    val charsBefore: LongArray = spineItems.runningFold(0L) { acc, item -> acc + item.text.length }.toLongArray()
+}
 
 /** The most a container, package, or encryption document may decompress to; real ones are a few KB. */
 const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
@@ -92,7 +95,10 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
         }
         resolved.ifEmpty { null }
     }.orEmpty()
-    OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems))
+    OpenBook(
+        pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems),
+        textEnd = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0),
+    )
 }
 
 /** A Spine item's idref and the path of its document inside the zip. */

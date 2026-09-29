@@ -68,11 +68,13 @@ open this Book." (the reason goes to the log), and one with no text reads "This 
 
 **Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter holding the
 Page's start, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the
-end and centred. It wraps its content rather than taking a fixed height, which the system's large-text
-setting would clip, and has 4 dp below it. In front matter, and on the end page, it shows the Book's
-title as the Shelf shows it. It isn't tappable: only the Page turns Pages. The footer is 48 dp: "A−" and
-"A+" at its ends, each with 8 dp of padding, and the Progress line between them. The Page takes the
-height that is left, so Pages re-pack at the Place, which a layout change never moves.
+end and centred. It is one Detail line high: the style's line height at the system font scale, so the
+large-text setting grows it and nothing clips, but no title changes it (a script drawn in a fallback
+font with a taller line would otherwise re-pack the Pages at a Chapter change). It has 4 dp below it.
+In front matter, and on the end page, it shows the Book's title as the Shelf shows it. It isn't
+tappable: only the Page turns Pages. The footer is 48 dp: "A−" and "A+" at its ends, each with 8 dp of
+padding at the sides (the footer gives them their tap height), and the Progress line between them.
+The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.
 
 **Progress line.** The minutes left in the Chapter: the words from the Page's start to the Chapter's
 end (the next Chapter's start, or the end of the Book's text if that comes first), divided by the

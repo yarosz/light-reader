@@ -48,21 +48,25 @@ class WordIndex(spineItems: List<SpineItem>) {
 }
 
 private fun wordStarts(text: String): IntArray {
-    val starts = ArrayList<Int>()
+    var starts = IntArray(16)
+    var count = 0
     for (i in text.indices) {
-        if (!text[i].isWhitespace() && (i == 0 || text[i - 1].isWhitespace())) starts += i
+        if (!text[i].isWhitespace() && (i == 0 || text[i - 1].isWhitespace())) {
+            if (count == starts.size) starts = starts.copyOf(count * 2)
+            starts[count++] = i
+        }
     }
-    return starts.toIntArray()
+    return starts.copyOf(count)
 }
 
 /**
  * The share (0–1) of the Book's text characters before [point], rounded to 4 decimals: a prefix sum over
- * the Spine items' lengths, front and back matter included. It is [Place.progress].
+ * the Spine items' lengths ([OpenBook.charsBefore]), front and back matter included. It is [Place.progress].
  */
 fun OpenBook.progressAt(point: SpinePoint): Double {
-    val total = spineItems.sumOf { it.text.length.toLong() }
+    val total = charsBefore.last()
     if (total == 0L) return 0.0
-    val before = spineItems.take(point.item).sumOf { it.text.length.toLong() } + point.char
+    val before = charsBefore[point.item.coerceIn(0, spineItems.size)] + point.char
     return (before.toDouble() / total * 10_000).roundToLong() / 10_000.0
 }
 
@@ -85,11 +89,17 @@ fun OpenBook.minutesLine(words: WordIndex, point: SpinePoint, wpm: Double): Stri
     return minutesLeftCopy(words.between(point, end) / wpm)
 }
 
-/** The copy for [minutes] left, raw: whole minutes up to 15, rounded up; 5-minute steps from 15, rounded up. */
-fun minutesLeftCopy(minutes: Double): String = when {
-    minutes < 1 -> MINUTES_ALMOST_DONE
-    minutes < 15 -> "about ${ceil(minutes).toInt()} min left in this chapter"
-    else -> "about ${ceil(minutes / 5).toInt() * 5} min left in this chapter"
+/**
+ * The copy for [raw] minutes left: whole minutes up to 15, rounded up; 5-minute steps from 15, rounded up.
+ * [raw] is first rounded to 1e-9, so a quotient that should be whole doesn't round up a step.
+ */
+fun minutesLeftCopy(raw: Double): String {
+    val minutes = (raw * 1e9).roundToLong() / 1e9
+    return when {
+        minutes < 1 -> MINUTES_ALMOST_DONE
+        minutes < 15 -> "about ${ceil(minutes).toInt()} min left in this chapter"
+        else -> "about ${ceil(minutes / 5).toInt() * 5} min left in this chapter"
+    }
 }
 
 /** The words per minute of [words] read in [ms], or null when that doesn't count as a sample. */

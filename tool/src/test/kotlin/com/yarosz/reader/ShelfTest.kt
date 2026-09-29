@@ -103,6 +103,10 @@ class ShelfTest {
         assertEquals(null, detail(null, null))
         assertEquals("Jane Austen · finished", detail(0.9, "Jane Austen", finished = true))
         assertEquals("finished", detail(null, null, finished = true))
+        assertEquals("Jane Austen", detail(Double.NaN, "Jane Austen"))
+        assertEquals("Jane Austen", detail(1.5, "Jane Austen"))
+        assertEquals("Jane Austen", detail(-0.1, "Jane Austen"))
+        assertEquals("Jane Austen · 100%", detail(1.0, "Jane Austen"))
         val row = rows(book("Reading", Place("c1", 0, 0, "", 5, progress = 0.5), author = "Mary Shelley")).single()
         assertEquals("Mary Shelley · 50%", row.detail)
     }

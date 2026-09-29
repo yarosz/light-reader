@@ -45,8 +45,9 @@ data class SpinePoint(val item: Int, val char: Int) : Comparable<SpinePoint> {
  * newer Place wins a [merge]. Relayout never rewrites a Place; turning a Page records a new one, and
  * setting or clearing Finished re-stamps it ([withFinished]). [progress] is the share (0–1) of the
  * Book's text characters before the Place, through the whole Book, front and back matter included,
- * rounded to 4 decimals ([progressAt]); null in a Place saved before N4. It describes this Place only,
- * so it is written with every Place. Progress within a Chapter (its minutes left) is never stored.
+ * rounded to 4 decimals ([progressAt]); null in a Place saved before N4, and when the stored value isn't
+ * a number in 0–1. It describes this Place only, so it is written with every Place. Progress within a
+ * Chapter (its minutes left) is never stored.
  */
 data class Place(
     val spineId: String,
@@ -435,7 +436,7 @@ private fun JsonObject.toBook(id: String) = Book(
             offset = it.int("offset") ?: 0,
             snippet = it.string("snippet").orEmpty(),
             updatedAt = it.long("updatedAt") ?: 0,
-            progress = it.double("progress"),
+            progress = it.double("progress")?.takeIf { p -> p in 0.0..1.0 },
             extras = it.unknown(PLACE_FIELDS),
         )
     },

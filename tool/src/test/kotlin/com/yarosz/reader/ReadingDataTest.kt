@@ -341,6 +341,16 @@ class ReadingDataTest {
     }
 
     @Test
+    fun `a stored progress that isn't a number in 0 to 1 reads as null, and the rest of the Place stays`() {
+        for (bad in listOf("NaN", "1.5", "-0.1")) {
+            val decoded = decodeReadingData("{\"books\": {\"b\": {\"place\": {\"spineId\": \"c\", \"updatedAt\": 1, \"progress\": $bad}}}}").getOrThrow()
+            assertEquals(Place("c", 0, 0, "", 1), decoded.books.getValue("b").place, bad)
+        }
+        val edge = decodeReadingData("{\"books\": {\"b\": {\"place\": {\"progress\": 1.0}}}}").getOrThrow()
+        assertEquals(1.0, edge.books.getValue("b").place?.progress)
+    }
+
+    @Test
     fun `progress travels with the newer Place through a merge`() {
         val disk = book(place = place(updatedAt = 1).copy(progress = 0.1))
         val mine = book(place = place(updatedAt = 2, offset = 5).copy(progress = 0.2))

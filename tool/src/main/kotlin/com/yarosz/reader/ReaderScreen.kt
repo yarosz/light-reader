@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
@@ -38,6 +39,7 @@ import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.LightTheme
 import com.thelightphone.sdk.ui.LightThemeController
 import com.thelightphone.sdk.ui.LightThemeTokens
+import com.thelightphone.sdk.ui.designVerticalPxToSp
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
 
@@ -81,6 +83,8 @@ class ReaderScreen(
     /**
      * The top line, the Page (or the end page) and the footer, stacked (DESIGN.md "Reading"). The Page gets
      * whatever height the top line and footer leave, so a change to either re-packs the Pages at the Place.
+     * The top line is one Detail line high at the system font scale, whatever the title: a title in a
+     * fallback font's taller line can't re-pack the Pages at a Chapter change.
      */
     @Composable
     private fun Reader(measurer: TextMeasurer) {
@@ -89,12 +93,13 @@ class ReaderScreen(
         val topLine by viewModel.topLine.collectAsState()
         val progressLine by viewModel.progressLine.collectAsState()
         val colors = LightThemeTokens.colors
+        val topLineHeight = with(LocalDensity.current) { LightThemeTokens.typography.detail.lineHeight.value.designVerticalPxToSp().toDp() }
 
         Column(Modifier.fillMaxSize()) {
             LightText(
                 text = topLine,
                 variant = LightTextVariant.Detail,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).height(topLineHeight),
                 align = TextAlign.Center,
                 lighten = true,
                 maxLines = 1,
@@ -126,7 +131,7 @@ class ReaderScreen(
                 LightText(
                     text = "A−",
                     variant = LightTextVariant.Copy,
-                    modifier = Modifier.lightClickable { viewModel.changeFont(-1) }.padding(8.dp),
+                    modifier = Modifier.lightClickable { viewModel.changeFont(-1) }.padding(horizontal = 8.dp),
                 )
                 LightText(
                     text = progressLine.orEmpty(),
@@ -140,7 +145,7 @@ class ReaderScreen(
                 LightText(
                     text = "A+",
                     variant = LightTextVariant.Copy,
-                    modifier = Modifier.lightClickable { viewModel.changeFont(+1) }.padding(8.dp),
+                    modifier = Modifier.lightClickable { viewModel.changeFont(+1) }.padding(horizontal = 8.dp),
                 )
             }
         }

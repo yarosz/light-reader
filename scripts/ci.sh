@@ -67,34 +67,39 @@ fail_ctx() {  # context, step description
 }
 
 # Font round trip: page forward, cycle A+ A+ A- A-, require the identical Page.
-# A Page is its Spine item indicator ("1/12") plus its text from the Canvas's semantics: the first 40
-# characters and the length. A bigger font keeps the Page's start (the Place) but moves its end, so the
-# length is what makes the first A+ change the state. Every read must find both the indicator and the
-# Page, so an unresponsive screen or a lost device can never pass as "unchanged".
-state() {  # serial -> "c/C|first 40 chars|length", or return 1
+# A Page is the reading view's top line (the Chapter title, "II: The Pool of Tears" at the dev start)
+# plus its text from the Canvas's semantics: the first 40 characters and the length. A bigger font keeps
+# the Page's start (the Place) but moves its end, so the length is what makes the first A+ change the
+# state. Every read must find both the title and the Page, so an unresponsive screen or a lost device
+# can never pass as "unchanged".
+state() {  # serial -> "title|first 40 chars|length", or return 1
   # The Page's text holds newlines, so its "   ~" node spans lines up to the one ending in "(x,y)";
-  # it is by far the longest label on screen. C locale: the counts only have to agree between reads.
+  # it is by far the longest label on screen. The top line is the line dumped right before it, which
+  # must be a text node ('   "title"  (x,y)'); a "|" in it becomes "/" so the fields still split.
+  # C locale: the counts only have to agree between reads.
   ANDROID_SERIAL="$1" mise run ui 2>/dev/null | LC_ALL=C awk '
     inb { blk = blk "\n" $0 }
-    !inb && /^   ~/ { inb = 1; blk = substr($0, 5) }
+    !inb && /^   ~/ { inb = 1; blk = substr($0, 5); above = text }
     inb && /  \([0-9]+,[0-9]+\)$/ {
       inb = 0; sub(/  \([0-9]+,[0-9]+\)$/, "", blk)
-      if (length(blk) > length(page)) page = blk
+      if (length(blk) > length(page)) { page = blk; title = above }
       next
     }
-    !inb && match($0, /^[^"]* "[0-9]+\/[0-9]+"  \(/) { chap = substr($0, RSTART, RLENGTH); gsub(/[^0-9\/]/, "", chap) }
+    !inb && /^.. ".*"  \([0-9]+,[0-9]+\)$/ { text = $0; sub(/^.. "/, "", text); sub(/"  \([0-9]+,[0-9]+\)$/, "", text); next }
+    !inb { text = "" }
     END {
-      if (chap == "" || page == "") exit 1
+      if (title == "" || page == "") exit 1
+      gsub(/\|/, "/", title)
       top = substr(page, 1, 40); gsub(/\n/, " ", top)
-      printf "%s|%s|%d\n", chap, top, length(page)
+      printf "%s|%s|%d\n", title, top, length(page)
     }'
 }
-brief() {  # state -> 'c/C "first words" Nch' for the evidence, cut at a space so no glyph is split
-  local chap=${1%%|*} count=${1##*|} top=${1#*|}
+brief() {  # state -> 'title · "first words" Nch' for the evidence, cut at a space so no glyph is split
+  local title=${1%%|*} count=${1##*|} top=${1#*|}
   top=$(T=${top%|*} LC_ALL=C awk 'BEGIN { t = ENVIRON["T"]; s = substr(t, 1, 24)
     if (length(t) > 24 && substr(t, 25, 1) != " ") { if (index(s, " ")) sub(/ [^ ]*$/, "", s); else s = "" }
     print s }')
-  echo "$chap \"$top\" ${count}ch"
+  echo "$title · \"$top\" ${count}ch"
 }
 dismiss_anr() {  # serial: heavy builds can starve the emulator into a "System UI isn't responding" dialog
   if ANDROID_SERIAL="$1" mise run ui 2>/dev/null | grep -q '#aerr_wait'; then

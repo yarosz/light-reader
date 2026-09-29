@@ -118,9 +118,15 @@ internal fun readingDetail(book: Book): String? {
     return listOfNotNull(book.author, state).joinToString(" · ").ifEmpty { null }
 }
 
-/** Floored through whole basis points, because [Place.progress] has 4 decimals and 0.29 × 100 is 28.999… as a Double. */
-private fun percent(progress: Double): String? =
-    ((progress * 10_000).roundToLong() / 100).takeIf { it >= 1 }?.let { "$it%" }
+/**
+ * Floored through whole basis points, because [Place.progress] has 4 decimals and 0.29 × 100 is 28.999… as a Double.
+ * Null outside 0–1, NaN included.
+ */
+private fun percent(progress: Double): String? {
+    if (progress !in 0.0..1.0) return null
+    val floored = (progress * 10_000).roundToLong() / 100
+    return if (floored >= 1) "$floored%" else null
+}
 
 private fun downloadDetail(status: Download.Status) = when (status) {
     Download.Status.Running -> ROW_DOWNLOADING

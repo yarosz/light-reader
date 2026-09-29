@@ -29,6 +29,23 @@ class ProgressTest {
     }
 
     @Test
+    fun `floating-point noise on a whole number of minutes doesn't round up a step`() {
+        assertEquals("about 3 min left in this chapter", minutesLeftCopy((0.1 + 0.2) * 10))
+        assertEquals("about 15 min left in this chapter", minutesLeftCopy(15 + 1e-12))
+        assertEquals("about 20 min left in this chapter", minutesLeftCopy(15 + 1e-6))
+    }
+
+    @Test
+    fun `a Chapter ends at the text's end when the next Chapter starts after it`() {
+        val spineItems = listOf(item("one", words(100)), item("two", words(100)), item("back", words(100)))
+        val chapters = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Two", SpinePoint(1, 0)), Chapter("Licence", SpinePoint(2, 0)))
+        val book = OpenBook("id", "", spineItems, chapters = chapters, textEnd = SpinePoint(1, 50))
+        assertEquals(SpinePoint(1, 0), book.chapterEnd(0))
+        assertEquals(SpinePoint(1, 50), book.chapterEnd(1))
+        assertEquals(SpinePoint(1, 50), book.chapterEnd(2))
+    }
+
+    @Test
     fun `words are whitespace-separated runs, counted where they start, across Spine items`() {
         val index = WordIndex(listOf(item("a", "one two  three", " four"), item("b", ""), item("c", "five\tsix")))
         assertEquals(4, index.between(SpinePoint(0, 0), SpinePoint(1, 0)))
