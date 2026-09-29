@@ -331,19 +331,28 @@ class ReaderViewModel(
      * The point the Page on screen goes by for its Chapter and minutes: its start, or the start of a Chapter
      * starting later in its first line (a table of contents may point mid-line, or at a Part's heading
      * above its first Chapter's), so a jump there names the Chapter chosen. With no Chapter starting in
-     * its first line, a Page opening on headings goes by the first line under them ([Pass.leadEnd]), as a
-     * relayout may start the Page on the heading of a Chapter anchored at the paragraph below it
-     * ([pageFloor]); a Page of only headings goes by the Chapter starting at its end, the headings being
-     * that Chapter's, unless Back matter starts there. Before a view binds, the Place.
+     * its first line, a Page opening on headings goes by the first Chapter starting in them (the later of
+     * several starting at one point), else by the first line under them ([Pass.leadEnd]): a relayout may
+     * start the Page on the heading of a Chapter anchored at the paragraph below it ([pageFloor]), or on an
+     * unlisted heading above a Part's. A Page of only headings goes by the Chapter starting at its end, the
+     * headings being that Chapter's, unless Back matter starts there; the end of a Spine item counts as the
+     * next one's start, so a Part's title page of its own names the Part's first Chapter. Before a view
+     * binds, the Place.
      */
     private val pagePoint: SpinePoint get() {
         val (pass, page) = frame.value ?: return spinePoint.value
         val start = SpinePoint(pass.item, page.start)
         val opened = book.value ?: return start
-        val end = SpinePoint(pass.item, page.end)
+        val itemEnd = pass.item < opened.spineItems.lastIndex && page.end == opened.spineItems[pass.item].text.length
+        val end = if (itemEnd) SpinePoint(pass.item + 1, 0) else SpinePoint(pass.item, page.end)
         val inFirst = opened.chapterAt(SpinePoint(pass.item, pass.firstLineEnd(page) - 1))?.takeIf { opened.chapters[it].start >= start }
         val lead = pass.leadEnd(page)
-        val under = if (lead != null) opened.chapterAt(SpinePoint(pass.item, lead - 1)) else {
+        val under = if (lead != null) {
+            val first = opened.chapters.indexOfFirst { it.start >= start }
+                .takeIf { it >= 0 && opened.chapters[it].start < SpinePoint(pass.item, lead) }
+            first?.let { f -> opened.chapters.indexOfLast { it.start == opened.chapters[f].start } }
+                ?: opened.chapterAt(SpinePoint(pass.item, lead - 1))
+        } else {
             opened.chapterAt(end)?.takeIf { opened.chapters[it].start == end && end < opened.textEnd }
                 ?: opened.chapterAt(SpinePoint(pass.item, page.end - 1))
         }

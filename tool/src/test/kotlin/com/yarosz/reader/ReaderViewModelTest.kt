@@ -912,6 +912,62 @@ class ReaderViewModelTest {
     }
 
     /**
+     * An unlisted heading above a Part's heading and its first Chapter's: after a jump to the Part, a larger
+     * font packs the Page from the unlisted heading ([pageFloor] walks up the headings), so no Chapter starts
+     * in its first line. The Page goes by the first Chapter starting in its headings, the Part, not by the
+     * Chapter under them.
+     */
+    @Test
+    fun `after a font change a Page opening on an unlisted heading above a Part's still names the Part`() {
+        partUnderUnlistedHeading("<h2>VOLUME I</h2><h2 id=\"b1\">BOOK ONE</h2>")
+    }
+
+    /** The same with a heading's illustration caption above the Part's heading, kept with it like a heading. */
+    @Test
+    fun `after a font change a Page opening on a caption above a Part's heading still names the Part`() {
+        partUnderUnlistedHeading("<h2><span class=\"caption\">The Emperor</span><span id=\"b1\">BOOK ONE</span></h2>")
+    }
+
+    private fun partUnderUnlistedHeading(above: String) {
+        val body = "<h1>One</h1><p>${"word ".repeat(400)}</p>$above<h2 id=\"c1\">CHAPTER I</h2><p>${"word ".repeat(400)}</p>"
+        val ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Book One", "text/c0.xhtml#b1"), navPoint("Chapter I", "text/c0.xhtml#c1"))
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf(body), ncx = ncx))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpTo(1)
+        assertEquals("Book One", vm.topLine.value)
+        vm.changeFont(+1)
+        settle()
+        assertTrue(vm.pageStart < opened.chapters[1].start, "the Page opens on the heading above the Part's")
+        assertEquals("Book One", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+    }
+
+    /**
+     * A Part's title page as a Spine item of its own, only its heading and unlisted, before the Spine item
+     * its first Chapter starts: that Page ends at its Spine item's end, the Chapter's start, and goes by it.
+     */
+    @Test
+    fun `a Part's title page of its own Spine item goes by the Chapter after it`() {
+        val bodies = listOf("<h1>One</h1><p>${"word ".repeat(40)}</p>", "<h1>PART TWO</h1>", "<h2>Two</h2><p>${"word ".repeat(400)}</p>")
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c2.xhtml"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpTo(0)
+        vm.nextPage()
+        assertEquals(SpinePoint(1, 0), vm.pageStart, "the Page is the Part's title page")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+    }
+
+    /**
      * Three-line Pages: Chapter Two's three headings fill a Page of their own and its first paragraph, where
      * the table of contents points, opens the next. The headings are Two's, so that Page goes by Two.
      */

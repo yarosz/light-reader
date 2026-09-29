@@ -126,8 +126,11 @@ Ordered. Each item ends on its _done-when_.
     font change after a jump keeps the top line, Contents and minutes on that Chapter; a Page opening on
     a Chapter's heading goes by the line under it (`leadEnd`). The walk may take the line holding a
     mid-line Chapter start, so a word hyphenated across it stays whole; a Page opening on a Part's
-    heading right above its first Chapter's goes by the Part, as a jump there chose; a Page of only a
-    Chapter's headings goes by that Chapter, never by Back matter.
+    heading right above its first Chapter's goes by the Part, as a jump there chose, and so does one
+    opening on an unlisted heading or caption above the Part's; a Page of only a Chapter's headings goes
+    by that Chapter, never by Back matter, and a Part's title page of its own Spine item by the Chapter
+    after it. Follow-up: a jump to a mid-line Chapter start, then a font change, can go by the Chapter
+    before; fixing it means storing the Chapter start as the Place.
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
