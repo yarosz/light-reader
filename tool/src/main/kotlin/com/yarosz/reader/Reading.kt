@@ -15,7 +15,7 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  * for drawing and its lines for packing; the pass reads only the lines, through [linesOf]. A Page once
  * packed never changes (see [pack]), so turning back shows the Page just read. [id] is for logs: it
  * is unique within one [Reading] only, so compare passes by identity. [item] is [spineItem]'s index in
- * the Book's Spine items.
+ * the Book's Spine items. A Page never spans [pageBreak] (see [pack]).
  */
 class Pass<M>(
     val id: Int,
@@ -24,6 +24,7 @@ class Pass<M>(
     val key: LayoutKey,
     val windows: List<Window>,
     val anchor: Int,
+    private val pageBreak: Int? = null,
     private val linesOf: (M) -> List<LineMetrics>,
 ) {
     private val measured = MutableList<M?>(windows.size) { null }
@@ -44,7 +45,7 @@ class Pass<M>(
         packed = repack()
     }
 
-    private fun repack() = pack(windows, measured.map { it?.let(linesOf) }, anchor, key.pageHeightPx.toFloat())
+    private fun repack() = pack(windows, measured.map { it?.let(linesOf) }, anchor, key.pageHeightPx.toFloat(), pageBreak)
 
     /** The Page holding [offset], the last Page for offsets past the end, or null while it isn't packed yet. */
     fun pageAt(offset: Int): Page? = when {
@@ -99,13 +100,15 @@ fun backwardLanding(cached: Pass<*>?, key: LayoutKey, length: Int): Landing {
  * the Page being shown, and which Page follows or precedes it. Measuring is injected so this stays
  * pure: [measure] runs synchronously when a Page can't show without it, and [prefetchTarget] names the
  * window worth measuring in the background. Passes are cached per Spine item, most recently shown last,
- * and dropped on a key change or beyond [CACHED_PASSES].
+ * and dropped on a key change or beyond [CACHED_PASSES]. A Page never spans [textEnd] ([OpenBook.textEnd]):
+ * the last Page of the text ends there, and Back matter starts on a Page of its own.
  */
 class Reading<M>(
     private val spineItems: List<SpineItem>,
     private val measure: (Pass<M>, Int) -> M,
     private val linesOf: (M) -> List<LineMetrics>,
     private val windowChars: Int = WINDOW_CHARS,
+    private val textEnd: SpinePoint? = null,
 ) {
     private val passes = LinkedHashMap<Int, Pass<M>>()
     /** Passes this Reading has started; also the next pass's id. */
@@ -149,8 +152,9 @@ class Reading<M>(
 
     private fun enter(item: Int, offset: Int, key: LayoutKey): Shown<M> {
         val spineItem = spineItems[item]
+        val pageBreak = textEnd?.takeIf { it.item == item }?.char
         val pass = passes.remove(item)?.takeIf { it.pageAt(offset) != null }
-            ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars), offset, linesOf)
+            ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, linesOf)
         passes[item] = pass
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())
         return turnTo(pass, offset)

@@ -87,7 +87,10 @@ class ReaderViewModelTest {
     }
 
     private val ReaderViewModel.onLastPage: Boolean
-        get() = frame.value!!.let { SpinePoint(it.pass.item, it.page.end) >= book.value!!.textEnd }
+        get() = frame.value!!.let {
+            val textEnd = book.value!!.textEnd
+            SpinePoint(it.pass.item, it.page.start) < textEnd && SpinePoint(it.pass.item, it.page.end) >= textEnd
+        }
 
     private fun ReaderViewModel.toLastPage() {
         repeat(10_000) { if (onLastPage) return else nextPage() }
@@ -459,5 +462,116 @@ class ReaderViewModelTest {
         settle()
         assertEquals(3, vm.fontStep.value)
         assertEquals(3, ReadingStore(dir).load().settings.fontStep)
+    }
+
+    /**
+     * A reader open on [BackMatterTest]'s Gutenberg-shaped Book, in Alice's file, its license mid-way through
+     * its last Spine item. [place] stores a Place first, with [finished].
+     */
+    private fun gutenberg(finished: Boolean = false, place: ((OpenBook) -> SpinePoint)? = null): ReaderViewModel {
+        val file = File(dir, "alice.epub").writeEpub(tocEpubFiles(BackMatterTest.gutenbergBodies(paragraphs = 150), ncx = BackMatterTest.gutenbergNcx()))
+        if (place != null) {
+            val book = parseEpub(file)
+            ReadingStore(dir).save {
+                ReadingData().shelve(book.identifier, book.title, "alice.epub").withFinished(book.identifier, finished, book.placeAt(place(book), 1))
+            }
+        }
+        return reading()
+    }
+
+    private val ReaderViewModel.pageStart: SpinePoint get() = frame.value!!.let { SpinePoint(it.pass.item, it.page.start) }
+
+    private val ReaderViewModel.pageEnd: SpinePoint get() = frame.value!!.let { SpinePoint(it.pass.item, it.page.end) }
+
+    private val ReaderViewModel.inBackMatter: Boolean get() = pageStart >= book.value!!.textEnd
+
+    private fun ReaderViewModel.assertBackMatterLines() {
+        assertEquals(BackMatterTest.LICENSE_HEADING, topLine.value)
+        assertNull(progressLine.value)
+    }
+
+    @Test
+    fun `the end page follows the last Page of the text, which ends where Back matter starts, and sets Finished`() {
+        val vm = gutenberg()
+        val book = vm.book.value!!
+        assertTrue(book.textEnd < SpinePoint(book.spineItems.lastIndex, book.spineItems.last().text.length))
+        while (!vm.onLastPage) {
+            assertFalse(vm.atEnd.value)
+            assertFalse(vm.inBackMatter)
+            vm.nextPage()
+        }
+        val last = vm.frame.value
+        assertEquals(book.textEnd, vm.pageEnd)
+        assertFalse(vm.inBackMatter)
+        assertNotNull(vm.progressLine.value)
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        assertSame(last, vm.frame.value)
+        assertTrue(stored(vm).finished)
+        assertEquals(book.title, vm.topLine.value)
+        assertNull(vm.progressLine.value)
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        assertSame(last, vm.frame.value)
+    }
+
+    @Test
+    fun `a Place in Back matter opens there with no end page, turns forward through it, and forward on the Book's last Page does nothing`() {
+        val vm = gutenberg { it.textEnd.copy(char = it.textEnd.char + 1) }
+        val book = vm.book.value!!
+        assertFalse(vm.atEnd.value)
+        assertEquals(book.textEnd, vm.pageStart)
+        vm.assertBackMatterLines()
+        var turns = 0
+        while (true) {
+            val before = vm.frame.value
+            vm.nextPage()
+            assertFalse(vm.atEnd.value)
+            if (vm.frame.value === before) break
+            turns++
+            assertTrue(vm.inBackMatter)
+            vm.assertBackMatterLines()
+        }
+        assertTrue(turns >= 2, "the license is several Pages")
+        assertEquals(SpinePoint(book.spineItems.lastIndex, book.spineItems.last().text.length), vm.pageEnd)
+        assertFalse(stored(vm).finished)
+    }
+
+    @Test
+    fun `forward on the Book's last Page gives no sample, and the Page stays timed`() {
+        val vm = gutenberg { it.textEnd.copy(char = it.textEnd.char + 1) }
+        val book = vm.book.value!!
+        val bookEnd = SpinePoint(book.spineItems.lastIndex, book.spineItems.last().text.length)
+        repeat(10_000) { if (vm.pageEnd < bookEnd) vm.nextPage() }
+        val shown = vm.frame.value!!
+        assertTrue(vm.inBackMatter)
+        assertEquals(bookEnd, vm.pageEnd)
+        val words = WordIndex(book.spineItems).between(vm.pageStart, vm.pageEnd)
+        assertTrue(words >= SAMPLE_MIN_WORDS, "the last Page has $words words")
+        repeat(MEASURED_AFTER - 1) { speed.record(100, 20_000) }
+        vm.readThenTurn()
+        assertSame(shown, vm.frame.value)
+        assertEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    @Test
+    fun `back turns inside Back matter keep Finished, and the one onto the last Page of the text clears it`() {
+        val vm = gutenberg(finished = true) { SpinePoint(it.spineItems.lastIndex, it.spineItems.last().text.length - 1) }
+        val book = vm.book.value!!
+        assertTrue(vm.inBackMatter)
+        assertTrue(stored(vm).finished)
+        while (vm.pageStart != book.textEnd) {
+            vm.previousPage()
+            assertFalse(vm.atEnd.value)
+            assertTrue(vm.inBackMatter)
+            assertTrue(stored(vm).finished)
+        }
+        vm.previousPage()
+        assertFalse(vm.inBackMatter)
+        assertEquals(book.textEnd, vm.pageEnd)
+        assertFalse(stored(vm).finished)
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        assertTrue(stored(vm).finished)
     }
 }

@@ -18,12 +18,13 @@ class ReadingTest {
     private val key = LayoutKey(fontStep = 1, widthPx = 1_000, pageHeightPx = 300)
 
     /** [count] fake Spine items measured by [FakeSpineItem]'s simulated layout, one window at a time, counting each measure the session asks for. */
-    private class Fixture(seed: Int, count: Int, windowChars: Int) {
+    private class Fixture(seed: Int, count: Int, windowChars: Int, textEnd: ((List<SpineItem>) -> SpinePoint)? = null) {
         val fakes = Random(seed).let { rnd -> List(count) { FakeSpineItem.random(rnd) } }
         val spineItems = fakes.map { it.spineItem }
         var measures = 0
         private val cut = HashMap<Pair<Int, LayoutKey>, List<List<LineMetrics>>>()
-        val reading = Reading<List<LineMetrics>>(spineItems, measure = { pass, window -> measures++; linesOf(pass)[window] }, linesOf = { it }, windowChars = windowChars)
+        val end = textEnd?.invoke(spineItems)
+        val reading = Reading<List<LineMetrics>>(spineItems, measure = { pass, window -> measures++; linesOf(pass)[window] }, linesOf = { it }, windowChars = windowChars, textEnd = end)
 
         fun linesOf(pass: Pass<List<LineMetrics>>) = cut.getOrPut(pass.item to pass.key) {
             val rnd = Random(pass.item * 31 + pass.key.fontStep)
@@ -175,5 +176,26 @@ class ReadingTest {
         pass.record(0, lines(50))
         assertSame(first, pass.measured(0))
         assertEquals(pages, pass.pages)
+    }
+
+    @Test
+    fun `a text end inside a Spine item ends a Page and starts the next, walking either way and opening on either side`() {
+        repeat(100) { seed ->
+            val rnd = Random(seed)
+            val book = Fixture(seed, count = 3, windowChars = 3_000) { items ->
+                val item = rnd.nextInt(items.size)
+                SpinePoint(item, items[item].blockStarts.drop(1).randomOrNull(rnd) ?: items[item].text.length)
+            }
+            val end = book.end!!
+            val forward = generateSequence(book.reading.open(0, 0, key)) { book.reading.next() }.toList()
+            val ends = forward.map { SpinePoint(it.pass.item, it.page.end) }
+            assertTrue(forward.none { it.pass.item == end.item && end.char in it.page.start + 1 until it.page.end }, "seed $seed: a Page spans $end")
+            assertEquals(1, ends.count { it == end }, "seed $seed")
+            if (end.char < book.spineItems[end.item].text.length) {
+                book.reading.open(end.item, end.char, key.copy(fontStep = 2))
+                val back = book.reading.previous()!!
+                assertEquals(end, SpinePoint(back.pass.item, back.page.end), "seed $seed")
+            }
+        }
     }
 }

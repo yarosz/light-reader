@@ -73,6 +73,12 @@ The part of a Book before its first Chapter, such as the title page and copyrigh
 no Chapter. A preface the table of contents lists is a Chapter, not front matter.
 _Avoid_: prelims
 
+**Back matter**:
+The part of a Book after its text ends: Project Gutenberg's license, and Spine items the Book marks as
+back matter. The end page comes before it, and the reader reaches it only through Contents. A Book that
+marks none has no Back matter.
+_Avoid_: appendix, trailer
+
 **Spine item**:
 One of the documents a Book is made of, in reading order. A Spine item may hold several Chapters,
 and one Chapter may span several Spine items.
@@ -99,9 +105,11 @@ percent ("42%").
 _Avoid_: position, page number
 
 **Finished**:
-A Book the reader has read to the end: turned past its last Page and left from there. Finished Books
-sit at the bottom of the Shelf. Opening one again opens at its Place; turning back from the end, or
-going to any earlier Page, makes it in progress again.
+A Book the reader has read to the end of its text, the last Page before any Back matter. It becomes
+Finished when the end page shows, which also saves its Place on that last Page, and stays Finished when
+the reader leaves. Finished Books sit at the bottom of the Shelf. Opening one again opens at its Place.
+Turning back from the end page, or going to any Page of the text, makes it in progress again; reading its
+Back matter does not.
 _Avoid_: read, done, completed
 
 **Bookmark**:

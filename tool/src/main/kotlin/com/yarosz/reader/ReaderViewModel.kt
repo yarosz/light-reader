@@ -56,12 +56,15 @@ class ReaderViewModel(
     val frame = MutableStateFlow<Shown<WindowLayout>?>(null)
 
     /**
-     * Whether the end page is showing, after the Page that reaches [OpenBook.textEnd]. It is not a Page:
-     * [frame] and the Place stay on that last Page.
+     * Whether the end page is showing, after the last Page of the text, the one reaching [OpenBook.textEnd]
+     * ([reachesEnd]). It is not a Page: [frame] and the Place stay on that last Page.
      */
     val atEnd = MutableStateFlow(false)
 
-    /** The top line: the title of the Chapter holding the Page's start, else (front matter, the end page) the Book's Shelf title. */
+    /**
+     * The top line: the title of the Chapter holding the Page's start, Back matter's included, else (front
+     * matter, the end page) the Book's Shelf title.
+     */
     val topLine = MutableStateFlow("")
 
     /** The footer's Progress line ([minutesLine]); null for none. */
@@ -114,7 +117,7 @@ class ReaderViewModel(
                         val item = start.item.coerceIn(opened.spineItems.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
                         spinePoint.value = SpinePoint(item, start.char.coerceIn(0, opened.spineItems[item].text.length))
-                        val ends = windows(opened.spineItems[item], windowChars).joinToString(",") { it.end.toString() }
+                        val ends = windows(opened.spineItems[item], windowChars, opened.textEnd.takeIf { it.item == item }?.char).joinToString(",") { it.end.toString() }
                         Log.i(PERF_TAG, "windows item=$item windowChars=$windowChars ends=$ends")
                     } else {
                         val place = saver.data.books[opened.identifier]?.place
@@ -149,7 +152,10 @@ class ReaderViewModel(
         this.measurer = measurer
         prefetching?.cancel()
         timer.discard()
-        reading = Reading(spineItems, measure = { pass, window -> measure(measurer, pass, window, sync = true) }, linesOf = { it.lines }, windowChars = windowChars)
+        reading = Reading(
+            spineItems, measure = { pass, window -> measure(measurer, pass, window, sync = true) }, linesOf = { it.lines },
+            windowChars = windowChars, textEnd = book.value?.textEnd,
+        )
         open(if (frame.value == null) "open" else "relayout")
     }
 
@@ -163,8 +169,9 @@ class ReaderViewModel(
     }
 
     /**
-     * A forward turn: the next Page, or from the Page reaching [OpenBook.textEnd] the end page, which
-     * sets Finished; nothing on the end page. Leaving a Page for the next one gives a speed sample when
+     * A forward turn: the next Page, or from the last Page of the text ([reachesEnd]) the end page, which
+     * sets Finished; nothing on the end page or on the Book's last Page, so Back matter never shows a
+     * second end page. Leaving a Page for the next one gives a speed sample when
      * it was reached that way too ([PageTimer]); the end page is not a Page, so leaving for it gives none.
      * The next Page is timed from when it shows, so its layout doesn't count as reading.
      */
@@ -178,15 +185,17 @@ class ReaderViewModel(
             publishLines()
             return
         }
+        if (isLastPage(shown)) return
         timer.finish(now())
-        val next = turn(clearsFinished = false) { it.next() } ?: return
+        val next = turn(back = false) { it.next() } ?: return
         val words = words ?: return
         timer.start(now(), words.between(SpinePoint(next.pass.item, next.page.start), SpinePoint(next.pass.item, next.page.end)))
     }
 
     /**
-     * A back turn: from the end page to the last Page, else to the Page before. Either clears Finished,
-     * even on the first Page, which has no Page before it.
+     * A back turn: from the end page to the last Page, else to the Page before. It clears Finished from the
+     * end page, and when it lands on a Page of the text, even on the first Page, which has no Page before
+     * it; a back turn inside Back matter keeps Finished.
      */
     fun previousPage() {
         if (frame.value == null) return
@@ -197,7 +206,7 @@ class ReaderViewModel(
             publishLines()
             return
         }
-        turn(clearsFinished = true) { it.previous() }
+        turn(back = true) { it.previous() }
     }
 
     /** The page turn a key makes: volume down forward, volume up back; null for any other key. */
@@ -247,17 +256,28 @@ class ReaderViewModel(
         }
     }
 
-    private fun reachesEnd(shown: Shown<WindowLayout>): Boolean =
-        book.value?.let { SpinePoint(shown.pass.item, shown.page.end) >= it.textEnd } == true
+    /** Whether [shown] is the last Page of the text: it starts before [OpenBook.textEnd] and ends at or after it. */
+    private fun reachesEnd(shown: Shown<WindowLayout>): Boolean = book.value?.let {
+        inText(shown) && SpinePoint(shown.pass.item, shown.page.end) >= it.textEnd
+    } == true
+
+    /** Whether [shown] is the Book's last Page, where a forward turn does nothing and its timer keeps running. */
+    private fun isLastPage(shown: Shown<WindowLayout>): Boolean =
+        book.value?.let { shown.pass.item == it.spineItems.lastIndex && shown.page.end >= shown.pass.length } == true
+
+    /** Whether [shown] is a Page of the text, not of Back matter: it starts before [OpenBook.textEnd]. */
+    private fun inText(shown: Shown<WindowLayout>): Boolean =
+        book.value?.let { SpinePoint(shown.pass.item, shown.page.start) < it.textEnd } == true
 
     /**
-     * Shows the Page [step] finds and records it as the Place. [clearsFinished] clears Finished too,
-     * re-stamping the Place even when [step] finds no Page.
+     * Shows the Page [step] finds and records it as the Place. A [back] turn clears Finished too when it
+     * lands on a Page of the text ([inText]), re-stamping the Place even when [step] finds no Page (the
+     * first Page, which is text).
      */
-    private fun turn(clearsFinished: Boolean, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
+    private fun turn(back: Boolean, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
         val shown = show("turn", step)
         if (shown != null) spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
-        val clears = clearsFinished && book.value?.let { saver.data.books[it.identifier]?.finished } == true
+        val clears = back && (shown == null || inText(shown)) && book.value?.let { saver.data.books[it.identifier]?.finished } == true
         if (shown != null || clears) stamp(finished = if (clears) false else null)
         return shown
     }

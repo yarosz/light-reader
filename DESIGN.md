@@ -101,13 +101,20 @@ memory for as long as the Tool runs, and never saved.
 the end of the Book's text shows the end page: "The end." centred, and under it "Back to Shelf", which
 leaves the Reader as system back does. The top line shows the Book's title, and the footer keeps "A−"
 and "A+" with nothing between them. Forward does nothing there; back (a tap in the left third, or volume
-up) returns to the last Page. The end page is not a Page, so the Place stays on the last Page.
+up) returns to the last Page. The end page is not a Page, so the Place stays on the last Page. The
+last Page of the text ends where Back matter starts, however short that leaves it, so Back matter never
+shares a Page with the text.
+
+**Back matter.** Reached only through Contents, never by turning past the end page. Inside it, turns work
+as anywhere else: the top line shows its Chapter's title, the footer has no Progress line, forward on the
+Book's last Page does nothing, and no second end page shows. A Place saved there opens there.
 
 **Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
 either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so
 a merge with an older copy of the file keeps the change. A Finished Book opens at its Place, the last
-Page. The first back turn clears Finished, as a Contents jump will, and a forward turn shows the end
-page again. A font change keeps Finished, and so does reopening the Book and leaving at once. At
+Page of the text. The first back turn clears Finished, as a Contents jump to a Page of the text will, and a forward
+turn shows the end page again. A back turn inside Back matter keeps Finished; the one onto the last Page
+of the text clears it. A font change keeps Finished, and so does reopening the Book and leaving at once. At
 another font size a Finished Book's Place may land before the last Page, and forward turns reach the
 end page without clearing it.
 
