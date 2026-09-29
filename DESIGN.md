@@ -20,7 +20,8 @@ At 20 sp a Page holds about 13 lines (40–60 words of dialogue-heavy text, a tu
 230 wpm), so vertical space is precious: side margins 20 dp, top and bottom margins 12–16 dp, no footer
 while reading. Line height 1.35 with `LineHeightStyle(Center, Trim.None)` (the trim setting is what
 stops descenders leaking across Pages); verified leak-free on the LP3, where 1.4 was the fallback. All
-of these live in `Typesetting.kt`.
+of these live in `Typesetting.kt`. No footer while reading stays N5's target, when the chrome becomes an
+overlay; until then the reading view has a top line and a 48 dp footer (see "Reading").
 
 Reader is locked to portrait (`orientation = "portrait"` in `tool/lighttool.toml`), like LightOS
 itself: its main activity declares the same portrait `screenOrientation`, so its tools never rotate
@@ -59,6 +60,61 @@ Copy capitalises Book, Shelf and Catalogue; "place" is lowercase; chapter is low
 and capitalised only in a "Chapter N" title; Edition, Spine item and Place-as-a-term never appear in
 copy.
 
+## Reading
+
+The reading view until N5 moves its chrome into an overlay. Product rulings from the advisor (N4,
+2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book that can't be opened reads "Couldn't
+open this Book." (the reason goes to the log), and one with no text reads "This Book has no text."
+
+**Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter holding the
+Page's start, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the
+end and centred. It is one Detail line high: the style's line height at the system font scale, so the
+large-text setting grows it and nothing clips, but no title changes it (a script drawn in a fallback
+font with a taller line would otherwise re-pack the Pages at a Chapter change). It has 4 dp below it.
+In front matter, and on the end page, it shows the Book's title as the Shelf shows it. It isn't
+tappable: only the Page turns Pages. The footer is 48 dp: "A−" and "A+" at its ends, each with 8 dp of
+padding at the sides, each filling the footer's height as its tap target, and the Progress line between them.
+The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.
+
+**Progress line.** The minutes left in the Chapter: the words from the Page's start to the Chapter's
+end (the next Chapter's start, or the end of the Book's text if that comes first), divided by the
+reading speed. A word is a whitespace-separated run of text. The words are indexed once, off the main
+thread, when the Book opens, so a turn counts them without reading any text. On the raw minutes m:
+
+| m | Line |
+|---|---|
+| under 1 | "almost done with this chapter" |
+| 1 to under 15 | "about ⌈m⌉ min left in this chapter" |
+| 15 and over | "about ⌈m/5⌉×5 min left in this chapter" |
+
+"chapter" stays lowercase (see "Copy"). There is no line in front matter, on the end page, or in a
+Chapter whose whole text reads in under a minute at the current speed.
+
+**Reading speed.** 230 words a minute until there are 5 samples, then the median of the newest 20 or
+fewer. A sample is the words on a Page divided by the time on it. It counts only when the Page was
+reached by a forward turn of one Page and left by one, holds at least 20 words, and was on screen for
+2 s to 3 min. A back turn, a font change or relayout, a Chapter jump, reopening the Book, or the Tool
+pausing drops the running timing. Samples belong to the reader: they are shared across Books, kept in
+memory for as long as the Tool runs, and never saved.
+
+**End page.** A forward turn (a tap outside the left third, or volume down) from the Page that reaches
+the end of the Book's text shows the end page: "The end." centred, and under it "Back to Shelf", which
+leaves the Reader as system back does. The top line shows the Book's title, and the footer keeps "A−"
+and "A+" with nothing between them. Forward does nothing there; back (a tap in the left third, or volume
+up) returns to the last Page. The end page is not a Page, so the Place stays on the last Page.
+
+**Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
+either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so
+a merge with an older copy of the file keeps the change. A Finished Book opens at its Place, the last
+Page. The first back turn clears Finished, as a Contents jump will, and a forward turn shows the end
+page again. A font change keeps Finished, and so does reopening the Book and leaving at once. At
+another font size a Finished Book's Place may land before the last Page, and forward turns reach the
+end page without clearing it.
+
+**Stored.** Every Place write stores `progress` (additive, ADR 0002): the share (0–1) of the Book's
+text characters before the Place, front and back matter included, to 4 decimals. The Shelf's percent
+comes from it (see "Shelf"). The minutes left in a Chapter are never stored.
+
 ## Shelf
 
 The Tool's first screen: the Books on this phone. Product rulings from the advisor (2026-09-27); copy
@@ -87,13 +143,13 @@ set tighter (1.2) than body copy.
 | Failed, retryable | "download failed · tap to retry" | downloads again |
 | Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" | nothing; the Book can only be removed |
 | Failed for good, the source needs a login (401) | "can't download again · needs a login" | nothing; the Book can only be removed |
-| Finished | "finished" (see below) | opens the Book |
+| Finished | "author · finished" (see below) | opens the Book |
 | File missing, source known | "file missing · tap to download again" | downloads again, keeps the Place |
 | File missing, no source | "file missing" | nothing; the Book can only be removed |
 
-Until N4 computes Progress, an in-progress row shows the author alone, never a placeholder percent,
-and "finished" waits for N4 too, so a finished Book reads like one in progress. When there is no author,
-the state stands alone, so an in-progress Book with no author has no second line. A running download
+The percent is the Place's `progress`, floored. Under 1%, or with no `progress` (a Place saved before
+N4, until the next page turn), the author stands alone. When there is no author, the state stands
+alone ("42%", "finished"), so an in-progress Book with neither has no second line. A running download
 wins over a Book's file, the file over a failed download (a Book that is here stays readable
 offline), and both over its reading state. Opening a Book counts as reading: it records the first
 Page's Place, so a Book opened but never paged reads as in progress, not "not started".

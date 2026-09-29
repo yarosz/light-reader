@@ -44,7 +44,9 @@ data class SpineItem(val spineId: String, val blocks: List<Block>) {
 /**
  * [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see
  * [bookIdentifier]. [author] is its package's `dc:creator`s, null when it names none. [chapters] are its
- * Chapters in reading order ([chaptersOf]); by default each Spine item is one.
+ * Chapters in reading order ([chaptersOf]); by default each Spine item is one. [textEnd] is where the
+ * Book's reading ends: the end page follows the Page reaching it, and the last Chapter's minutes stop
+ * there. It is the end of the last Spine item.
  */
 data class OpenBook(
     val identifier: String,
@@ -52,7 +54,11 @@ data class OpenBook(
     val spineItems: List<SpineItem>,
     val author: String? = null,
     val chapters: List<Chapter> = chaptersOf(emptyList(), spineItems),
-)
+    val textEnd: SpinePoint = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0),
+) {
+    /** The characters before each Spine item, and last the Book's total: summed once, so [progressAt] on a turn sums nothing. */
+    val charsBefore: LongArray = spineItems.runningFold(0L) { acc, item -> acc + item.text.length }.toLongArray()
+}
 
 /** The most a container, package, or encryption document may decompress to; real ones are a few KB. */
 const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
@@ -89,7 +95,10 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
         }
         resolved.ifEmpty { null }
     }.orEmpty()
-    OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems))
+    OpenBook(
+        pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems),
+        textEnd = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0),
+    )
 }
 
 /** A Spine item's idref and the path of its document inside the zip. */

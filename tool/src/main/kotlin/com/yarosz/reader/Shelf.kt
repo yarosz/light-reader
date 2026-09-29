@@ -1,5 +1,7 @@
 package com.yarosz.reader
 
+import kotlin.math.roundToLong
+
 /** Shelf copy, verbatim from DESIGN.md "Shelf". */
 const val SHELF_TITLE = "Reader"
 const val SHELF_EDIT = "Edit"
@@ -11,6 +13,7 @@ const val SHELF_REMOVE = "Remove"
 const val SHELF_CANCEL = "Cancel"
 const val SHELF_CONFIRM_REMOVE = "Remove from Shelf? Your place is kept if you add it again."
 const val ROW_NOT_STARTED = "not started"
+const val ROW_FINISHED = "finished"
 const val ROW_DOWNLOADING = "downloading…"
 const val ROW_DOWNLOAD_FAILED = "download failed · tap to retry"
 const val ROW_FILE_MISSING = "file missing"
@@ -101,9 +104,28 @@ private fun bookRow(identifier: String, book: Book, file: String?, download: Map
         file == null && source != null -> ShelfRow(key, book.title, ROW_FILE_MISSING_SOURCE, RowTap.Download(source, book.title, book.author, identifier))
         file == null -> ShelfRow(key, book.title, ROW_FILE_MISSING, RowTap.None)
         book.place == null -> ShelfRow(key, book.title, ROW_NOT_STARTED, RowTap.Open(file))
-        // In progress or finished: "author · 42%" and "finished" wait for N4's Progress, so the author stands alone.
-        else -> ShelfRow(key, book.title, book.author, RowTap.Open(file))
+        else -> ShelfRow(key, book.title, readingDetail(book), RowTap.Open(file))
     }
+}
+
+/**
+ * An opened Book's second line: "author · 42%" in progress, the percent of its Place's [Place.progress]
+ * floored, and "author · finished" when Finished. Under 1%, or with no progress (a Place saved before
+ * N4), the author stands alone; with no author, the state does.
+ */
+internal fun readingDetail(book: Book): String? {
+    val state = if (book.finished) ROW_FINISHED else book.place?.progress?.let(::percent)
+    return listOfNotNull(book.author, state).joinToString(" · ").ifEmpty { null }
+}
+
+/**
+ * Floored through whole basis points, because [Place.progress] has 4 decimals and 0.29 × 100 is 28.999… as a Double.
+ * Null outside 0–1, NaN included.
+ */
+private fun percent(progress: Double): String? {
+    if (progress !in 0.0..1.0) return null
+    val floored = (progress * 10_000).roundToLong() / 100
+    return if (floored >= 1) "$floored%" else null
 }
 
 private fun downloadDetail(status: Download.Status) = when (status) {

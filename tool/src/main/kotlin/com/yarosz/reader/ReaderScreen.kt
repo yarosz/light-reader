@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,8 +30,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
@@ -38,6 +41,7 @@ import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.LightTheme
 import com.thelightphone.sdk.ui.LightThemeController
 import com.thelightphone.sdk.ui.LightThemeTokens
+import com.thelightphone.sdk.ui.designVerticalPxToSp
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
 
@@ -71,65 +75,99 @@ class ReaderScreen(
                 val opened = book
                 when {
                     opened == null -> LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
-                    opened.spineItems.isEmpty() -> LightText(text = "This book has no text.", variant = LightTextVariant.Copy, lighten = true)
-                    else -> Reader(opened, measurer)
+                    opened.spineItems.isEmpty() -> LightText(text = READING_NO_TEXT, variant = LightTextVariant.Copy, lighten = true)
+                    else -> Reader(measurer)
                 }
             }
         }
     }
 
+    /**
+     * The top line, the Page (or the end page) and the footer, stacked (DESIGN.md "Reading"). The Page gets
+     * whatever height the top line and footer leave, so a change to either re-packs the Pages at the Place.
+     * The top line is one Detail line high at the system font scale, whatever the title: a title in a
+     * fallback font's taller line can't re-pack the Pages at a Chapter change.
+     */
     @Composable
-    private fun Reader(book: OpenBook, measurer: TextMeasurer) {
+    private fun Reader(measurer: TextMeasurer) {
         val frame by viewModel.frame.collectAsState()
+        val atEnd by viewModel.atEnd.collectAsState()
+        val topLine by viewModel.topLine.collectAsState()
+        val progressLine by viewModel.progressLine.collectAsState()
         val colors = LightThemeTokens.colors
-        val footerHeight = 64.dp
-        val footerPx = with(LocalDensity.current) { footerHeight.roundToPx() }
+        val topLineHeight = with(LocalDensity.current) { LightThemeTokens.typography.detail.lineHeight.value.designVerticalPxToSp().toDp() }
 
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val widthPx = constraints.maxWidth
-            val pageHeightPx = constraints.maxHeight - footerPx
-            val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx) {
-                Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx)
-            }
-            LaunchedEffect(typesetter) { viewModel.bind(typesetter) }
-            val shown = frame ?: return@BoxWithConstraints
-
-            Column(Modifier.fillMaxSize()) {
-                Canvas(
+        Column(Modifier.fillMaxSize()) {
+            LightText(
+                text = topLine,
+                variant = LightTextVariant.Detail,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).height(topLineHeight),
+                align = TextAlign.Center,
+                lighten = true,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).pointerInput(Unit) {
+                detectTapGestures { tap -> if (tap.x < size.width / 3f) viewModel.previousPage() else viewModel.nextPage() }
+            }) {
+                val widthPx = constraints.maxWidth
+                val pageHeightPx = constraints.maxHeight
+                val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx) {
+                    Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx)
+                }
+                LaunchedEffect(typesetter) { viewModel.bind(typesetter) }
+                val shown = frame ?: return@BoxWithConstraints
+                if (atEnd) EndPage() else Canvas(
                     Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
+                        .fillMaxSize()
                         .semantics { contentDescription = shown.pass.spineItem.text.substring(shown.page.start, shown.page.end) }
-                        .pointerInput(Unit) {
-                            detectTapGestures { tap ->
-                                if (tap.x < size.width / 3f) viewModel.previousPage() else viewModel.nextPage()
-                            }
-                        }
                 ) {
                     drawPage(shown, colors.content)
                 }
-                Row(
-                    Modifier.fillMaxWidth().height(footerHeight),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    LightText(
-                        text = "A−",
-                        variant = LightTextVariant.Copy,
-                        modifier = Modifier.lightClickable { viewModel.changeFont(-1) }.padding(8.dp),
-                    )
-                    LightText(
-                        text = "${shown.pass.item + 1}/${book.spineItems.size}",
-                        variant = LightTextVariant.Detail,
-                        lighten = true,
-                    )
-                    LightText(
-                        text = "A+",
-                        variant = LightTextVariant.Copy,
-                        modifier = Modifier.lightClickable { viewModel.changeFont(+1) }.padding(8.dp),
-                    )
-                }
             }
+            Row(
+                Modifier.fillMaxWidth().height(48.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                LightText(
+                    text = "A−",
+                    variant = LightTextVariant.Copy,
+                    modifier = Modifier.fillMaxHeight().lightClickable { viewModel.changeFont(-1) }.padding(horizontal = 8.dp).wrapContentHeight(),
+                )
+                LightText(
+                    text = progressLine.orEmpty(),
+                    variant = LightTextVariant.Detail,
+                    modifier = Modifier.weight(1f),
+                    align = TextAlign.Center,
+                    lighten = true,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LightText(
+                    text = "A+",
+                    variant = LightTextVariant.Copy,
+                    modifier = Modifier.fillMaxHeight().lightClickable { viewModel.changeFont(+1) }.padding(horizontal = 8.dp).wrapContentHeight(),
+                )
+            }
+        }
+    }
+
+    /** "The end." and "Back to Shelf", which leaves the Reader as system back does. Taps elsewhere turn as on a Page. */
+    @Composable
+    private fun EndPage() {
+        Column(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            LightText(text = END_PAGE_TEXT, variant = LightTextVariant.Copy, align = TextAlign.Center)
+            LightText(
+                text = END_PAGE_BACK_TO_SHELF,
+                variant = LightTextVariant.Copy,
+                modifier = Modifier.lightClickable { goBack() }.padding(8.dp),
+                align = TextAlign.Center,
+            )
         }
     }
 }
@@ -138,10 +176,10 @@ class ReaderScreen(
 private fun DrawScope.drawPage(shown: Shown<WindowLayout>, color: Color) {
     var y = 0f
     for (band in shown.page.bands) {
-        val layout = checkNotNull(shown.pass.measured(band.window)) { "band on unmeasured window ${band.window}" }.layout
+        val layout = checkNotNull(shown.pass.measured(band.window)) { "band on unmeasured window ${band.window}" }
         val height = band.bottom - band.top
         clipRect(top = y, bottom = y + height) {
-            translate(top = y - band.top) { drawText(layout, color = color) }
+            translate(top = y - band.top) { layout.draw(this, color) }
         }
         y += height
     }

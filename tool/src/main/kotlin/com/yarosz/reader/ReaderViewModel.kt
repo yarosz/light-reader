@@ -17,9 +17,11 @@ import kotlinx.coroutines.withContext
 
 /**
  * Logcat tag for layout timings; `scripts/perf.sh` parses these lines, so the key `chapters=` stays
- * as it is (it counts Spine items).
+ * as it is (it counts Spine items). `tocChapters=` counts the Book's Chapters.
  */
 private const val PERF_TAG = "ReaderPerf"
+
+private const val TAG = "Reader"
 
 /** How long page turns and font changes settle before the reading data is saved. */
 const val SAVE_DEBOUNCE_MS = 1_000L
@@ -27,14 +29,15 @@ const val SAVE_DEBOUNCE_MS = 1_000L
 /**
  * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font step
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
- * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened; tests pass one
- * they control.
+ * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened, and [now] is the
+ * monotonic millis that time Pages for the reading speed; tests pass ones they control.
  */
 class ReaderViewModel(
     private val file: File,
     private val owner: ShelfOwner,
     private val start: DevStart? = null,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val now: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : LightViewModel<Unit>() {
     /**
      * The owner's saver, or in a dev-start session one that starts empty and writes nothing, so perf
@@ -52,7 +55,24 @@ class ReaderViewModel(
     /** The Page to draw and the pass whose layouts draw it; null until the view binds a [Typesetter]. */
     val frame = MutableStateFlow<Shown<WindowLayout>?>(null)
 
-    private var typesetter: Typesetter? = null
+    /**
+     * Whether the end page is showing, after the Page that reaches [OpenBook.textEnd]. It is not a Page:
+     * [frame] and the Place stay on that last Page.
+     */
+    val atEnd = MutableStateFlow(false)
+
+    /** The top line: the title of the Chapter holding the Page's start, else (front matter, the end page) the Book's Shelf title. */
+    val topLine = MutableStateFlow("")
+
+    /** The footer's Progress line ([minutesLine]); null for none. */
+    val progressLine = MutableStateFlow<String?>(null)
+
+    /** The title the Shelf shows for the Book. */
+    private var shelfTitle = ""
+    private var words: WordIndex? = null
+    private val timer = PageTimer(owner.speed)
+
+    private var measurer: WindowMeasurer? = null
     private var reading: Reading<WindowLayout>? = null
     private var prefetching: Job? = null
     private var syncWindows = 0
@@ -69,17 +89,26 @@ class ReaderViewModel(
             owner.awaitLoaded()
             val stored = saver.data
             val parseStart = System.nanoTime()
-            runCatching { withContext(io) { parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension) } }
-                .onSuccess { opened ->
-                    val parseMs = ms(System.nanoTime() - parseStart)
+            runCatching {
+                withContext(io) {
+                    val opened = parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension)
+                    val wordsStart = System.nanoTime()
+                    val index = WordIndex(opened.spineItems)
+                    Triple(opened, index, System.nanoTime() - wordsStart)
+                }
+            }
+                .onSuccess { (opened, index, wordsNs) ->
+                    val parseMs = ms(System.nanoTime() - parseStart - wordsNs)
                     val largest = opened.spineItems.indices.maxByOrNull { opened.spineItems[it].text.length }
                     if (largest != null) {
-                        Log.i(PERF_TAG, "book chapters=${opened.spineItems.size} largest=$largest " +
-                            "largestChars=${opened.spineItems[largest].text.length} parseMs=$parseMs")
+                        Log.i(PERF_TAG, "book chapters=${opened.spineItems.size} tocChapters=${opened.chapters.size} largest=$largest " +
+                            "largestChars=${opened.spineItems[largest].text.length} parseMs=$parseMs wordsMs=${ms(wordsNs)}")
                     }
-                    val now = System.currentTimeMillis()
+                    val openedAt = System.currentTimeMillis()
                     val title = saver.data.books[opened.identifier]?.title?.takeIf { it.isNotBlank() } ?: opened.title
-                    saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = now) }
+                    shelfTitle = title
+                    words = index
+                    saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = openedAt) }
                     if (start == null) fontStep.value = saver.data.settings.fontStep.coerceIn(FONT_SIZES.indices)
                     if (start != null && opened.spineItems.isNotEmpty()) {
                         val item = start.item.coerceIn(opened.spineItems.indices)
@@ -92,13 +121,16 @@ class ReaderViewModel(
                         place?.let(opened::resolve)?.let { spinePoint.value = it }
                         // Opening counts as reading: the first Page starts at the Place, so a Book opened but never paged sorts as in progress.
                         if (place == null && opened.spineItems.isNotEmpty()) {
-                            val (item, char) = spinePoint.value
-                            saver.change { it.withPlace(opened.identifier, opened.spineItems[item].placeOf(char, now)) }
+                            saver.change { it.withPlace(opened.identifier, opened.placeAt(spinePoint.value, openedAt)) }
                         }
                     }
                     book.value = opened
+                    publishLines()
                 }
-                .onFailure { status.value = "Couldn't open the book: ${it.message}" }
+                .onFailure {
+                    Log.w(TAG, "couldn't open ${file.name}", it)
+                    status.value = READING_COULDNT_OPEN
+                }
         }
     }
 
@@ -111,12 +143,13 @@ class ReaderViewModel(
         }
     }
 
-    /** The view's column and measurer. Each binding lays the book out afresh at the Place. */
-    fun bind(typesetter: Typesetter) {
+    /** The view's column and measurer ([Typesetter]). Each binding lays the book out afresh at the Place. */
+    fun bind(measurer: WindowMeasurer) {
         val spineItems = book.value?.spineItems ?: return
-        this.typesetter = typesetter
+        this.measurer = measurer
         prefetching?.cancel()
-        reading = Reading(spineItems, measure = { pass, window -> measure(typesetter, pass, window, sync = true) }, linesOf = { it.lines }, windowChars = windowChars)
+        timer.discard()
+        reading = Reading(spineItems, measure = { pass, window -> measure(measurer, pass, window, sync = true) }, linesOf = { it.lines }, windowChars = windowChars)
         open(if (frame.value == null) "open" else "relayout")
     }
 
@@ -125,12 +158,47 @@ class ReaderViewModel(
         if (step == fontStep.value) return
         fontStep.value = step
         saver.change { it.copy(settings = it.settings.copy(fontStep = step)) }
+        timer.discard()
         open("font")
     }
 
-    fun nextPage() = turn { it.next() }
+    /**
+     * A forward turn: the next Page, or from the Page reaching [OpenBook.textEnd] the end page, which
+     * sets Finished; nothing on the end page. Leaving a Page for the next one gives a speed sample when
+     * it was reached that way too ([PageTimer]); the end page is not a Page, so leaving for it gives none.
+     * The next Page is timed from when it shows, so its layout doesn't count as reading.
+     */
+    fun nextPage() {
+        val shown = frame.value ?: return
+        if (atEnd.value) return
+        if (reachesEnd(shown)) {
+            timer.discard()
+            atEnd.value = true
+            stamp(finished = true)
+            publishLines()
+            return
+        }
+        timer.finish(now())
+        val next = turn(clearsFinished = false) { it.next() } ?: return
+        val words = words ?: return
+        timer.start(now(), words.between(SpinePoint(next.pass.item, next.page.start), SpinePoint(next.pass.item, next.page.end)))
+    }
 
-    fun previousPage() = turn { it.previous() }
+    /**
+     * A back turn: from the end page to the last Page, else to the Page before. Either clears Finished,
+     * even on the first Page, which has no Page before it.
+     */
+    fun previousPage() {
+        if (frame.value == null) return
+        timer.discard()
+        if (atEnd.value) {
+            atEnd.value = false
+            stamp(finished = false)
+            publishLines()
+            return
+        }
+        turn(clearsFinished = true) { it.previous() }
+    }
 
     /** The page turn a key makes: volume down forward, volume up back; null for any other key. */
     private fun turnFor(keyCode: Int): (() -> Unit)? = when (keyCode) {
@@ -152,7 +220,10 @@ class ReaderViewModel(
         turnFor(keyCode)?.let { turn -> repeat(repeatCount) { turn() }; true } ?: false
 
     /** Activity.onPause: the last hook guaranteed to run before the process can be killed. */
-    override fun onAppPause() = saver.flush()
+    override fun onAppPause() {
+        timer.discard()
+        saver.flush()
+    }
 
     override fun onScreenHide(screen: SimpleLightScreen<Unit>) = saver.flush()
 
@@ -161,19 +232,51 @@ class ReaderViewModel(
         super.onCleared()
     }
 
-    /** A pass at the Place (a cached one when it holds the Place's Page) at the current font and column. */
+    /**
+     * A pass at the Place (a cached one when it holds the Place's Page) at the current font and column.
+     * The end page stays only while the Page at the Place still reaches [OpenBook.textEnd]; otherwise
+     * that Page shows and Finished stays, so forward turns reach the end page again.
+     */
     private fun open(reason: String) {
-        val typesetter = typesetter ?: return
+        val measurer = measurer ?: return
         val (item, char) = spinePoint.value
-        show(reason) { it.open(item, char, typesetter.key(fontStep.value)) }
+        val shown = show(reason) { it.open(item, char, measurer.key(fontStep.value)) } ?: return
+        if (atEnd.value && !reachesEnd(shown)) {
+            atEnd.value = false
+            publishLines()
+        }
     }
 
-    private fun turn(step: (Reading<WindowLayout>) -> Shown<WindowLayout>?) {
-        val shown = show("turn", step) ?: return
-        spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
-        val identifier = book.value?.identifier ?: return
-        val place = shown.pass.spineItem.placeOf(shown.page.start, System.currentTimeMillis())
-        saver.change { it.withPlace(identifier, place) }
+    private fun reachesEnd(shown: Shown<WindowLayout>): Boolean =
+        book.value?.let { SpinePoint(shown.pass.item, shown.page.end) >= it.textEnd } == true
+
+    /**
+     * Shows the Page [step] finds and records it as the Place. [clearsFinished] clears Finished too,
+     * re-stamping the Place even when [step] finds no Page.
+     */
+    private fun turn(clearsFinished: Boolean, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
+        val shown = show("turn", step)
+        if (shown != null) spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
+        val clears = clearsFinished && book.value?.let { saver.data.books[it.identifier]?.finished } == true
+        if (shown != null || clears) stamp(finished = if (clears) false else null)
+        return shown
+    }
+
+    /** Records the Place at [spinePoint], and [finished] when it isn't null ([withFinished]). */
+    private fun stamp(finished: Boolean? = null) {
+        val opened = book.value ?: return
+        val place = opened.placeAt(spinePoint.value, System.currentTimeMillis())
+        saver.change { data ->
+            if (finished == null) data.withPlace(opened.identifier, place) else data.withFinished(opened.identifier, finished, place)
+        }
+    }
+
+    private fun publishLines() {
+        val opened = book.value ?: return
+        val point = frame.value?.let { SpinePoint(it.pass.item, it.page.start) } ?: spinePoint.value
+        val chapter = opened.chapterAt(point).takeUnless { atEnd.value }
+        topLine.value = chapter?.let { opened.chapters[it].title } ?: shelfTitle
+        progressLine.value = words?.takeUnless { atEnd.value }?.let { opened.minutesLine(it, point, owner.speed.wpm) }
     }
 
     /**
@@ -191,6 +294,7 @@ class ReaderViewModel(
         val shown = step(reading) ?: return null
         val elapsed = System.nanoTime() - start
         frame.value = shown
+        publishLines()
         val pass = shown.pass
         if (pass !== before) prefetching?.cancel()
         if (reading.passesStarted != started) {
@@ -209,11 +313,11 @@ class ReaderViewModel(
      */
     private fun prefetch() {
         if (prefetching != null) return
-        val typesetter = typesetter ?: return
+        val measurer = measurer ?: return
         val (pass, window) = reading?.prefetchTarget() ?: return
         prefetching = viewModelScope.launch {
             try {
-                val layout = withContext(Dispatchers.Default) { measure(typesetter, pass, window, sync = false) }
+                val layout = withContext(Dispatchers.Default) { measure(measurer, pass, window, sync = false) }
                 if (frame.value?.pass === pass) pass.record(window, layout)
             } finally {
                 prefetching = null
@@ -222,9 +326,9 @@ class ReaderViewModel(
         }
     }
 
-    private fun measure(typesetter: Typesetter, pass: Pass<WindowLayout>, window: Int, sync: Boolean): WindowLayout {
+    private fun measure(measurer: WindowMeasurer, pass: Pass<WindowLayout>, window: Int, sync: Boolean): WindowLayout {
         val start = System.nanoTime()
-        val layout = typesetter.measure(pass.spineItem, pass.windows[window], pass.key.fontStep)
+        val layout = measurer.measure(pass.spineItem, pass.windows[window], pass.key.fontStep)
         if (sync) syncWindows++
         Log.i(PERF_TAG, "window pass=${pass.id} item=${pass.item} index=$window " +
             "chars=${pass.windows[window].let { it.end - it.start }} measureMs=${ms(System.nanoTime() - start)} sync=$sync")

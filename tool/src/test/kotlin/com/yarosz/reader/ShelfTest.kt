@@ -75,7 +75,7 @@ class ShelfTest {
         fun line(title: String) = shown.getValue(title).detail to shown.getValue(title).tap
         assertEquals("Jane Austen" to RowTap.Open("In progress.epub"), line("In progress"))
         assertEquals(null to RowTap.Open("In progress, no author.epub"), line("In progress, no author"))
-        assertEquals("Lewis Carroll" to RowTap.Open("Finished.epub"), line("Finished"))
+        assertEquals("Lewis Carroll · finished" to RowTap.Open("Finished.epub"), line("Finished"))
         assertEquals(ROW_NOT_STARTED to RowTap.Open("Unread.epub"), line("Unread"))
         assertEquals(ROW_FILE_MISSING_SOURCE to RowTap.Download(HttpsUrl.parse("https://books.example.org/m.epub")!!, "Missing", null, "Missing"), line("Missing"))
         assertEquals(ROW_FILE_MISSING to RowTap.None, line("Missing, no source"))
@@ -85,6 +85,30 @@ class ShelfTest {
         assertEquals("Mary Shelley" to RowTap.Open("Present.epub"), line("Present"))
         assertEquals(ROW_DOWNLOAD_FAILED to RowTap.Download(HttpsUrl.parse("https://books.example.org/gone.epub")!!, "Retry", null, "Retry"), line("Retry"))
         assertEquals(11, shown.size)
+    }
+
+    @Test
+    fun `an opened Book's row reads its author and floored percent, or finished`() {
+        fun detail(progress: Double?, author: String?, finished: Boolean = false) =
+            readingDetail(Book("T", "t.epub", Place("c1", 0, 0, "", 1, progress), finished, onShelf = true, author = author))
+        assertEquals("Jane Austen · 42%", detail(0.4299, "Jane Austen"))
+        assertEquals("Jane Austen · 29%", detail(0.29, "Jane Austen"))
+        assertEquals("Jane Austen · 1%", detail(0.01, "Jane Austen"))
+        assertEquals("Jane Austen · 99%", detail(0.9999, "Jane Austen"))
+        assertEquals("Jane Austen", detail(0.0099, "Jane Austen"))
+        assertEquals("Jane Austen", detail(0.0, "Jane Austen"))
+        assertEquals("Jane Austen", detail(null, "Jane Austen"))
+        assertEquals("42%", detail(0.42, null))
+        assertEquals(null, detail(0.005, null))
+        assertEquals(null, detail(null, null))
+        assertEquals("Jane Austen · finished", detail(0.9, "Jane Austen", finished = true))
+        assertEquals("finished", detail(null, null, finished = true))
+        assertEquals("Jane Austen", detail(Double.NaN, "Jane Austen"))
+        assertEquals("Jane Austen", detail(1.5, "Jane Austen"))
+        assertEquals("Jane Austen", detail(-0.1, "Jane Austen"))
+        assertEquals("Jane Austen · 100%", detail(1.0, "Jane Austen"))
+        val row = rows(book("Reading", Place("c1", 0, 0, "", 5, progress = 0.5), author = "Mary Shelley")).single()
+        assertEquals("Mary Shelley · 50%", row.detail)
     }
 
     @Test

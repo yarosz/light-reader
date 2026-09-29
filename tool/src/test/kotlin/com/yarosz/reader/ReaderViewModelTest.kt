@@ -9,7 +9,10 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -49,11 +52,69 @@ class ReaderViewModelTest {
         io.scheduler.advanceUntilIdle()
     }
 
+    /** The monotonic millis every reader here reads for timing Pages. */
+    private var clock = 0L
+
+    private val speed: ReadingSpeed get() = ShelfOwner.of(dir).speed
+
     private fun reader(start: DevStart? = null): ReaderViewModel {
         val owner = ShelfOwner.of(dir) { ShelfOwner(dir, io, FakeTransport(emptyMap())) }
         owner.refresh()
         settle()
-        return ReaderViewModel(File(dir, "alice.epub"), owner, start, io)
+        return ReaderViewModel(File(dir, "alice.epub"), owner, start, io) { clock }
+    }
+
+    /** Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a Page. */
+    private class LineMeasurer(private val pageHeightPx: Int = 300) : WindowMeasurer {
+        override fun key(fontStep: Int) = LayoutKey(fontStep, 1_000, pageHeightPx)
+
+        override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
+            val lines = (window.start until window.end step 1_000 / (fontStep + 1)).mapIndexed { i, start ->
+                LineMetrics(start, i * 30f, (i + 1) * 30f, endsAtBreak = true, heading = false)
+            }
+            return WindowLayout(lines) { }
+        }
+    }
+
+    /** A reader open on Alice and bound to a [LineMeasurer]. */
+    private fun reading(): ReaderViewModel {
+        val vm = reader()
+        vm.openBook()
+        settle()
+        vm.bind(LineMeasurer())
+        settle()
+        return vm
+    }
+
+    private val ReaderViewModel.onLastPage: Boolean
+        get() = frame.value!!.let { SpinePoint(it.pass.item, it.page.end) >= book.value!!.textEnd }
+
+    private fun ReaderViewModel.toLastPage() {
+        repeat(10_000) { if (onLastPage) return else nextPage() }
+        error("never reached the last Page")
+    }
+
+    private val aliceWords by lazy { WordIndex(parseEpub(File("src/test/fixtures/alice.epub")).spineItems) }
+
+    private val ReaderViewModel.shownWords: Int
+        get() = frame.value!!.let { aliceWords.between(SpinePoint(it.pass.item, it.page.start), SpinePoint(it.pass.item, it.page.end)) }
+
+    /** Reads the shown Page for [ms], then turns forward. */
+    private fun ReaderViewModel.readThenTurn(ms: Long = 20_000) {
+        clock += ms
+        nextPage()
+    }
+
+    /** Four samples, one short of the reader's own speed: a turn off the opened Page, which is untimed, then four Pages read forward. */
+    private fun ReaderViewModel.fourSamples() {
+        readThenTurn()
+        repeat(MEASURED_AFTER - 1) { readThenTurn() }
+        assertEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    private fun stored(vm: ReaderViewModel): Book {
+        settle()
+        return ReadingStore(dir).load().books.getValue(vm.book.value!!.identifier)
     }
 
     @Test
@@ -64,7 +125,8 @@ class ReaderViewModelTest {
         val book = assertNotNull(vm.book.value)
         val saved = ReadingStore(dir).load().books.getValue(book.identifier)
         val place = assertNotNull(saved.place)
-        assertEquals(book.spineItems[0].placeOf(0, place.updatedAt), place)
+        assertEquals(book.placeAt(SpinePoint(0, 0), place.updatedAt), place)
+        assertEquals(0.0, place.progress)
         assertEquals(Book(book.title, "alice.epub", place, finished = false, onShelf = true, author = "Lewis Carroll"), saved.copy(addedAt = null))
         assertEquals("Lewis Carroll", shelfRows(ReadingStore(dir).load(), setOf("alice.epub"), emptyMap()).single().detail)
     }
@@ -142,6 +204,245 @@ class ReaderViewModelTest {
         settle()
         assertEquals(SpinePoint(3, offset), vm.spinePoint.value)
         assertEquals(stored, ReadingStore(dir).load().books.getValue(book.identifier).place)
+    }
+
+    @Test
+    fun `the end page follows only the last Page, forward on it does nothing, and back returns to the last Page`() {
+        val vm = reading()
+        while (!vm.onLastPage) {
+            assertFalse(vm.atEnd.value)
+            vm.nextPage()
+        }
+        assertFalse(vm.atEnd.value)
+        val last = vm.frame.value
+        val place = vm.spinePoint.value
+        val measurer = LineMeasurer()
+        val session = Reading(vm.book.value!!.spineItems, { pass, window -> measurer.measure(pass.spineItem, pass.windows[window], pass.key.fontStep) }, { it.lines })
+        session.open(place.item, place.char, measurer.key(DEFAULT_FONT_STEP))
+        assertNull(session.next(), "the last Page is the Reading's last")
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        assertSame(last, vm.frame.value)
+        assertEquals(place, vm.spinePoint.value)
+        assertEquals(vm.book.value!!.title, vm.topLine.value)
+        assertNull(vm.progressLine.value)
+        vm.nextPage()
+        vm.onKeyDown(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN))
+        assertTrue(vm.atEnd.value)
+        assertSame(last, vm.frame.value)
+        vm.onKeyDown(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP))
+        assertFalse(vm.atEnd.value)
+        assertSame(last, vm.frame.value)
+        assertEquals(place, vm.spinePoint.value)
+    }
+
+    @Test
+    fun `the end page sets Finished and the back turn from it clears it, each re-stamping the last Page's Place`() {
+        val vm = reading()
+        vm.toLastPage()
+        val last = assertNotNull(stored(vm).place)
+        assertNotNull(last.progress)
+        vm.nextPage()
+        val finished = stored(vm)
+        assertTrue(finished.finished)
+        assertEquals(last, finished.place?.copy(updatedAt = last.updatedAt))
+        assertTrue(finished.place!!.updatedAt > last.updatedAt)
+        vm.previousPage()
+        val cleared = stored(vm)
+        assertFalse(cleared.finished)
+        assertEquals(last, cleared.place?.copy(updatedAt = last.updatedAt))
+        assertTrue(cleared.place!!.updatedAt > finished.place!!.updatedAt)
+        vm.nextPage()
+        vm.onAppPause()
+        assertTrue(stored(vm).finished)
+    }
+
+    @Test
+    fun `a Finished Book reopens at its last Page, keeps Finished through a font change and a pause, and the first back turn clears it`() {
+        val first = reading()
+        first.toLastPage()
+        first.nextPage()
+        first.onAppPause()
+        val lastPage = first.spinePoint.value
+
+        val left = reader()
+        left.openBook()
+        settle()
+        left.onAppPause()
+        assertTrue(stored(left).finished)
+
+        val vm = reading()
+        assertEquals(lastPage, vm.spinePoint.value)
+        assertFalse(vm.atEnd.value)
+        assertTrue(stored(vm).finished)
+        vm.changeFont(+1)
+        vm.onAppPause()
+        assertTrue(stored(vm).finished)
+        assertEquals(lastPage, vm.spinePoint.value)
+        vm.changeFont(-1)
+        vm.previousPage()
+        assertFalse(stored(vm).finished)
+        assertTrue(vm.spinePoint.value < lastPage)
+    }
+
+    @Test
+    fun `a forward turn from a reopened Finished Book shows the end page again, and at another font forward turns reach it without clearing Finished`() {
+        val first = reading()
+        first.toLastPage()
+        first.nextPage()
+        first.onAppPause()
+        val reopened = reading()
+        reopened.nextPage()
+        assertTrue(reopened.atEnd.value)
+        assertTrue(stored(reopened).finished)
+        reopened.onAppPause()
+
+        val vm = reading()
+        vm.changeFont(+3)
+        assertFalse(vm.onLastPage)
+        vm.toLastPage()
+        assertTrue(stored(vm).finished)
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        assertTrue(stored(vm).finished)
+    }
+
+    @Test
+    fun `the top line names the Chapter holding the Page's start, and every turn stores the Place's progress`() {
+        val vm = reading()
+        val book = vm.book.value!!
+        vm.nextPage()
+        vm.nextPage()
+        val shown = vm.frame.value!!
+        val start = SpinePoint(shown.pass.item, shown.page.start)
+        assertEquals(book.chapterAt(start)?.let { book.chapters[it].title } ?: book.title, vm.topLine.value)
+        assertEquals(book.progressAt(start), stored(vm).place?.progress)
+    }
+
+    private fun assertRelayoutLeavesTheEndPage(relayout: (ReaderViewModel) -> Unit) {
+        val vm = reading()
+        vm.toLastPage()
+        vm.nextPage()
+        val place = vm.spinePoint.value
+        relayout(vm)
+        assertFalse(vm.atEnd.value)
+        assertFalse(vm.onLastPage)
+        val shown = vm.frame.value!!
+        assertTrue(shown.pass.item == place.item && place.char in shown.page.start until shown.page.end)
+        assertEquals(place, vm.spinePoint.value)
+        val book = vm.book.value!!
+        assertEquals(book.chapters[book.chapterAt(place)!!].title, vm.topLine.value)
+        assertTrue(stored(vm).finished)
+        vm.toLastPage()
+        assertTrue(stored(vm).finished)
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+    }
+
+    @Test
+    fun `a font change under the end page that leaves the Place's Page short of the text's end shows that Page, and Finished stays`() =
+        assertRelayoutLeavesTheEndPage { it.changeFont(+3) }
+
+    @Test
+    fun `a bind under the end page that leaves the Place's Page short of the text's end shows that Page, and Finished stays`() =
+        assertRelayoutLeavesTheEndPage { it.bind(LineMeasurer(pageHeightPx = 90)) }
+
+    @Test
+    fun `a relayout under the end page keeps it while the Place's Page still reaches the text's end`() {
+        for (relayout in listOf<(ReaderViewModel) -> Unit>({ it.changeFont(-1) }, { it.bind(LineMeasurer(pageHeightPx = 600)) })) {
+            val vm = reading()
+            vm.toLastPage()
+            vm.nextPage()
+            relayout(vm)
+            assertTrue(vm.atEnd.value)
+            assertTrue(vm.onLastPage)
+            assertEquals(vm.book.value!!.title, vm.topLine.value)
+            assertNull(vm.progressLine.value)
+            vm.previousPage()
+            vm.changeFont(+1)
+        }
+    }
+
+    @Test
+    fun `a Finished Book at its first Page clears Finished on a back turn, though no Page comes before`() {
+        val book = parseEpub(File(dir, "alice.epub"))
+        ReadingStore(dir).save {
+            ReadingData().shelve(book.identifier, book.title, "alice.epub").withFinished(book.identifier, true, book.placeAt(SpinePoint(0, 0), 1))
+        }
+        val vm = reading()
+        assertTrue(stored(vm).finished)
+        vm.previousPage()
+        val cleared = stored(vm)
+        assertFalse(cleared.finished)
+        assertEquals(SpinePoint(0, 0), vm.spinePoint.value)
+        vm.previousPage()
+        assertEquals(cleared, stored(vm))
+    }
+
+    @Test
+    fun `forward turns time each Page, and the speed leaves the prior at the fifth sample`() {
+        val vm = reading()
+        vm.readThenTurn()
+        val samples = List(MEASURED_AFTER) {
+            assertEquals(PRIOR_WPM, speed.wpm)
+            val words = vm.shownWords
+            assertTrue(words >= SAMPLE_MIN_WORDS)
+            vm.readThenTurn()
+            words * 60_000.0 / 20_000
+        }
+        assertEquals(samples.sorted()[MEASURED_AFTER / 2], speed.wpm)
+        val shown = vm.frame.value!!
+        val start = SpinePoint(shown.pass.item, shown.page.start)
+        val book = vm.book.value!!
+        assertEquals(book.minutesLine(aliceWords, start, speed.wpm), vm.progressLine.value)
+        assertNotEquals(book.minutesLine(aliceWords, start, PRIOR_WPM), vm.progressLine.value)
+    }
+
+    @Test
+    fun `a back turn drops the Page's timing, and the Page it reaches gives no sample`() {
+        val vm = reading()
+        vm.fourSamples()
+        clock += 20_000
+        vm.previousPage()
+        vm.readThenTurn()
+        assertEquals(PRIOR_WPM, speed.wpm)
+        vm.readThenTurn()
+        assertNotEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    @Test
+    fun `a font change drops the running timing`() {
+        val vm = reading()
+        vm.fourSamples()
+        clock += 20_000
+        vm.changeFont(+1)
+        vm.readThenTurn()
+        assertEquals(PRIOR_WPM, speed.wpm)
+        vm.readThenTurn()
+        assertNotEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    @Test
+    fun `a pause drops the running timing`() {
+        val vm = reading()
+        vm.fourSamples()
+        clock += 20_000
+        vm.onAppPause()
+        vm.readThenTurn()
+        assertEquals(PRIOR_WPM, speed.wpm)
+        vm.readThenTurn()
+        assertNotEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    @Test
+    fun `leaving the last Page for the end page gives no sample, since the end page isn't a Page`() {
+        val vm = reading()
+        vm.toLastPage()
+        assertTrue(vm.shownWords >= SAMPLE_MIN_WORDS)
+        repeat(MEASURED_AFTER - 1) { speed.record(100, 20_000) }
+        vm.readThenTurn()
+        assertTrue(vm.atEnd.value)
+        assertEquals(PRIOR_WPM, speed.wpm)
     }
 
     @Test
