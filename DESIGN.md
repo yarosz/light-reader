@@ -57,17 +57,32 @@ flush, judged on block kinds, never on window boundaries.
 ## What a Book shows
 
 - A Book that marks its body matter (Standard Ebooks marks every Spine item's `<body>`)
-  keeps only the Spine items marked `bodymatter` or `backmatter`. Front matter (title page, imprint) is
-  dropped, so the Book opens on its first Chapter; a trailing run of `backmatter` items (colophon,
-  uncopyright) is Back matter, listed at the end of Contents. A Book that marks no body matter keeps every
-  Spine item. Spine items with no text are dropped either way. `parseEpub` in `Epub.kt`.
-- Every piece of text in a kept Spine item reaches a Page. Text outside the known blocks (paragraphs,
-  headings, list items, `<pre>`), such as text sitting directly in a `<div>`, is a paragraph of its own up
-  to the next element that isn't inline. A table is one paragraph with a line per row and its cells joined
-  by " · ": a space alone would run the cells together, and aligned spacing doesn't survive proportional
-  type. Rows as lines of one block set the table as a list, with no indent on each row. `<br>` and the
-  line breaks in a `<pre>` are line breaks; no-break spaces are kept, so a monospaced table built from them
-  keeps its rough alignment. `XhtmlHandler` in `Epub.kt`.
+  keeps only the Spine items marked `bodymatter` or `backmatter`. The rest is front matter and is dropped,
+  even when the table of contents lists it: Standard Ebooks marks its title page, imprint, dedication,
+  epigraph, foreword and introduction `frontmatter`. The Book opens on its first Chapter; a trailing run of
+  `backmatter` items (colophon, uncopyright, endnotes) is Back matter, listed at the end of Contents. A Book
+  that marks no body matter keeps every Spine item. Spine items with no text are dropped either way, and
+  so are Spine items marked `linear="no"` (auxiliary content), unless every one is. `parseEpub` in
+  `Epub.kt`.
+- Every piece of text in a kept Spine item reaches a Page, except what is never shown: `<head>`,
+  `<script>`, `<style>`, `<svg>`, `<math>`, `<noscript>`, `<template>`, and any element marked `hidden` or
+  `aria-hidden="true"`, with everything in them. The known blocks are paragraphs, headings, list items,
+  definition terms and descriptions, figure captions and `<pre>`; an image's alt text is a caption of its
+  own. A known block inside a list item or a definition is a block of its own, so each paragraph of a
+  Standard Ebooks endnote is one. Text outside the known blocks, such as text sitting directly in a
+  `<div>`, is a paragraph of its own up to the next element that isn't inline (an image with no alt text
+  counts as inline). Italic and bold around a block or a run of loose text carry into it.
+- A table whose cells hold only inline text is one paragraph with a line per row and its cells joined by
+  " · ": a space alone would run the cells together, and aligned spacing doesn't survive proportional
+  type. A cell with no text, or only no-break spaces, adds nothing. Rows as lines of one block set the
+  table as a list, with no indent on each row. Once a table's paragraph passes 10,000 characters (a layout
+  window, `WINDOW_CHARS`), its next row starts a new paragraph, which takes a first-line indent. A table
+  whose cells hold a known block, a heading or an image with alt text is read block by block, as if its
+  cells were `<div>`s, so its headings stay headings. A table inside a known block adds its rows to that
+  block, a line per row, cells joined the same way.
+- `<br>` and the line breaks in a `<pre>`, even one inside another block, are line breaks; no-break
+  spaces are kept, so a monospaced table built from them keeps its rough alignment. `XhtmlHandler` in
+  `Epub.kt`.
 
 ## Copy
 
@@ -130,7 +145,10 @@ shares a Page with the text.
 
 **Back matter.** Reached only through Contents, never by turning past the end page. Inside it, turns work
 as anywhere else: the top line shows its Chapter's title, the footer has no Progress line, forward on the
-Book's last Page does nothing, and no second end page shows. A Place saved there opens there.
+Book's last Page does nothing, and no second end page shows. A Place saved there opens there. Back
+matter's first row starts where Back matter does: the first Chapter listed in it moves back there when no
+Chapter starts there and no heading comes between (Gutenberg's `*** END OF THE PROJECT GUTENBERG EBOOK
+… ***` lines before its license), else an untitled row takes its first heading.
 
 **Contents.** Tapping the top line opens it, from a Page, the end page, front matter or Back matter, and
 drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
@@ -141,7 +159,8 @@ one point, the later), or on the end page the last Chapter of the text. In front
 current. The list opens with the row before the current one at the top, so the current row is second, or
 with the current row at the top when it is first; with no current row it opens at the top. Tapping a row
 goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
-Page, even for the current Chapter; the Pages before it may tile differently, as after a font change.
+Page (Back matter's first row may open on Back matter's opening lines instead), even for the current
+Chapter; the Pages before it may tile differently, as after a font change.
 That Page is the Place, it is untimed, and the jump leaves the end page. Back, from the bar or the
 system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
 no frame of the reading view, and keeps the Place and Finished as they were. For half a second after

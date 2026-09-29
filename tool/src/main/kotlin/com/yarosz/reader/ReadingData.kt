@@ -216,12 +216,14 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
  * the snippet's occurrence nearest that spot (a new edition or parser change shifted the text), else
  * at the nearest occurrence of the snippet without a leading run of spaces that holds a line break and
  * with each run of line breaks as one (a Place saved before blocks dropped such runs at their ends), else
- * at the start of its block, or of its Spine item when the block is gone. An occurrence that starts on the
- * separator before a block, for a Place no further into its block than the line breaks its snippet starts
- * with, is taken past them: that Place was saved inside a heading's leading line breaks, which no block
- * has now, so it lands on the heading, not on the end of the block before. That holds for every Place in
- * a run of up to two line breaks and the first half of a longer one; a current Place on a separator keeps
- * its spot. Null only when no Spine item has the Place's Spine item.
+ * at the nearest occurrence of that snippet cut at its first line break, the rest of the Place's own
+ * block (a parser change put a new block within the snippet's reach after it, so its block index is stale
+ * too), else at the start of its block, or of its Spine item when the block is gone. An occurrence that
+ * starts on the separator before a block, for a Place no further into its block than the line breaks its
+ * snippet starts with, is taken past them: that Place was saved inside a heading's leading line breaks,
+ * which no block has now, so it lands on the heading, not on the end of the block before. That holds for
+ * every Place in a run of up to two line breaks and the first half of a longer one; a current Place on a
+ * separator keeps its spot. Null only when no Spine item has the Place's Spine item.
  */
 fun OpenBook.resolve(place: Place): SpinePoint? {
     val index = spineItems.indexOfFirst { it.spineId == place.spineId }.takeIf { it >= 0 } ?: return null
@@ -230,19 +232,20 @@ fun OpenBook.resolve(place: Place): SpinePoint? {
     val expected = blockStart?.plus(place.offset)?.takeIf { it in 0..text.length }
     if (expected != null && text.startsWith(place.snippet, expected)) return SpinePoint(index, expected)
     val anchor = expected ?: blockStart ?: 0
+    fun nearest(snippet: String) = generateSequence(text.indexOf(snippet).takeIf { it >= 0 }) { from ->
+        text.indexOf(snippet, from + 1).takeIf { it >= 0 }
+    }.minByOrNull { abs(it - anchor) }
     val lead = place.snippet.takeWhile { it in TRIMMED }
     val normalised = (if ('\n' in lead) place.snippet.substring(lead.length) else place.snippet).replace(LINE_BREAK_RUN, "\n")
     for (snippet in listOf(place.snippet, normalised).distinct()) {
         if (snippet.isEmpty()) continue
-        val nearest = generateSequence(text.indexOf(snippet).takeIf { it >= 0 }) { from ->
-            text.indexOf(snippet, from + 1).takeIf { it >= 0 }
-        }.minByOrNull { abs(it - anchor) }
-        if (nearest != null) {
-            val lineBreaks = snippet.length - snippet.trimStart('\n').length
-            val onSeparator = text[nearest] == '\n' && spineItems[index].blockStarts.binarySearch(nearest + 1) >= 0
-            return SpinePoint(index, nearest + if (onSeparator && place.offset <= lineBreaks) lineBreaks else 0)
-        }
+        val found = nearest(snippet) ?: continue
+        val lineBreaks = snippet.length - snippet.trimStart('\n').length
+        val onSeparator = text[found] == '\n' && spineItems[index].blockStarts.binarySearch(found + 1) >= 0
+        return SpinePoint(index, found + if (onSeparator && place.offset <= lineBreaks) lineBreaks else 0)
     }
+    val ownBlock = normalised.substringBefore('\n')
+    if (ownBlock.isNotEmpty() && ownBlock.length < normalised.length) nearest(ownBlock)?.let { return SpinePoint(index, it) }
     return SpinePoint(index, blockStart ?: 0)
 }
 

@@ -124,18 +124,27 @@ Ordered. Each item ends on its _done-when_.
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
   - Text outside the known blocks (loose `<div>` text, tables, `<pre>` line breaks) reaches a Page
     (`DESIGN.md` "What a Book shows"): Gutenberg's HTML contents table, War and Peace's cipher table, the
-    whole license. Gutenberg's end-of-book lines now sit between `textEnd` and the listed license, so the
-    first Chapter after Back matter's start moves back to it when no heading comes between (no second,
-    "Chapter N" row). Standard Ebooks Books keep their `backmatter` Spine items (colophon, uncopyright) as
-    Back matter; front matter stays dropped. Pride and Prejudice keeps 63 Chapters in both Gutenberg
-    editions; the images EPUB 3 now has 8 Spine items, the last being Gutenberg's cover wrapper page, whose
-    "back" link shows after the license (drop it before the images flip, with the drop caps).
+    whole license. A table of inline text is one block (split at rows past a window); one whose cells hold
+    blocks is read block by block. Each paragraph in a list item is its own block; hidden, `<svg>` and
+    `<math>` text is skipped; Spine items marked `linear="no"` are skipped. Gutenberg's end-of-book lines
+    now sit between `textEnd` and the listed license, so the first Chapter after Back matter's start moves
+    back to it when no Chapter already starts there and no heading comes between (no second, "Chapter N"
+    row). Standard Ebooks Books keep their `backmatter` Spine items (colophon, uncopyright) as Back matter;
+    front matter stays dropped. Existing Places are re-found by their text (ADR 0002), by their own
+    block's text when a new block now sits within their snippet; the Shelf percent can shift slightly on
+    the next page turn, as the Book has more characters. Pride and Prejudice keeps 63 Chapters in both
+    Gutenberg editions, War and Peace 385 with one license row. The images EPUB 3 has 8 Spine items, the
+    last Gutenberg's cover wrapper page, whose "back" link shows after the license: Gutenberg doesn't mark
+    it `linear="no"`, so it stays (drop it before the images flip, with the drop caps).
+    _Open product question:_ Standard Ebooks' dedications, epigraphs, forewords and introductions are
+    marked `frontmatter` and dropped even when its table of contents lists them, while `CONTEXT.md` says a
+    listed preface is a Chapter. Keep dropping them, or keep listed front matter as Chapters?
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's
   no-images EPUB 2) shows its 61 novel Chapters, "Chapter I." to "CHAPTER LXI.", plus the title page and
   license its table of contents lists, across 15 Spine items; the images EPUB 3 gives the same 63
-  Chapters across 7.
+  Chapters across 8.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
   tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`

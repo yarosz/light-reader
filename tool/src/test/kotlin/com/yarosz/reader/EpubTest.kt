@@ -86,6 +86,22 @@ class EpubTest {
         }
     }
 
+    @Test
+    fun `a Spine item marked linear no is skipped, unless every one is`() {
+        val dir = createTempDirectory("epub").toFile()
+        fun open(nonLinear: List<String>): OpenBook {
+            val files = tocEpubFiles(listOf("<p>Cover</p>", "<p>One</p>", "<p>Wrapper back link</p>"))
+            val opf = nonLinear.fold(files.getValue("OEBPS/content.opf")) { opf, idref -> opf.replace("idref=\"$idref\"", "idref=\"$idref\" linear=\"no\"") }
+            return parseEpub(File(dir, "book.epub").writeEpub(files + ("OEBPS/content.opf" to opf)))
+        }
+        try {
+            assertEquals(listOf("c1"), open(listOf("c0", "c2")).spineItems.map { it.spineId })
+            assertEquals(listOf("c0", "c1", "c2"), open(listOf("c0", "c1", "c2")).spineItems.map { it.spineId })
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     private fun document(crc: Long, size: Long, name: String = "text/$crc.xhtml") = ZipEntry(name).also {
         it.crc = crc
         it.size = size

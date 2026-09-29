@@ -195,3 +195,6 @@ ContentsChoice
 # "Read" on a Book's detail page hands the Book back to the Shelf (DESIGN.md "Catalogues"). Named to
 # avoid "read", which CONTEXT.md lists under Finished's _Avoid_.
 OpenFromShelf
+
+# The EPUB parser holds a table's SAX events back until it knows whether the table is one block.
+HeldEvent

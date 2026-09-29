@@ -7,6 +7,7 @@ import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import org.xml.sax.Attributes
+import org.xml.sax.helpers.AttributesImpl
 import org.xml.sax.helpers.DefaultHandler
 
 enum class BlockKind { Heading, Paragraph, Verse, Caption }
@@ -69,10 +70,11 @@ const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
 const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 
 /**
- * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
- * When the book marks its body matter (Standard Ebooks does), only Spine items marked `bodymatter` or
- * `backmatter` are kept: front matter (title page, imprint) is dropped, so the Book opens on its first
- * Chapter. Back matter, Project Gutenberg's license or a trailing run of Spine items marked as back matter
+ * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions. Spine items
+ * marked `linear="no"` are skipped, unless every one is ([SpineRef.linear]). When the book marks its body
+ * matter (Standard Ebooks does), only Spine items marked `bodymatter` or `backmatter` are kept: front
+ * matter (title page, imprint, dedication, epigraph, foreword, introduction) is dropped, even when its
+ * table of contents lists it, so the Book opens on its first Chapter. Back matter, Project Gutenberg's license or a trailing run of Spine items marked as back matter
  * (Standard Ebooks' colophon and uncopyright), starts at [OpenBook.textEnd].
  * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
  * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
@@ -85,7 +87,9 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     val pkg = readPackage(zip, fallbackTitle)
     val tables = readTablesOfContents(zip, pkg)
     val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
-    val docs = pkg.spine.map { item -> item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) } }
+    val docs = pkg.spine.filter { it.linear }.ifEmpty { pkg.spine }.map { item ->
+        item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) }
+    }
     val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.isBodyMatter || it.second.isBackMatter } else docs
     val body = kept.filter { it.second.blocks.isNotEmpty() }
     val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
@@ -129,8 +133,11 @@ private fun textEndOf(spineItems: List<SpineItem>, footer: SpinePoint?, backMatt
     return if (point.char == 0) SpinePoint(point.item - 1, spineItems[point.item - 1].text.length) else point
 }
 
-/** A Spine item's idref and the path of its document inside the zip. */
-data class SpineRef(val idref: String, val path: String)
+/**
+ * A Spine item's idref and the path of its document inside the zip. [linear] is false for an itemref marked
+ * `linear="no"`: auxiliary content, such as a cover wrapper, that isn't part of the reading order.
+ */
+data class SpineRef(val idref: String, val path: String, val linear: Boolean = true)
 
 /**
  * What a Book's package document says about it, read without parsing the text. [author] is every
@@ -154,8 +161,8 @@ data class Package(
  */
 fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
     val opf = readOpf(zip)
-    val spine = opf.spine.mapNotNull { idref ->
-        opf.manifest[idref]?.takeIf { it.mediaType == "application/xhtml+xml" }?.let { SpineRef(idref, it.path) }
+    val spine = opf.spine.mapNotNull { (idref, linear) ->
+        opf.manifest[idref]?.takeIf { it.mediaType == "application/xhtml+xml" }?.let { SpineRef(idref, it.path, linear) }
     }
     check(spine.isNotEmpty()) { "the package has no Spine item with a document" }
     val documents = spine.map { zip.entry(it.path) }
@@ -316,7 +323,7 @@ private class ManifestItem(val path: String, val mediaType: String, val properti
 /** Reads a package document in [dir] ("" or ending in "/"). */
 private class OpfHandler(private val dir: String) : DefaultHandler() {
     val manifest = mutableMapOf<String, ManifestItem>()
-    val spine = mutableListOf<String>()
+    val spine = mutableListOf<Pair<String, Boolean>>() // each itemref's idref, and whether it is linear
     var toc: String? = null
     var title: String? = null
     var uniqueIdentifier: String? = null
@@ -338,7 +345,7 @@ private class OpfHandler(private val dir: String) : DefaultHandler() {
                 }
             }
             "spine" -> toc = attrs.getValue("toc")
-            "itemref" -> spine += attrs.getValue("idref")
+            "itemref" -> spine += attrs.getValue("idref") to (attrs.getValue("linear")?.trim() != "no")
             "title" -> if (title == null) inTitle = true
             "package" -> uniqueIdentifier = attrs.getValue("unique-identifier")
             "identifier" -> {
@@ -377,12 +384,25 @@ internal val WHITESPACE_RUN = Regex("\\s+")
 
 private val BLOCK_ELEMENTS = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "dt", "dd", "figcaption", "pre")
 
-/** Elements that sit inside a run of text; any other, a `<div>` or an `<img>` say, ends a run of loose text ([XhtmlHandler]). */
+/** Known blocks whose nested known blocks are blocks of their own: a list item's paragraphs, say. */
+private val LIST_BLOCKS = setOf("li", "dt", "dd")
+
+/**
+ * Elements that sit inside a run of text: HTML's phrasing content, with the obsolete ones old Gutenberg
+ * HTML still uses. Any other, a `<div>` or an `<img>` with alt text say, ends a run of loose text
+ * ([XhtmlHandler]); an `<img>` with none adds nothing, so it doesn't.
+ */
 private val INLINE_ELEMENTS = setOf(
-    "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "del", "dfn", "em", "font", "i", "ins", "kbd",
-    "mark", "q", "rb", "rp", "rt", "ruby", "s", "samp", "small", "span", "strike", "strong", "sub", "sup",
-    "time", "tt", "u", "var", "wbr",
+    "a", "abbr", "acronym", "b", "basefont", "bdi", "bdo", "big", "blink", "br", "cite", "code", "data", "del",
+    "dfn", "em", "font", "i", "ins", "kbd", "label", "mark", "nobr", "q", "rb", "rp", "rt", "rtc", "ruby", "s",
+    "samp", "small", "span", "strike", "strong", "sub", "sup", "time", "tt", "u", "var", "wbr",
 )
+
+/** Elements whose text is never shown, skipped with everything in them, as is any element marked hidden. */
+private val SKIPPED_ELEMENTS = setOf("head", "script", "style", "svg", "math", "noscript", "template")
+
+private fun isHidden(attrs: Attributes) =
+    attrs.getValue("hidden") != null || attrs.getValue("aria-hidden")?.lowercase() == "true"
 
 /**
  * What separates a table row's cells on its line. A space alone runs the cells together ("CHAPTER I 5"),
@@ -395,6 +415,23 @@ private fun emphasisOf(name: String): Emphasis? = when (name) {
     "em", "i", "cite" -> Emphasis.Italic
     "strong", "b" -> Emphasis.Bold
     else -> null
+}
+
+/** A SAX event held back while a table is read to its end ([XhtmlHandler]). */
+private sealed interface HeldEvent {
+    class Start(val qName: String, val attrs: Attributes) : HeldEvent
+    class Text(val chars: CharArray) : HeldEvent
+    class End(val qName: String) : HeldEvent
+}
+
+/**
+ * Whether a table held back as [events] is read block by block: a cell holds a known block, a heading
+ * group, or an image with alt text, which one block of rows would flatten.
+ */
+private fun holdsBlocks(events: List<HeldEvent>): Boolean = events.drop(1).any { event ->
+    event is HeldEvent.Start && event.qName.substringAfter(':').lowercase().let { name ->
+        name in BLOCK_ELEMENTS || name == "hgroup" || name == "img" && !event.attrs.getValue("alt").isNullOrBlank()
+    }
 }
 
 private val VERSE_MARKERS = listOf("verse", "poem", "song", "lyrics")
@@ -411,12 +448,18 @@ internal val TRIMMED = charArrayOf(' ', '\u00A0', '\n')
  * leading and trailing line breaks are dropped.
  *
  * Text outside every one of [BLOCK_ELEMENTS], such as text sitting directly in a `<div>`, is kept too: each
- * run of it, up to the next element not in [INLINE_ELEMENTS], is a Paragraph block (Verse inside verse), in
- * the emphasis of any `<i>` or `<b>` around it. Text in a known block nested in a `<div>` is that block's
- * alone. A `<table>` outside a block is one block with a line per row, its cells joined by [CELL_SEPARATOR]
- * and empty cells skipped; everything inside it, blocks included, is the table's text. One block rather
- * than one per row sets the rows as a list, with no paragraph indent on each. A `<br>` in a block, and a
- * line break in a `<pre>`, is a line break in the block; other runs of whitespace are one space.
+ * run of it, up to the next element not in [INLINE_ELEMENTS], is a Paragraph block (Verse inside verse).
+ * Text in a known block nested in a `<div>` is that block's alone, and a known block nested in one of
+ * [LIST_BLOCKS] is a block of its own. Loose text and known blocks take the emphasis of any `<i>` or `<b>`
+ * around them. [SKIPPED_ELEMENTS] and hidden elements show nothing.
+ *
+ * A `<table>` outside a block is read to its end before any of it is handled ([holdsBlocks]). One whose
+ * cells hold only inline text is one block with a line per row, its cells joined by [CELL_SEPARATOR] and
+ * empty cells skipped: rows as lines of one block set the table as a list, with no paragraph indent on
+ * each. Past [WINDOW_CHARS] its next row starts a new block, so no window is one huge block. Any other
+ * table is read like a `<div>`, block by block. A table inside a known block adds its rows and cells to
+ * that block, a line per row. A `<br>` in a block, and a line break in a `<pre>`, is a line break in the
+ * block; other runs of whitespace are one space.
  */
 private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler() {
     val blocks = mutableListOf<Block>()
@@ -430,7 +473,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     private val blockAnchors = mutableListOf<Pair<Int, Int>>()
     private var textBefore = 0 // the blocks so far, each with its separating '\n'
 
-    private var skipDepth = 0 // inside <head>, <script>, <style>
+    private var skipDepth = 0 // inside one of SKIPPED_ELEMENTS or a hidden element
     private var verseDepth = 0
     private var hgroupParts: MutableList<String>? = null
     private var hgroupLength = 0 // the parts so far, each with its ": "
@@ -444,28 +487,45 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     private var captionStart: Int? = null
     private var captionDepth = 0
     private var loose = false // the open block is text outside any of BLOCK_ELEMENTS
-    private var inPre = false
-    private var tableDepth = 0 // tables open in the open block, which is a table's
+    private var blockName: String? = null // the element of BLOCK_ELEMENTS that opened the open block
+    private var preDepth = 0 // `<pre>` elements open in the open block
+    private var tableDepth = 0 // tables open in the open block: the block is a table's when [loose]
     private var rowStart = 0 // where the table row being read starts in [text]
     private var cellStart = 0 // where the row's text after its last separator starts
     private var separatorStart = -1 // where the row's last separator starts, -1 for none
-    // Emphasis elements open outside any block. A run of loose text inside them starts in their emphasis,
-    // and the first [seeded] entries of [openEmphasis] are theirs.
+    // Emphasis elements open outside any block. A block opened inside them starts in their emphasis, and
+    // the first [seeded] entries of [openEmphasis] are theirs.
     private val outerEmphasis = ArrayDeque<Emphasis>()
     private var seeded = 0
+    private var held: MutableList<HeldEvent>? = null // a table's events, while it is read to its end
+    private var heldDepth = 0
+    private var flatTable: Boolean? = null // for the held table being handled: whether it is one block
 
     override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
+        held?.let {
+            it += HeldEvent.Start(qName, AttributesImpl(attrs))
+            heldDepth++
+            return
+        }
         val name = qName.substringAfter(':').lowercase()
+        val opensTable = kind == null || loose && tableDepth == 0
+        if (name == "table" && flatTable == null && skipDepth == 0 && opensTable && !isHidden(attrs)) {
+            held = mutableListOf(HeldEvent.Start(qName, AttributesImpl(attrs)))
+            heldDepth = 1
+            return
+        }
         val markers = "${attrs.getValue("epub:type").orEmpty()} ${attrs.getValue("class").orEmpty()}"
         val isVerse = VERSE_MARKERS.any { it in markers }
         elementIsVerse.addLast(isVerse)
         if (isVerse) verseDepth++
 
-        if (skipDepth > 0 || name in setOf("head", "script", "style")) {
+        if (skipDepth > 0 || name in SKIPPED_ELEMENTS || isHidden(attrs)) {
             skipDepth++
             return
         }
-        if (kind != null && loose && tableDepth == 0 && name !in INLINE_ELEMENTS) finishBlock()
+        val inline = name in INLINE_ELEMENTS || name == "img" && attrs.getValue("alt").isNullOrBlank()
+        val endsBlock = if (loose) !inline else name in BLOCK_ELEMENTS && blockName in LIST_BLOCKS
+        if (kind != null && tableDepth == 0 && endsBlock) finishBlock()
         attrs.getValue("id")?.takeIf { it in fragments }?.let { ids += it }
         if (kind != null && tableDepth > 0) return startInTable(name)
         when {
@@ -477,8 +537,10 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                 hgroupParts = mutableListOf()
                 hgroupLength = 0
             }
+            kind != null && name == "table" -> startTable()
             kind != null -> {
                 blockDepth++
+                if (name == "pre") preDepth++
                 if (kind == BlockKind.Heading && hgroupParts == null && captionStart == null &&
                     "caption" in attrs.getValue("class").orEmpty().split(WHITESPACE_RUN) && text.isBlank()
                 ) {
@@ -498,15 +560,14 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                     name == "figcaption" -> BlockKind.Caption
                     else -> BlockKind.Paragraph
                 }
+                blockName = name
                 blockDepth = 0
-                inPre = name == "pre"
+                preDepth = if (name == "pre") 1 else 0
+                seedEmphasis()
             }
-            name == "table" -> {
+            name == "table" -> if (flatTable.also { flatTable = null } == true) {
                 openLoose()
-                tableDepth = 1
-                rowStart = 0
-                cellStart = 0
-                separatorStart = -1
+                startTable()
             }
             name == "img" -> attrs.getValue("alt")?.takeIf { it.isNotBlank() }?.let {
                 anchor(textBefore)
@@ -526,7 +587,12 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             name == "table" -> tableDepth++
             name == "tr" && tableDepth == 1 -> {
                 endRow()
-                if (text.isNotEmpty() && text.last() != '\n') text.append('\n')
+                if (loose && text.length >= WINDOW_CHARS) {
+                    finishBlock()
+                    openLoose()
+                } else if (text.isNotEmpty() && text.last() != '\n') {
+                    text.append('\n')
+                }
                 rowStart = text.length
                 cellStart = rowStart
             }
@@ -535,22 +601,42 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                 separatorStart = text.length
                 text.append(CELL_SEPARATOR)
                 cellStart = text.length
+            } else {
+                truncate(cellStart)
             }
             emphasis != null -> openEmphasis.addLast(emphasis to text.length)
             name !in INLINE_ELEMENTS || name == "br" -> if (text.isNotEmpty() && text.last() != ' ' && text.last() != '\n') text.append(' ')
         }
     }
 
-    /** Ends a table row: drops the separator after its last cell with text when no text followed it. */
+    /** Starts reading a table's rows into the open block. */
+    private fun startTable() {
+        tableDepth = 1
+        rowStart = text.length
+        cellStart = rowStart
+        separatorStart = -1
+    }
+
+    /** Ends a table row: drops the whitespace of a last cell with no text, and the separator before it. */
     private fun endRow() {
-        if (separatorStart >= rowStart && !hasTextFrom(cellStart)) text.setLength(separatorStart)
+        if (!hasTextFrom(cellStart)) truncate(if (separatorStart >= rowStart) separatorStart else cellStart)
         separatorStart = -1
         trimTrailingSpace()
     }
 
     private fun hasTextFrom(start: Int) = (start until text.length).any { !text[it].isWhitespace() }
 
-    /** Opens a block for text outside any of [BLOCK_ELEMENTS], in the emphasis of the elements around it. */
+    /** Cuts [text] back to [length], and every offset into it that was past there. */
+    private fun truncate(length: Int) {
+        if (length >= text.length) return
+        text.setLength(length)
+        blockAnchors.replaceAll { (id, at) -> id to minOf(at, length) }
+        openEmphasis.replaceAll { (emphasis, start) -> emphasis to minOf(start, length) }
+        spans.replaceAll { it.copy(end = minOf(it.end, length)) }
+        spans.removeAll { it.start >= it.end }
+    }
+
+    /** Opens a block for text outside any of [BLOCK_ELEMENTS]. */
     private fun openLoose() {
         kind = when {
             hgroupParts != null -> BlockKind.Heading
@@ -559,11 +645,30 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         }
         loose = true
         blockDepth = 0
+        seedEmphasis()
+    }
+
+    /** Starts the block being opened in the emphasis of the elements around it. */
+    private fun seedEmphasis() {
         for (emphasis in outerEmphasis) openEmphasis.addLast(emphasis to 0)
         seeded = outerEmphasis.size
     }
 
+    /** Handles a table held back to its end, as one block unless [holdsBlocks]. */
+    private fun handleTable(events: List<HeldEvent>) {
+        flatTable = !holdsBlocks(events)
+        for (event in events) when (event) {
+            is HeldEvent.Start -> startElement("", "", event.qName, event.attrs)
+            is HeldEvent.Text -> characters(event.chars, 0, event.chars.size)
+            is HeldEvent.End -> endElement("", "", event.qName)
+        }
+    }
+
     override fun characters(ch: CharArray, start: Int, length: Int) {
+        held?.let {
+            it += HeldEvent.Text(ch.copyOfRange(start, start + length))
+            return
+        }
         if (skipDepth > 0) return
         if (kind == null) {
             if ((start until start + length).none { isVisible(ch[it]) }) return
@@ -573,7 +678,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             val c = ch[i]
             when {
                 c == '\uFEFF' || c == '\u00AD' -> Unit // zero-width no-break space, soft hyphen
-                c == '\n' && inPre -> {
+                c == '\n' && preDepth > 0 -> {
                     trimTrailingSpace()
                     text.append('\n')
                 }
@@ -596,6 +701,12 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     override fun endDocument() = anchor(maxOf(textBefore - 1, 0))
 
     override fun endElement(uri: String, localName: String, qName: String) {
+        held?.let { events ->
+            events += HeldEvent.End(qName)
+            if (--heldDepth > 0) return
+            held = null
+            return handleTable(events)
+        }
         val name = qName.substringAfter(':').lowercase()
         if (elementIsVerse.removeLastOrNull() == true) verseDepth--
         if (skipDepth > 0) {
@@ -605,7 +716,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         if (kind != null && tableDepth > 0) {
             if (name == "table" && --tableDepth == 0) {
                 endRow()
-                finishBlock()
+                if (loose) finishBlock() else if (text.isNotEmpty() && text.last() != '\n') text.append('\n')
             } else if (emphasisOf(name) != null) {
                 closeEmphasis()
             }
@@ -625,6 +736,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         when {
             kind != null && blockDepth > 0 -> {
                 if (emphasisOf(name) != null) closeEmphasis()
+                if (name == "pre") preDepth--
                 if (blockDepth == captionDepth) splitCaption()
                 blockDepth--
             }
@@ -671,8 +783,14 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         if (caption.isNotBlank()) emit(BlockKind.Caption, caption, captionSpans, from, headingCaption = true)
     }
 
+    /**
+     * Adds the open block and closes it. Emphasis still open ends with it; the elements that opened it
+     * inside the block join [outerEmphasis], since they close after it, so the next block starts in it too.
+     */
     private fun finishBlock() {
         splitCaption()
+        for ((emphasis, start) in openEmphasis) if (text.length > start) spans += Span(start, text.length, emphasis)
+        for ((emphasis, _) in openEmphasis.drop(seeded)) outerEmphasis.addLast(emphasis)
         val added = blocks.size
         emit(kind!!, text.toString(), spans.toList(), 0)
         if (kind == BlockKind.Heading && blocks.size == added && hgroupParts == null) {
@@ -680,7 +798,9 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         }
         kind = null
         loose = false
-        inPre = false
+        blockName = null
+        blockDepth = 0
+        preDepth = 0
         seeded = 0
         text.setLength(0)
         spans.clear()
