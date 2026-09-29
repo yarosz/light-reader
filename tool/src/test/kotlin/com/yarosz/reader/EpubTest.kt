@@ -16,11 +16,14 @@ class EpubTest {
     private val book = parseEpub(File("src/test/fixtures/alice.epub"))
 
     @Test
-    fun `keeps only the twelve Spine items of body matter`() {
+    fun `keeps the twelve Spine items of body matter and the back matter after them, not the front matter`() {
         assertEquals("Alice’s Adventures in Wonderland", book.title)
-        assertEquals(12, book.spineItems.size)
+        assertEquals(15, book.spineItems.size)
         assertEquals("I: Down the Rabbit-Hole", book.chapters[0].title)
         assertEquals("XII: Alice’s Evidence", book.chapters[11].title)
+        assertEquals(SpinePoint(11, book.spineItems[11].text.length), book.textEnd)
+        assertEquals(listOf("List of Illustrations", "Colophon", "Uncopyright"), book.chapters.drop(12).map { it.title })
+        assertTrue(book.chapters.drop(12).all { it.start > book.textEnd })
     }
 
     @Test
@@ -47,7 +50,7 @@ class EpubTest {
 
     @Test
     fun `each Spine item keeps its idref from the Spine`() {
-        assertEquals((1..12).map { "chapter-$it.xhtml" }, book.spineItems.map { it.spineId })
+        assertEquals((1..12).map { "chapter-$it.xhtml" } + listOf("loi.xhtml", "colophon.xhtml", "uncopyright.xhtml"), book.spineItems.map { it.spineId })
     }
 
     @Test

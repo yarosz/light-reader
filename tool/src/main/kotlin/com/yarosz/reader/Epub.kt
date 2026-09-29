@@ -70,8 +70,10 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
- * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does). Back matter
- * kept, Project Gutenberg's license or Spine items marked as back matter, starts at [OpenBook.textEnd].
+ * When the book marks its body matter (Standard Ebooks does), only Spine items marked `bodymatter` or
+ * `backmatter` are kept: front matter (title page, imprint) is dropped, so the Book opens on its first
+ * Chapter. Back matter, Project Gutenberg's license or a trailing run of Spine items marked as back matter
+ * (Standard Ebooks' colophon and uncopyright), starts at [OpenBook.textEnd].
  * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
  * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
  * its Spine item doesn't have starts at that Spine item's start, or at the previous entry's start if that
@@ -84,7 +86,8 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     val tables = readTablesOfContents(zip, pkg)
     val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
     val docs = pkg.spine.map { item -> item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) } }
-    val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
+    val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.isBodyMatter || it.second.isBackMatter } else docs
+    val body = kept.filter { it.second.blocks.isNotEmpty() }
     val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
     val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
     val listed = tables.firstNotNullOfOrNull { entries ->
@@ -373,6 +376,27 @@ private class OpfHandler(private val dir: String) : DefaultHandler() {
 internal val WHITESPACE_RUN = Regex("\\s+")
 
 private val BLOCK_ELEMENTS = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "dt", "dd", "figcaption", "pre")
+
+/** Elements that sit inside a run of text; any other, a `<div>` or an `<img>` say, ends a run of loose text ([XhtmlHandler]). */
+private val INLINE_ELEMENTS = setOf(
+    "a", "abbr", "b", "bdi", "bdo", "br", "cite", "code", "data", "del", "dfn", "em", "font", "i", "ins", "kbd",
+    "mark", "q", "rb", "rp", "rt", "ruby", "s", "samp", "small", "span", "strike", "strong", "sub", "sup",
+    "time", "tt", "u", "var", "wbr",
+)
+
+/**
+ * What separates a table row's cells on its line. A space alone runs the cells together ("CHAPTER I 5"),
+ * and a tab or a run of spaces sets as one space in the Book's proportional type, so a spaced middle dot
+ * marks each cell boundary, as a printed table's rule would.
+ */
+private const val CELL_SEPARATOR = " · "
+
+private fun emphasisOf(name: String): Emphasis? = when (name) {
+    "em", "i", "cite" -> Emphasis.Italic
+    "strong", "b" -> Emphasis.Bold
+    else -> null
+}
+
 private val VERSE_MARKERS = listOf("verse", "poem", "song", "lyrics")
 
 /** What a block's leading and trailing runs are made of: spaces, no-break spaces, and line breaks. */
@@ -385,6 +409,14 @@ internal val TRIMMED = charArrayOf(' ', '\u00A0', '\n')
  * none follows. An element whose class includes the token `caption` inside a heading, before any of the
  * heading's own text, is its own Caption block, before that text; later, it stays in the heading. A block's
  * leading and trailing line breaks are dropped.
+ *
+ * Text outside every one of [BLOCK_ELEMENTS], such as text sitting directly in a `<div>`, is kept too: each
+ * run of it, up to the next element not in [INLINE_ELEMENTS], is a Paragraph block (Verse inside verse), in
+ * the emphasis of any `<i>` or `<b>` around it. Text in a known block nested in a `<div>` is that block's
+ * alone. A `<table>` outside a block is one block with a line per row, its cells joined by [CELL_SEPARATOR]
+ * and empty cells skipped; everything inside it, blocks included, is the table's text. One block rather
+ * than one per row sets the rows as a list, with no paragraph indent on each. A `<br>` in a block, and a
+ * line break in a `<pre>`, is a line break in the block; other runs of whitespace are one space.
  */
 private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler() {
     val blocks = mutableListOf<Block>()
@@ -411,6 +443,16 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     private val elementIsVerse = ArrayDeque<Boolean>()
     private var captionStart: Int? = null
     private var captionDepth = 0
+    private var loose = false // the open block is text outside any of BLOCK_ELEMENTS
+    private var inPre = false
+    private var tableDepth = 0 // tables open in the open block, which is a table's
+    private var rowStart = 0 // where the table row being read starts in [text]
+    private var cellStart = 0 // where the row's text after its last separator starts
+    private var separatorStart = -1 // where the row's last separator starts, -1 for none
+    // Emphasis elements open outside any block. A run of loose text inside them starts in their emphasis,
+    // and the first [seeded] entries of [openEmphasis] are theirs.
+    private val outerEmphasis = ArrayDeque<Emphasis>()
+    private var seeded = 0
 
     override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
         val name = qName.substringAfter(':').lowercase()
@@ -423,7 +465,9 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             skipDepth++
             return
         }
+        if (kind != null && loose && tableDepth == 0 && name !in INLINE_ELEMENTS) finishBlock()
         attrs.getValue("id")?.takeIf { it in fragments }?.let { ids += it }
+        if (kind != null && tableDepth > 0) return startInTable(name)
         when {
             name == "body" -> {
                 isBodyMatter = "bodymatter" in markers
@@ -441,11 +485,11 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                     captionStart = text.length
                     captionDepth = blockDepth
                 }
-                when (name) {
-                    "br" -> { trimTrailingSpace(); text.append('\n') }
-                    "em", "i", "cite" -> openEmphasis.addLast(Emphasis.Italic to text.length)
-                    "strong", "b" -> openEmphasis.addLast(Emphasis.Bold to text.length)
+                if (name == "br") {
+                    trimTrailingSpace()
+                    text.append('\n')
                 }
+                emphasisOf(name)?.let { openEmphasis.addLast(it to text.length) }
             }
             name in BLOCK_ELEMENTS -> {
                 kind = when {
@@ -455,20 +499,84 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                     else -> BlockKind.Paragraph
                 }
                 blockDepth = 0
+                inPre = name == "pre"
+            }
+            name == "table" -> {
+                openLoose()
+                tableDepth = 1
+                rowStart = 0
+                cellStart = 0
+                separatorStart = -1
             }
             name == "img" -> attrs.getValue("alt")?.takeIf { it.isNotBlank() }?.let {
                 anchor(textBefore)
                 add(Block(BlockKind.Caption, it.trim()))
             }
+            else -> emphasisOf(name)?.let { outerEmphasis.addLast(it) }
         }
     }
 
+    /**
+     * An element starting in a table's block. In the outermost table a row starts a line, and a cell after
+     * one with text adds [CELL_SEPARATOR]; a nested table's rows and cells, and any other block, add a space.
+     */
+    private fun startInTable(name: String) {
+        val emphasis = emphasisOf(name)
+        when {
+            name == "table" -> tableDepth++
+            name == "tr" && tableDepth == 1 -> {
+                endRow()
+                if (text.isNotEmpty() && text.last() != '\n') text.append('\n')
+                rowStart = text.length
+                cellStart = rowStart
+            }
+            (name == "td" || name == "th") && tableDepth == 1 -> if (hasTextFrom(cellStart)) {
+                trimTrailingSpace()
+                separatorStart = text.length
+                text.append(CELL_SEPARATOR)
+                cellStart = text.length
+            }
+            emphasis != null -> openEmphasis.addLast(emphasis to text.length)
+            name !in INLINE_ELEMENTS || name == "br" -> if (text.isNotEmpty() && text.last() != ' ' && text.last() != '\n') text.append(' ')
+        }
+    }
+
+    /** Ends a table row: drops the separator after its last cell with text when no text followed it. */
+    private fun endRow() {
+        if (separatorStart >= rowStart && !hasTextFrom(cellStart)) text.setLength(separatorStart)
+        separatorStart = -1
+        trimTrailingSpace()
+    }
+
+    private fun hasTextFrom(start: Int) = (start until text.length).any { !text[it].isWhitespace() }
+
+    /** Opens a block for text outside any of [BLOCK_ELEMENTS], in the emphasis of the elements around it. */
+    private fun openLoose() {
+        kind = when {
+            hgroupParts != null -> BlockKind.Heading
+            verseDepth > 0 -> BlockKind.Verse
+            else -> BlockKind.Paragraph
+        }
+        loose = true
+        blockDepth = 0
+        for (emphasis in outerEmphasis) openEmphasis.addLast(emphasis to 0)
+        seeded = outerEmphasis.size
+    }
+
     override fun characters(ch: CharArray, start: Int, length: Int) {
-        if (skipDepth > 0 || kind == null) return
+        if (skipDepth > 0) return
+        if (kind == null) {
+            if ((start until start + length).none { isVisible(ch[it]) }) return
+            openLoose()
+        }
         for (i in start until start + length) {
             val c = ch[i]
             when {
                 c == '\uFEFF' || c == '\u00AD' -> Unit // zero-width no-break space, soft hyphen
+                c == '\n' && inPre -> {
+                    trimTrailingSpace()
+                    text.append('\n')
+                }
                 c.isWhitespace() && c != '\u00A0' -> {
                     if (text.isNotEmpty() && text.last() != ' ' && text.last() != '\n') text.append(' ')
                 }
@@ -483,6 +591,8 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         }
     }
 
+    private fun isVisible(c: Char) = !(c.isWhitespace() && c != '\u00A0') && c != '\uFEFF' && c != '\u00AD'
+
     override fun endDocument() = anchor(maxOf(textBefore - 1, 0))
 
     override fun endElement(uri: String, localName: String, qName: String) {
@@ -492,9 +602,29 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             skipDepth--
             return
         }
+        if (kind != null && tableDepth > 0) {
+            if (name == "table" && --tableDepth == 0) {
+                endRow()
+                finishBlock()
+            } else if (emphasisOf(name) != null) {
+                closeEmphasis()
+            }
+            return
+        }
+        if (kind != null && loose && blockDepth == 0) {
+            if (name in INLINE_ELEMENTS) {
+                if (emphasisOf(name) != null && seeded > 0) {
+                    seeded--
+                    outerEmphasis.removeLastOrNull()
+                    closeEmphasis()
+                }
+                return
+            }
+            finishBlock()
+        }
         when {
             kind != null && blockDepth > 0 -> {
-                if (name in setOf("em", "i", "cite", "strong", "b")) closeEmphasis()
+                if (emphasisOf(name) != null) closeEmphasis()
                 if (blockDepth == captionDepth) splitCaption()
                 blockDepth--
             }
@@ -505,6 +635,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                 }
                 hgroupParts = null
             }
+            kind == null && emphasisOf(name) != null -> outerEmphasis.removeLastOrNull()
         }
     }
 
@@ -548,6 +679,9 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             blocks.lastOrNull()?.takeIf { it.headingCaption }?.let { blocks[blocks.lastIndex] = it.copy(headingCaption = false) }
         }
         kind = null
+        loose = false
+        inPre = false
+        seeded = 0
         text.setLength(0)
         spans.clear()
         openEmphasis.clear()

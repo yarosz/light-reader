@@ -221,9 +221,11 @@ class ReaderViewModelTest {
         val last = vm.frame.value
         val place = vm.spinePoint.value
         val measurer = LineMeasurer()
-        val session = Reading(vm.book.value!!.spineItems, { pass, window -> measurer.measure(pass.spineItem, pass.windows[window], pass.key.fontStep) }, { it.lines })
+        val book = vm.book.value!!
+        val session = Reading(book.spineItems, { pass, window -> measurer.measure(pass.spineItem, pass.windows[window], pass.key.fontStep) }, { it.lines }, textEnd = book.textEnd)
         session.open(place.item, place.char, measurer.key(DEFAULT_FONT_STEP))
-        assertNull(session.next(), "the last Page is the Reading's last")
+        val after = session.next()
+        assertTrue(after == null || SpinePoint(after.pass.item, after.page.start) >= book.textEnd, "the Reading's next Page is in Back matter")
         vm.nextPage()
         assertTrue(vm.atEnd.value)
         assertSame(last, vm.frame.value)

@@ -122,6 +122,14 @@ Ordered. Each item ends on its _done-when_.
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
+  - Text outside the known blocks (loose `<div>` text, tables, `<pre>` line breaks) reaches a Page
+    (`DESIGN.md` "What a Book shows"): Gutenberg's HTML contents table, War and Peace's cipher table, the
+    whole license. Gutenberg's end-of-book lines now sit between `textEnd` and the listed license, so the
+    first Chapter after Back matter's start moves back to it when no heading comes between (no second,
+    "Chapter N" row). Standard Ebooks Books keep their `backmatter` Spine items (colophon, uncopyright) as
+    Back matter; front matter stays dropped. Pride and Prejudice keeps 63 Chapters in both Gutenberg
+    editions; the images EPUB 3 now has 8 Spine items, the last being Gutenberg's cover wrapper page, whose
+    "back" link shows after the license (drop it before the images flip, with the drop caps).
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's

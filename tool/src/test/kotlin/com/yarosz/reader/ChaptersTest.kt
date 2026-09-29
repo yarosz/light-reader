@@ -471,9 +471,9 @@ class ChaptersTest {
     }
 
     @Test
-    fun `Alice's twelve Chapters come from its nav, one per Spine item`() {
+    fun `Alice's twelve Chapters and three of Back matter come from its nav, one per Spine item`() {
         val alice = parseEpub(File("src/test/fixtures/alice.epub"))
-        assertEquals(12, alice.chapters.size)
+        assertEquals(15, alice.chapters.size)
         assertEquals(alice.spineItems.indices.map { SpinePoint(it, 0) }, alice.chapters.map { it.start })
         assertEquals("VII: A Mad Tea-Party", alice.chapters[6].title)
         assertEquals("II: The Pool of Tears", alice.chapterAt(SpinePoint(1, 0))?.let { alice.chapters[it].title }, "the top line scripts/ci.sh reads at the dev start")

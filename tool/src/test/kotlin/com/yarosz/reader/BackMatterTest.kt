@@ -83,6 +83,54 @@ class BackMatterTest {
     }
 
     @Test
+    fun `Gutenberg's end-of-book lines before its listed license start the license's Chapter, with no second one`() {
+        val footer = """<div class="pg-boilerplate pgheader footer" id="pg-footer"><div id="pg-end-separator"><span>*** END OF THE BOOK ***</span></div>""" +
+            """<div>Updated editions will replace the previous one.</div><div id="project-gutenberg-license">START: FULL LICENSE</div>""" +
+            """<h2 id="pg-footer-heading">$LICENSE_HEADING</h2><div>$LICENSE_TERMS</div></div>"""
+        val chapterTwo = """<h2 id="ch2">Chapter II.</h2><p>$LAST_TEXT</p>"""
+        val book = open(gutenbergBodies().dropLast(1) + (chapterTwo + footer), gutenbergNcx())
+        assertEquals(book.startOf("*** END OF THE BOOK ***"), book.textEnd)
+        assertEquals(listOf("Title", "Chapter I.", "Chapter II.", LICENSE_HEADING), book.chapters.map { it.title })
+        assertEquals(book.textEnd, book.chapters.last().start)
+        assertTrue(book.startOf(LICENSE_TERMS) > book.textEnd)
+
+        val ownItem = open(gutenbergBodies().dropLast(1) + chapterTwo + footer, gutenbergNcx().replace("c2.xhtml#pg-footer", "c3.xhtml#pg-footer"))
+        assertEquals(ownItem.endOf(2), ownItem.textEnd)
+        assertEquals(listOf("Title", "Chapter I.", "Chapter II.", LICENSE_HEADING), ownItem.chapters.map { it.title })
+        assertEquals(SpinePoint(3, 0), ownItem.chapters.last().start)
+    }
+
+    @Test
+    fun `a heading between Back matter's start and the next listed Chapter gets Back matter a Chapter of its own`() {
+        val listed = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Index", SpinePoint(0, 10)))
+        val heading = listOf(SpineItem("a", listOf(Block(BlockKind.Paragraph, "One"), Block(BlockKind.Heading, "Notes"), Block(BlockKind.Heading, "Index"))))
+        assertEquals(
+            listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Notes", SpinePoint(0, 4)), Chapter("Index", SpinePoint(0, 10))),
+            chaptersOf(listed, heading, textEnd = SpinePoint(0, 4)),
+        )
+        val noHeading = listOf(SpineItem("a", listOf(Block(BlockKind.Paragraph, "One"), Block(BlockKind.Paragraph, "End."), Block(BlockKind.Heading, "Index"))))
+        assertEquals(
+            listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Index", SpinePoint(0, 4))),
+            chaptersOf(listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Index", SpinePoint(0, 9))), noHeading, textEnd = SpinePoint(0, 4)),
+        )
+    }
+
+    @Test
+    fun `a Book that marks its body matter keeps the back matter after it as Back matter, and drops its front matter`() {
+        val bodies = listOf("<h1>Title page</h1>", "<h2>I</h2><p>One</p>", "<h2>II</h2><p>Two</p>", "<h2>Colophon</h2><p>Made by</p>", "<h2>Uncopyright</h2><p>Public domain</p>")
+        val book = open(
+            bodies,
+            ncx(navPoint("Title page", "text/c0.xhtml"), navPoint("I", "text/c1.xhtml"), navPoint("II", "text/c2.xhtml"), navPoint("Colophon", "text/c3.xhtml"), navPoint("Uncopyright", "text/c4.xhtml")),
+            bodyAttributes = mapOf(0 to "epub:type=\"frontmatter\"", 1 to "epub:type=\"bodymatter z3998:fiction\"", 2 to "epub:type=\"bodymatter\"", 3 to "epub:type=\"backmatter\"", 4 to "epub:type=\"backmatter\""),
+        )
+        assertEquals(listOf("c1", "c2", "c3", "c4"), book.spineItems.map { it.spineId })
+        assertEquals(listOf("I", "II", "Colophon", "Uncopyright"), book.chapters.map { it.title })
+        assertEquals(SpinePoint(0, 0), book.chapters.first().start)
+        assertEquals(book.endOf(1), book.textEnd)
+        assertEquals(listOf(false, false, true, true), book.chapters.indices.map { book.isBackMatter(it) })
+    }
+
+    @Test
     fun `a Chapter listed at the end of the Spine item before Back matter counts as starting it`() {
         val spineItems = listOf(
             SpineItem("a", listOf(Block(BlockKind.Paragraph, "One"), Block(BlockKind.Paragraph, "Two"))),
@@ -128,7 +176,8 @@ class BackMatterTest {
         val book = open(bodies)
         assertEquals(3, book.spineItems.size)
         assertEquals(book.endOf(1), book.textEnd)
-        assertEquals(SpinePoint(2, 0), book.startOf(LICENSE_HEADING))
+        assertEquals(SpinePoint(2, 0), book.startOf("*** END ***"))
+        assertEquals(SpinePoint(2, 0), book.chapters.last().start)
     }
 
     @Test
@@ -227,7 +276,7 @@ class BackMatterTest {
                 """<h2 id="ch1">Chapter I.</h2>$words""",
                 """<h2 id="ch2">Chapter II.</h2>$words<p>$LAST_TEXT</p>""" +
                     """<div class="pg-boilerplate pgheader footer" id="pg-footer"><h2 id="pg-footer-heading">$LICENSE_HEADING</h2>""" +
-                    """<div>Text sitting directly in a div, which the parser drops.</div>$words<p>$LICENSE_TERMS</p></div>""",
+                    """<div>Text sitting directly in a div.</div>$words<p>$LICENSE_TERMS</p></div>""",
             )
         }
 

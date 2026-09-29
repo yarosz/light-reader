@@ -54,6 +54,21 @@ A paragraph gets a first-line indent only when it follows another paragraph (Sta
 convention); the first paragraph after a heading, caption or verse, or a Spine item's first block, starts
 flush, judged on block kinds, never on window boundaries.
 
+## What a Book shows
+
+- A Book that marks its body matter (Standard Ebooks marks every Spine item's `<body>`)
+  keeps only the Spine items marked `bodymatter` or `backmatter`. Front matter (title page, imprint) is
+  dropped, so the Book opens on its first Chapter; a trailing run of `backmatter` items (colophon,
+  uncopyright) is Back matter, listed at the end of Contents. A Book that marks no body matter keeps every
+  Spine item. Spine items with no text are dropped either way. `parseEpub` in `Epub.kt`.
+- Every piece of text in a kept Spine item reaches a Page. Text outside the known blocks (paragraphs,
+  headings, list items, `<pre>`), such as text sitting directly in a `<div>`, is a paragraph of its own up
+  to the next element that isn't inline. A table is one paragraph with a line per row and its cells joined
+  by " · ": a space alone would run the cells together, and aligned spacing doesn't survive proportional
+  type. Rows as lines of one block set the table as a list, with no indent on each row. `<br>` and the
+  line breaks in a `<pre>` are line breaks; no-break spaces are kept, so a monospaced table built from them
+  keeps its rough alignment. `XhtmlHandler` in `Epub.kt`.
+
 ## Copy
 
 Copy capitalises Book, Shelf and Catalogue; "place" is lowercase; chapter is lowercase in running copy
