@@ -176,8 +176,9 @@ install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the 
           <tool/src/test/fixtures/alice.epub; }; } \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
-shelf_check() {  # serial: after the round trip, the reading data must be byte-identical (Home pauses the
-                 # Reader, which flushes any save), and a launch without dev-start must render the Shelf:
+shelf_check() {  # serial: after the round trip, the reading data must be byte-identical (the Reader
+                 # flushed any save as leave_check left it; Home then pauses the Shelf), and a launch
+                 # without dev-start must render the Shelf:
                  # a "shelf rows=" line logged after this run's marker, so an earlier launch's can't pass
   local mark="ci-shelf-check-$$-$RANDOM-$(date +%s)"
   "$adb" -s "$1" shell input keyevent KEYCODE_HOME >/dev/null 2>&1

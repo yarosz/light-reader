@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
@@ -99,7 +100,8 @@ class ReaderScreen(
     /**
      * Opens Contents over the Reader; a Chapter chosen there is jumped to, "Shelf" leaves the Reader as system
      * back does, and back changes nothing. Leaving pops the Reader as Contents' result arrives, before a frame
-     * shows the Page again.
+     * shows the Page again. That relies on LightActivity.goBack delivering the result after the Reader is
+     * current again, and on ReaderViewModel not overriding onBackPressed, which system back never asks.
      */
     private fun openContents() {
         val contents = viewModel.openContents() ?: return
@@ -195,12 +197,15 @@ class ReaderScreen(
         }
     }
 
-    /** A Book with no Page to show, which has no top line and so no Contents: [message], then "Back to Shelf". */
+    /**
+     * A Book with no Page to show, which has no top line and so no Contents: [message], then "Back to Shelf"
+     * aligned with it (its tap padding hangs into the margin).
+     */
     @Composable
     private fun NoPage(message: String) {
         Column {
             LightText(text = message, variant = LightTextVariant.Copy, lighten = true)
-            BackToShelf(Modifier.padding(top = 8.dp))
+            BackToShelf(Modifier.offset(x = (-8).dp))
         }
     }
 

@@ -19,14 +19,18 @@ sealed interface ContentsChoice {
 
 /**
  * Contents (DESIGN.md "Contents"): one row per Chapter, the current one marked "you're here". A tap hands
- * the Reader that Chapter, "Shelf" on the bar hands it leaving the Book, and back hands it nothing. It opens with the row before the current one at
- * the top, so the current row is second, or the current row at the top when it is first; the list scrolls
- * there as that row is first placed, so no frame shows it from the top. The volume keys stay LightOS's here.
+ * the Reader that Chapter, "Shelf" on the bar hands it leaving the Book, and back hands it nothing. "Shelf"
+ * sits under the right of the top line that opened Contents, so for [SHELF_GUARD_NS] after Contents opens
+ * it does nothing: a double tap on the top line opens Contents and stays there. It opens with the row
+ * before the current one at the top, so the current row is second, or the current row at the top when it
+ * is first; the list scrolls there as that row is first placed, so no frame shows it from the top. The
+ * volume keys stay LightOS's here.
  */
 class ContentsScreen(
     sealedActivity: SealedLightActivity,
     private val contents: Contents,
 ) : SimpleLightScreen<ContentsChoice>(sealedActivity) {
+    private val openedAt = System.nanoTime()
 
     @Composable
     override fun Content() {
@@ -36,7 +40,9 @@ class ContentsScreen(
         BackScreen(
             title = CONTENTS_TITLE,
             onBack = { goBack() },
-            right = LightBarButton.Text(CONTENTS_SHELF, onClick = { goBack(ContentsChoice.Shelf) }),
+            right = LightBarButton.Text(CONTENTS_SHELF, onClick = {
+                if (System.nanoTime() - openedAt >= SHELF_GUARD_NS) goBack(ContentsChoice.Shelf)
+            }),
             scrollState = scroll,
         ) {
             contents.titles.forEachIndexed { i, title ->
@@ -47,9 +53,16 @@ class ContentsScreen(
                     }
                 }
                 Box(row) {
-                    ListRow(title, CONTENTS_HERE.takeIf { i == contents.current }, onClick = { goBack(ContentsChoice.Chapter(i)) })
+                    ListRow(
+                        title,
+                        CONTENTS_HERE.takeIf { i == contents.current },
+                        onClick = { goBack(ContentsChoice.Chapter(i)) },
+                    )
                 }
             }
         }
     }
 }
+
+/** How long "Shelf" ignores taps after Contents opens: longer than a double tap's second tap takes. */
+const val SHELF_GUARD_NS = 500_000_000L
