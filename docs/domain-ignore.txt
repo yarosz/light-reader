@@ -210,3 +210,6 @@ catalogue fetch failed: ${url.forLog()}: $cause -> $reason
 at ${it.url.forLog()}
 not a feed$at
 HTTP ${it.status}$at
+
+# Where a stored Place's snippet matches a Spine item's text, as resolve ranks the candidates.
+Match

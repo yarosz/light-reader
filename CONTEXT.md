@@ -70,8 +70,9 @@ Chapter.
 _Avoid_: section
 
 **Front matter**:
-The part of a Book before its first Chapter, such as the title page and copyright page. It belongs to
-no Chapter. A preface the table of contents lists is a Chapter, not front matter.
+The part of a Book before its first Chapter, such as a title page or a dedication the table of contents
+doesn't list. It belongs to no Chapter. A preface the table of contents lists is a Chapter, not front
+matter.
 _Avoid_: prelims
 
 **Back matter**:

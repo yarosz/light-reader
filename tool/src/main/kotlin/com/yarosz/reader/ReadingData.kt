@@ -220,10 +220,13 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
  * - else where the most of that second snippet matches, at least [MIN_MATCH] characters or all of a
  *   shorter one, allowing for what a newer parse adds to it ([matchFrom]): a Place saved when a list
  *   item's paragraphs ran together, or before a caption or table was read between two of its blocks.
- * Among equal matches, one reaching the text's end wins for a snippet shorter than [SNIPPET_CHARS] - 1,
- * which reached its Spine item's end; then the one nearest the block and offset, which are stale when
- * blocks were added before the Place. With no match it lands at the start of its block, or of its Spine
- * item when the block is gone: a Place whose text a new edition changed or the parser now skips.
+ * Among equally long matches, one reaching the text's end wins for a snippet shorter than [SNIPPET_CHARS] - 1,
+ * which reached its Spine item's end (so does the block and offset: a match there that no longer reaches
+ * the end is checked against the others); then the one spanning the least added text; then one at or
+ * after its block's start, as added blocks only move text later; then the one nearest the block and
+ * offset. Two spots whose text matches the snippet equally, list items that open alike say, are told
+ * apart only by those. With no match it lands at the start of its block, or of its Spine item when the
+ * block is gone: a Place whose text a new edition changed or the parser now skips.
  *
  * A match that starts on the separator before a block, for a Place no further into its block than the
  * line breaks its snippet starts with, is taken past them: that Place was saved inside a heading's leading

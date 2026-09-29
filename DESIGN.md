@@ -56,14 +56,20 @@ flush, judged on block kinds, never on window boundaries.
 
 ## What a Book shows
 
-- A Book that marks its body matter (Standard Ebooks marks every Spine item's `<body>`)
-  keeps only the Spine items marked `bodymatter` or `backmatter`. The rest is front matter and is dropped,
-  even when the table of contents lists it: Standard Ebooks marks its title page, imprint, dedication,
-  epigraph, foreword and introduction `frontmatter`. The Book opens on its first Chapter; a trailing run of
-  `backmatter` items (colophon, uncopyright, endnotes) is Back matter, listed at the end of Contents. A Book
-  that marks no body matter keeps every Spine item. Spine items with no text are dropped either way, and
-  so are Spine items marked `linear="no"` (auxiliary content), unless every one is. `parseEpub` in
-  `Epub.kt`.
+- A Book that marks its body matter (Standard Ebooks marks every Spine item's `<body>`) drops the Spine
+  items that aren't reading matter, even when the table of contents lists them: those whose `<body>`, or
+  an element directly in it, has the `epub:type` `titlepage`, `halftitlepage`, `imprint` or `toc`.
+  Everything else is kept, so the reader can read the dedication, epigraph, foreword, introduction or
+  preface Standard Ebooks marks `frontmatter`. Those the table of contents lists are Chapters, in Contents
+  before the first of the text; one it doesn't list is front matter. A newly added Book opens at its
+  start, as every Book does: for Standard Ebooks the first of those (Alice opens on its epigraph), as a
+  Gutenberg Book opens on its title page, rather than skipping to Chapter I. A trailing run of
+  `backmatter` items (colophon, uncopyright, endnotes) is Back matter, listed at the end of Contents. A
+  Book that marks no body matter keeps every Spine item. Spine items with no text are dropped either way.
+- Spine items marked `linear="no"` (auxiliary content, such as a cover wrapper) are skipped, unless a
+  table of contents lists them or every one is. A publisher's EPUB may mark its notes `linear="no"`;
+  listed, they stay, in Spine order, so a contents entry pointing at them still works. An unlisted one is
+  gone: a Place stored in it opens at the Book's start. `parseEpub` in `Epub.kt`.
 - Every piece of text in a kept Spine item reaches a Page, except what is never shown: `<head>`,
   `<script>`, `<style>`, `<svg>`, `<math>`, `<noscript>`, `<template>`, and any element marked `hidden` or
   `aria-hidden="true"`, with everything in them. The known blocks are paragraphs, headings, list items,
@@ -76,7 +82,8 @@ flush, judged on block kinds, never on window boundaries.
   " · ": a space alone would run the cells together, and aligned spacing doesn't survive proportional
   type. A cell with no text, or only no-break spaces, adds nothing. Rows as lines of one block set the
   table as a list, with no indent on each row. Once a table's paragraph passes 10,000 characters (a layout
-  window, `WINDOW_CHARS`), its next row starts a new paragraph, which takes a first-line indent. A table
+  window, `WINDOW_CHARS`), its next row starts a new paragraph, which takes a first-line indent; so does a
+  row where Project Gutenberg's license starts (`pg-footer`), since Back matter starts at a block. A table
   whose cells hold a known block, a heading or an image with alt text is read block by block, as if its
   cells were `<div>`s, so its headings stay headings. A table inside a known block adds its rows to that
   block, a line per row, cells joined the same way.
