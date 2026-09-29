@@ -1,6 +1,6 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done; next is N5 (Reading chrome)
+STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done; next is N5 (Reading controls)
 LAST SESSION: 2026-09-29
 
 ## v1 user flow
@@ -11,8 +11,8 @@ LAST SESSION: 2026-09-29
    "Add a Catalogue".
 3. **Catalogue** → search and browse as text → a Book's detail page → **Add to Shelf** (downloads it).
 4. **Reading**: tap the right side or press volume down to turn the page. A centre tap shows the
-   controls: back to the Shelf, the Chapter title, time left, A− A+, Light/Dark, **Contents**.
-5. **Contents** lists the Chapters; tap one to jump there.
+   controls: back to the Shelf, the Chapter title, time left, A− A+, **Contents**.
+5. **Contents** lists the Chapters under their Parts; tap one to jump there.
 
 Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 
@@ -182,22 +182,29 @@ Ordered. Each item ends on its _done-when_.
   no-images EPUB 2) shows its 61 novel Chapters, "Chapter I." to "CHAPTER LXI.", plus the title page and
   license its table of contents lists, across 15 Spine items; the images EPUB 3 gives the same 63
   Chapters across 8.
-- **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
-  bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
-  tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`
-  (17/20/24.5/30/36 sp, default 20; one constants file); one-line first-run hint; keep the screen on
-  while reading (release after 10 min without a turn); Page text in semantics; About screen (version,
-  licenses incl. Literata OFL, copy-protected explainer + where to find DRM-free Books, repo URL as text, the
-  ADR 0003 no-network sentence). The detail page's CopyProtected line then points to About's list.
-  _Done when:_ verified with `mise run ui`, including CopyProtected's pointer to About's DRM-free
-  list.
-  From the N4 QA walkthrough, for N5 to settle: long Books' Contents (War and Peace: 385 rows,
-  "CHAPTER I" ×17 with no Part named on the row or the top line, ~70 flings end to end; show the
-  enclosing Part where titles repeat, and a way to the start or end); and the top line doesn't read as
-  a control (the overlay's top bar replaces its job, or a cue until then). Parked: identical rows in
-  search results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3: different identifiers, so
-  separate Books once added) want a telling detail; Catalogue author forms keep titles of nobility ("graf Leo Tolstoy"),
-  which could be dropped as life dates are.
+- **N5 · Reading controls.** Hidden while reading; a centre tap shows the controls (text never moves):
+  top bar (back to Shelf + the Chapter title, with its Part as a running head), Progress line, bottom row
+  "A−  A+  Contents". Asymmetric tap zones (back 30% / controls 25% / forward 45%); the six font sizes
+  (15/17/20/24.5/30/36 sp, default 20; N5 adds the 15 sp row to `DESIGN.md`) and margins from `DESIGN.md`
+  (one constants file); one-line first-run hint; keep the screen on while reading (release after 10 min
+  without a turn); Page text in semantics; About screen (version, licenses incl. Literata OFL,
+  copy-protected explainer + where to find Books without copy protection, repo URL as text, the ADR 0003
+  no-network sentence). The detail page's CopyProtected line then points to About's list.
+  _Done when:_ verified with `mise run ui`, including CopyProtected's pointer to About's list.
+  From the N4 QA walkthrough, for N5 to settle: long Books' Contents (War and Peace: 385 rows, "CHAPTER
+  I" ×17 with no Part named on the row or the top line, ~70 flings end to end; show the enclosing Part
+  where titles repeat, and a way to the top or bottom; settled below); and the top line doesn't read as a
+  control (the overlay's top bar replaces its job, or a cue until then). Parked: identical rows in search
+  results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3: different identifiers,
+  so separate Books once added) want a telling detail; Catalogue author forms keep titles of nobility
+  ("graf Leo Tolstoy"), which could be dropped as life dates are.
+  Decided before N5: no top line while reading (the controls' top bar takes its job and names the Part as
+  a running head, "BOOK TWO: 1805 · CHAPTER I"); Contents lists Parts as heading rows, as a printed
+  contents page does, and a Part row goes to its heading (nested tables of contents keep their Parts; a
+  Part heading row, in nested tables of contents only, is never "you're here"; in flat ones the Part is
+  already a Chapter row, never a second one, and is current like any Chapter); no Light/Dark button in
+  v1; "Reader" on the Shelf opens About; the first-run hint shows once ever; a sixth, 15 sp font size.
+  Still open: a way to the top or bottom of a long Contents (measure the scrollbar's track tap first).
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
   Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the

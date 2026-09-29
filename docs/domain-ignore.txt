@@ -118,6 +118,7 @@ Missing file
 Density is 480 dpi
 N2 follow-ups
 N3 follow-ups
+N5 · Reading controls
 N6 bar missed
 Emulator fidelity
 Reading texture
