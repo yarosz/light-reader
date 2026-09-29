@@ -527,7 +527,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         val endsBlock = if (loose) !inline else name in BLOCK_ELEMENTS && blockName in LIST_BLOCKS
         if (kind != null && tableDepth == 0 && endsBlock) finishBlock()
         attrs.getValue("id")?.takeIf { it in fragments }?.let { ids += it }
-        if (kind != null && tableDepth > 0) return startInTable(name)
+        if (kind != null && tableDepth > 0) return startInTable(name, attrs.getValue("id") == PG_FOOTER)
         when {
             name == "body" -> {
                 isBodyMatter = "bodymatter" in markers
@@ -580,14 +580,17 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     /**
      * An element starting in a table's block. In the outermost table a row starts a line, and a cell after
      * one with text adds [CELL_SEPARATOR]; a nested table's rows and cells, and any other block, add a space.
+     * A table of one block starts a new one at a row past [WINDOW_CHARS], and at a row, or a row's first cell,
+     * that is [PG_FOOTER] ([isFooter]): [OpenBook.textEnd] starts at a block, so the license rows aren't
+     * joined to the text's last lines.
      */
-    private fun startInTable(name: String) {
+    private fun startInTable(name: String, isFooter: Boolean) {
         val emphasis = emphasisOf(name)
         when {
             name == "table" -> tableDepth++
             name == "tr" && tableDepth == 1 -> {
                 endRow()
-                if (loose && text.length >= WINDOW_CHARS) {
+                if (loose && (text.length >= WINDOW_CHARS || isFooter && text.isNotEmpty())) {
                     finishBlock()
                     openLoose()
                 } else if (text.isNotEmpty() && text.last() != '\n') {
@@ -595,6 +598,13 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                 }
                 rowStart = text.length
                 cellStart = rowStart
+            }
+            (name == "td" || name == "th") && tableDepth == 1 && isFooter && loose && rowStart > 0 && !hasTextFrom(rowStart) -> {
+                finishBlock()
+                openLoose()
+                rowStart = 0
+                cellStart = 0
+                separatorStart = -1
             }
             (name == "td" || name == "th") && tableDepth == 1 -> if (hasTextFrom(cellStart)) {
                 trimTrailingSpace()

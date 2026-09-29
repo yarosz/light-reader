@@ -140,6 +140,16 @@ class LooseTextTest {
     }
 
     @Test
+    fun `Project Gutenberg's license starting at a row of a table of inline text starts a block, where the text ends`() {
+        for (row in listOf("<tr id=\"pg-footer\"><td>License row</td><td>two</td></tr>", "<tr><td id=\"pg-footer\">License row</td><td>two</td></tr>")) {
+            val book = open(listOf("<p>Text body.</p><table><tr><td>End line</td><td>one</td></tr>$row</table><p>More license</p>"))
+            val item = book.spineItems.single()
+            assertEquals(listOf("Text body.", "End line · one", "License row · two", "More license"), item.blocks.map { it.text }, row)
+            assertEquals(SpinePoint(0, item.text.indexOf("License row")), book.textEnd, row)
+        }
+    }
+
+    @Test
     fun `a table inside a known block adds a line per row and separates its cells`() {
         assertEquals(
             listOf(Block(BlockKind.Paragraph, "x\na · b\nc\ny"), Block(BlockKind.Paragraph, "a · b")),
