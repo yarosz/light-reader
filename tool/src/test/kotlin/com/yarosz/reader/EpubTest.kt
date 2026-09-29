@@ -16,14 +16,15 @@ class EpubTest {
     private val book = parseEpub(File("src/test/fixtures/alice.epub"))
 
     @Test
-    fun `keeps the twelve Spine items of body matter and the back matter after them, not the front matter`() {
+    fun `keeps the epigraph, frontispiece, twelve Chapters and back matter, not the title page, imprint or half-title`() {
         assertEquals("Alice’s Adventures in Wonderland", book.title)
-        assertEquals(15, book.spineItems.size)
-        assertEquals("I: Down the Rabbit-Hole", book.chapters[0].title)
-        assertEquals("XII: Alice’s Evidence", book.chapters[11].title)
-        assertEquals(SpinePoint(11, book.spineItems[11].text.length), book.textEnd)
-        assertEquals(listOf("List of Illustrations", "Colophon", "Uncopyright"), book.chapters.drop(12).map { it.title })
-        assertTrue(book.chapters.drop(12).all { it.start > book.textEnd })
+        assertEquals(17, book.spineItems.size)
+        assertEquals(listOf("All in the Golden Afternoon", "Frontispiece", "I: Down the Rabbit-Hole"), book.chapters.take(3).map { it.title })
+        assertEquals(SpinePoint(0, 0), book.chapters[0].start)
+        assertEquals("XII: Alice’s Evidence", book.chapters[13].title)
+        assertEquals(SpinePoint(13, book.spineItems[13].text.length), book.textEnd)
+        assertEquals(listOf("List of Illustrations", "Colophon", "Uncopyright"), book.chapters.drop(14).map { it.title })
+        assertTrue(book.chapters.drop(14).all { it.start > book.textEnd })
     }
 
     @Test
@@ -50,7 +51,10 @@ class EpubTest {
 
     @Test
     fun `each Spine item keeps its idref from the Spine`() {
-        assertEquals((1..12).map { "chapter-$it.xhtml" } + listOf("loi.xhtml", "colophon.xhtml", "uncopyright.xhtml"), book.spineItems.map { it.spineId })
+        assertEquals(
+            listOf("epigraph.xhtml", "frontispiece.xhtml") + (1..12).map { "chapter-$it.xhtml" } + listOf("loi.xhtml", "colophon.xhtml", "uncopyright.xhtml"),
+            book.spineItems.map { it.spineId },
+        )
     }
 
     @Test
@@ -87,16 +91,19 @@ class EpubTest {
     }
 
     @Test
-    fun `a Spine item marked linear no is skipped, unless every one is`() {
+    fun `a Spine item marked linear no is skipped, unless every one is or a table of contents lists it`() {
         val dir = createTempDirectory("epub").toFile()
-        fun open(nonLinear: List<String>): OpenBook {
-            val files = tocEpubFiles(listOf("<p>Cover</p>", "<p>One</p>", "<p>Wrapper back link</p>"))
+        fun open(nonLinear: List<String>, ncx: String? = null): OpenBook {
+            val files = tocEpubFiles(listOf("<p>Cover</p>", "<p>One</p>", "<p>Notes</p>", "<p>Wrapper back link</p>"), ncx = ncx)
             val opf = nonLinear.fold(files.getValue("OEBPS/content.opf")) { opf, idref -> opf.replace("idref=\"$idref\"", "idref=\"$idref\" linear=\"no\"") }
             return parseEpub(File(dir, "book.epub").writeEpub(files + ("OEBPS/content.opf" to opf)))
         }
         try {
-            assertEquals(listOf("c1"), open(listOf("c0", "c2")).spineItems.map { it.spineId })
-            assertEquals(listOf("c0", "c1", "c2"), open(listOf("c0", "c1", "c2")).spineItems.map { it.spineId })
+            assertEquals(listOf("c1"), open(listOf("c0", "c2", "c3")).spineItems.map { it.spineId })
+            assertEquals(listOf("c0", "c1", "c2", "c3"), open(listOf("c0", "c1", "c2", "c3")).spineItems.map { it.spineId })
+            val notes = open(listOf("c0", "c2", "c3"), ncx(navPoint("One", "text/c1.xhtml"), navPoint("Notes", "text/c2.xhtml")))
+            assertEquals(listOf("c1", "c2"), notes.spineItems.map { it.spineId })
+            assertEquals(listOf("One", "Notes"), notes.chapters.map { it.title })
         } finally {
             dir.deleteRecursively()
         }
@@ -168,7 +175,7 @@ class EpubTest {
 
     @Test
     fun `a Spine item opens with its heading then the first paragraph`() {
-        val blocks = book.spineItems[0].blocks
+        val blocks = book.spineItems[2].blocks
         assertEquals(Block(BlockKind.Heading, "I: Down the Rabbit-Hole"), blocks[0])
         assertEquals(BlockKind.Paragraph, blocks[1].kind)
         assertTrue(blocks[1].text.startsWith("Alice was beginning to get very tired"))
@@ -176,7 +183,7 @@ class EpubTest {
 
     @Test
     fun `emphasis spans point at the emphasised words`() {
-        val para = book.spineItems[0].blocks.first { it.text.startsWith("There was nothing so") }
+        val para = book.spineItems[2].blocks.first { it.text.startsWith("There was nothing so") }
         val span = para.spans.first()
         assertEquals(Emphasis.Italic, span.emphasis)
         assertEquals("very", para.text.substring(span.start, span.end))
@@ -184,7 +191,7 @@ class EpubTest {
 
     @Test
     fun `poems keep their line breaks, one block per stanza`() {
-        val blocks = book.spineItems[1].blocks
+        val blocks = book.spineItems[3].blocks
         val first = blocks.indexOfFirst { it.kind == BlockKind.Verse && "crocodile" in it.text }
         assertEquals(
             listOf("“How doth the little crocodile", "Improve his shining tail,", "And pour the waters of the Nile", "On every golden scale!"),
@@ -197,7 +204,7 @@ class EpubTest {
 
     @Test
     fun `illustrations become captions from their alt text`() {
-        assertTrue(book.spineItems[0].blocks.any {
+        assertTrue(book.spineItems[2].blocks.any {
             it.kind == BlockKind.Caption && it.text.startsWith("A white rabbit wearing a waistcoat")
         })
     }

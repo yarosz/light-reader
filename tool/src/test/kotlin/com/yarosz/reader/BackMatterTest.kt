@@ -116,8 +116,8 @@ class BackMatterTest {
     }
 
     @Test
-    fun `a Book that marks its body matter keeps the back matter after it as Back matter, and drops its front matter`() {
-        val bodies = listOf("<h1>Title page</h1>", "<h2>I</h2><p>One</p>", "<h2>II</h2><p>Two</p>", "<h2>Colophon</h2><p>Made by</p>", "<h2>Uncopyright</h2><p>Public domain</p>")
+    fun `a Book that marks its body matter keeps the back matter after it as Back matter, and drops its title page`() {
+        val bodies = listOf("<section epub:type=\"titlepage\"><h1>Title page</h1></section>", "<h2>I</h2><p>One</p>","<h2>II</h2><p>Two</p>", "<h2>Colophon</h2><p>Made by</p>", "<h2>Uncopyright</h2><p>Public domain</p>")
         val book = open(
             bodies,
             ncx(navPoint("Title page", "text/c0.xhtml"), navPoint("I", "text/c1.xhtml"), navPoint("II", "text/c2.xhtml"), navPoint("Colophon", "text/c3.xhtml"), navPoint("Uncopyright", "text/c4.xhtml")),
@@ -128,6 +128,28 @@ class BackMatterTest {
         assertEquals(SpinePoint(0, 0), book.chapters.first().start)
         assertEquals(book.endOf(1), book.textEnd)
         assertEquals(listOf(false, false, true, true), book.chapters.indices.map { book.isBackMatter(it) })
+    }
+
+    @Test
+    fun `a Book that marks its body matter keeps its dedication, epigraph and foreword, listed ones as Chapters, and drops what isn't read`() {
+        fun section(type: String, text: String) = "<section epub:type=\"$type\"><p>$text</p></section>"
+        val front = listOf(
+            "titlepage" to "Title", "imprint" to "Published by", "toc" to "Contents", "dedication" to "For my sister.",
+            "epigraph" to "Everything in moderation.", "foreword" to "This book began as letters.", "halftitlepage" to "The Book",
+        )
+        val bodies = front.map { (type, text) -> section(type, text) } + listOf("<h2>I</h2><p>One</p>", "<h2>II</h2><p>Two</p>", section("colophon", "Made by"))
+        val listed = listOf("Titlepage" to 0, "Imprint" to 1, "Dedication" to 3, "Foreword" to 5, "The Book" to 6, "I" to 7, "II" to 8, "Colophon" to 9)
+        val book = open(
+            bodies,
+            ncx(*listed.map { (label, i) -> navPoint(label, "text/c$i.xhtml") }.toTypedArray()),
+            bodyAttributes = bodies.indices.associateWith { i -> "epub:type=\"${if (i < 7) "frontmatter" else if (i < 9) "bodymatter" else "backmatter"}\"" },
+        )
+        assertEquals(listOf("c3", "c4", "c5", "c7", "c8", "c9"), book.spineItems.map { it.spineId })
+        assertEquals(listOf("Dedication", "Foreword", "I", "II", "Colophon"), book.chapters.map { it.title })
+        assertEquals(listOf(SpinePoint(0, 0), SpinePoint(2, 0)), book.chapters.take(2).map { it.start })
+        assertEquals(0, book.chapterAt(book.startOf("Everything in moderation.")))
+        assertEquals(book.endOf(4), book.textEnd)
+        assertEquals(listOf(false, false, false, false, true), book.chapters.indices.map { book.isBackMatter(it) })
     }
 
     @Test

@@ -71,11 +71,14 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions. Spine items
- * marked `linear="no"` are skipped, unless every one is ([SpineRef.linear]). When the book marks its body
- * matter (Standard Ebooks does), only Spine items marked `bodymatter` or `backmatter` are kept: front
- * matter (title page, imprint, dedication, epigraph, foreword, introduction) is dropped, even when its
- * table of contents lists it, so the Book opens on its first Chapter. Back matter, Project Gutenberg's license or a trailing run of Spine items marked as back matter
- * (Standard Ebooks' colophon and uncopyright), starts at [OpenBook.textEnd].
+ * marked `linear="no"` are skipped unless a table of contents lists them (publishers mark notes that
+ * way) or every one is ([SpineRef.linear]). When the book marks its body matter (Standard Ebooks does),
+ * the Spine items that aren't reading matter are dropped, even when its table of contents lists them:
+ * those whose `<body>` or a child of it has one of [NOT_READING]'s types (title page, half-title, imprint,
+ * the table of contents). Its dedication, epigraph, foreword or introduction is kept, so the Book opens on
+ * the first of those, as a Gutenberg Book opens on its title page. Back matter, Project Gutenberg's
+ * license or a trailing run of Spine items marked as back matter (Standard Ebooks' colophon and
+ * uncopyright), starts at [OpenBook.textEnd].
  * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
  * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
  * its Spine item doesn't have starts at that Spine item's start, or at the previous entry's start if that
@@ -87,10 +90,11 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     val pkg = readPackage(zip, fallbackTitle)
     val tables = readTablesOfContents(zip, pkg)
     val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
-    val docs = pkg.spine.filter { it.linear }.ifEmpty { pkg.spine }.map { item ->
+    val listedPaths = tables.flatten().mapTo(hashSetOf()) { it.path }
+    val docs = pkg.spine.filter { it.linear || it.path in listedPaths }.ifEmpty { pkg.spine }.map { item ->
         item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) }
     }
-    val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.isBodyMatter || it.second.isBackMatter } else docs
+    val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.types.none(NOT_READING::contains) } else docs
     val body = kept.filter { it.second.blocks.isNotEmpty() }
     val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
     val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
@@ -112,6 +116,13 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
 
 /** The id of the element holding Project Gutenberg's license, the start of a Gutenberg Book's Back matter. */
 private const val PG_FOOTER = "pg-footer"
+
+/**
+ * The `epub:type`s of Spine items that aren't reading matter, dropped from a Book that marks its body matter
+ * ([parseEpub]): Standard Ebooks' title page, half-title, imprint and table of contents. Its uncopyright, a
+ * `copyright-page`, is Back matter.
+ */
+private val NOT_READING = setOf("titlepage", "halftitlepage", "imprint", "toc")
 
 /**
  * Where the text of a Book made of [spineItems] ends ([OpenBook.textEnd]): the earlier of [footer], where
@@ -465,6 +476,8 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     val blocks = mutableListOf<Block>()
     var isBodyMatter = false
     var isBackMatter = false
+    val types = mutableSetOf<String>() // the `epub:type`s of `<body>` and its children, where a document says what it is
+    private var depth = 0 // elements open, `<html>` being 1
     val anchors = mutableMapOf<String, Int>()
     private val ids = mutableListOf<String>() // the document's ids in [fragments], in document order
     private var pending = 0 // ids from this index on wait for text
@@ -514,7 +527,8 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             heldDepth = 1
             return
         }
-        val markers = "${attrs.getValue("epub:type").orEmpty()} ${attrs.getValue("class").orEmpty()}"
+        if (++depth <= 3) attrs.getValue("epub:type")?.let { types += it.split(WHITESPACE_RUN) }
+        val markers ="${attrs.getValue("epub:type").orEmpty()} ${attrs.getValue("class").orEmpty()}"
         val isVerse = VERSE_MARKERS.any { it in markers }
         elementIsVerse.addLast(isVerse)
         if (isVerse) verseDepth++
@@ -717,6 +731,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             held = null
             return handleTable(events)
         }
+        depth--
         val name = qName.substringAfter(':').lowercase()
         if (elementIsVerse.removeLastOrNull() == true) verseDepth--
         if (skipDepth > 0) {
