@@ -73,7 +73,10 @@ _Avoid_: section
 A division of a Book that groups Chapters, such as "BOOK ONE" or "PART II". When the table of contents
 nests Chapters under it, it is not a Chapter, and a Page opening on its heading goes by its first Chapter
 when only headings come between them. When the table of contents lists it beside its Chapters, it is a
-Chapter too. A Part is never a Book, whatever its heading says.
+Chapter too. A Part is never a Book, whatever its heading says. A Chapter falls under each Part the table of
+contents nests it in, or, when Parts are listed beside their Chapters, the Part listed last before it.
+A Chapter before the first Part, and every Chapter of Back matter, falls under none. The Chapter title
+the reading view shows names its Part too, as a printed running head does.
 _Avoid_: section, volume, book (for a Part)
 
 **Front matter**:
@@ -123,8 +126,10 @@ left in this chapter"). On the Shelf, it is how far through the Book the Place i
 _Avoid_: position, page number
 
 **Contents**:
-The list of a Book's Chapters, in order, opened from the reading view. Choosing one goes to the start of
-that Chapter; it is the only way from the text into Back matter.
+The list of a Book's Chapters, in order, with each Part named above the Chapters under it, as a printed
+contents page does; opened from the reading view. Choosing a Chapter goes to its start, and choosing a
+Part to its heading; it is the only way from the text into Back matter. Front matter has no row; the
+first row is the first Part or Chapter.
 _Avoid_: table of contents (that is the Book's own list, which Contents is built from), TOC, index, chapters list
 
 **Finished**:
