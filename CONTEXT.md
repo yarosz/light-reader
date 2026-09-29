@@ -69,21 +69,32 @@ a Book has no usable table of contents, each Spine item counts as a Chapter. Bac
 Chapter.
 _Avoid_: section
 
+**Part**:
+A division of a Book that groups Chapters, such as "BOOK ONE" or "PART II". When the table of contents
+nests Chapters under it, it is not a Chapter, and a Page opening on its heading goes by its first
+Chapter. When the table of contents lists it beside its Chapters, it is a Chapter too. A Part is never
+a Book, whatever its heading says.
+_Avoid_: section, volume, book (for a Part)
+
 **Front matter**:
-The part of a Book before its first Chapter, such as a title page or a dedication the table of contents
-doesn't list. It belongs to no Chapter. A preface the table of contents lists is a Chapter, not front
-matter.
+The part of a Book before its first Chapter, such as a title page, dedication or epigraph the table of
+contents doesn't list. It belongs to no Chapter, and a Book with no usable table of contents has none.
+The Book's own marking doesn't decide it: a preface or foreword the table of contents lists is a
+Chapter, even when the Book marks it front matter.
 _Avoid_: prelims
 
 **Back matter**:
-The part of a Book after its text ends: Project Gutenberg's license, and Spine items the Book marks as
-back matter. The end page comes before it, and the reader reaches it only through Contents. A Book that
-marks none has no Back matter.
+The part of a Book after its text ends: from Project Gutenberg's license, or from the run of Spine
+items at the Book's end that it marks as back matter, whichever comes first. The end page comes before
+it. Turning forward from the text never reaches it; Contents does, and a Place already in it opens
+there. A Book that marks none has no Back matter.
 _Avoid_: appendix, trailer
 
 **Spine item**:
 One of the documents a Book is made of, in reading order. A Spine item may hold several Chapters,
-and one Chapter may span several Spine items.
+and one Chapter may span several Spine items. Documents that aren't reading matter (a cover wrapper
+marked auxiliary, a Standard Ebooks title page or imprint, a document with no text) are left out:
+they are no Spine item, and no Page shows them.
 _Avoid_: file, chapter
 
 ## Reading
@@ -91,33 +102,38 @@ _Avoid_: file, chapter
 **Place**:
 Where the reader is in a Book: the spot in the text at the top of the Page being read. A Book gets its
 Place when it is first opened; until then it hasn't been started. Font or layout changes never move
-it, though after one it may sit a few lines down its Page, so the Page doesn't start mid-word. The
-reader never sees it as a number; the Book simply opens there.
+it, though after one it may sit a few lines down its Page, so the Page doesn't start mid-word or part a
+heading from its text, and never goes by a Chapter before the Place's. Going to a Chapter from Contents
+puts the Place at the top of the Page the Chapter starts on. The reader never sees it as a number; the
+Book simply opens there.
 _Avoid_: position, anchor, offset, location
 
 **Page**:
 What fits on the screen at the current font size. Recomputed whenever the layout changes; never
 saved, and gone once the reader leaves the Book. A Catalogue's page (one fetch of its list, which
-"More" extends) is not a Page.
+"More" extends) is not a Page. Each Page goes by one Chapter, or by none in Front matter: the one its
+top is in, or a Chapter that starts later in its first line, or in or right after the headings it opens
+on. The Chapter title shown while reading, the time left, and the Chapter Contents marks as current all
+follow it.
 _Avoid_: screen
 
 **Progress**:
-How far the reader is, derived from the Place. While reading, it is the time left in the current Chapter
-("about 12 min left in this chapter"). On the Shelf, it is how far through the Book the reader is, as a
-percent ("42%").
+How far the reader is. While reading, it is the time left in the Chapter the Page goes by ("about 12
+min left in this chapter"). On the Shelf, it is how far through the Book the Place is, as a percent
+("42%").
 _Avoid_: position, page number
 
 **Contents**:
 The list of a Book's Chapters, in order, opened from the reading view. Choosing one goes to the start of
-that Chapter; it is the only way into Back matter.
+that Chapter; it is the only way from the text into Back matter.
 _Avoid_: table of contents (that is the Book's own list, which Contents is built from), TOC, index, chapters list
 
 **Finished**:
 A Book the reader has read to the end of its text, the last Page before any Back matter. It becomes
 Finished when the end page shows, which also saves its Place on that last Page, and stays Finished when
 the reader leaves. Finished Books sit at the bottom of the Shelf. Opening one again opens at its Place.
-Turning back from the end page, or going to any Page of the text, makes it in progress again; reading its
-Back matter does not.
+Turning back onto a Page of the text (from the end page too), or going to a Chapter of the text from
+Contents, makes it in progress again; a forward turn, a font change, or reading its Back matter does not.
 _Avoid_: read, done, completed
 
 **Bookmark**:

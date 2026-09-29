@@ -1,6 +1,6 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, and the code renamed to the glossary; next is N4 (Chapters + Progress)
+STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done; next is N5 (Reading chrome)
 LAST SESSION: 2026-09-29
 
 ## v1 user flow
@@ -33,6 +33,8 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | N3 | Shelf + Catalogues (#15, #16, #17, #19) | One Atom parser (OPDS, OpenSearch), https only with typed http:// tried once, redirects followed in code, every XML document through one untrusted-XML parser with size caps; foreground downloads into filesDir owned by the process's `ShelfOwner`, copy-protected EPUBs refused; the Shelf (order, Edit, missing files), the Catalogue list, pages with search and "More", Book detail matched by source, Add a Catalogue, every failure's D14/D15 copy (`DESIGN.md` "Shelf", "Catalogues"); an additive `catalogues` field in `reading-data.json`; 310 unit tests. Emulator: a Gutenberg Book (Pride and Prejudice) and a Standard Ebooks Book downloaded, showed on the Shelf, and each reopened at its own Place offline after a force-stop |
 | G | Rename to the glossary (pre-N4) (#20) | Behaviour-preserving renames so the code says what `CONTEXT.md` says (`SpineItem`, `SpinePoint`, `Book`; `SpineRef` and `OpenBook` are parser names; `Download` waits for the pre-N4 domain pass); `reading-data.json` keys and the log lines `scripts/perf.sh` reads unchanged; 310 unit tests, as before; `scripts/domain-drift.sh` 0 unresolved |
 | D4 | Pre-N4 domain pass (#21) | Glossary: Download, Front matter, Chapter runs to the next one (leaf entries only), Finished set past the last Page, Page no longer leans on "reading session"; renames `DownloadState.Finished` → `Outcome`, stored-Book `entry` → `book`, `DevStart.offset` → `char`; `Download` moves to `Download.kt`. Kept as they are: `Reading`'s `offset` (a layout-internal string index; `open` agrees with `enter`), `RowTap.Download` (it starts a Download), "file" in row copy (the Book's file), `Pass.item` (KDoc added), `CataloguePage` (Page's own note). `scripts/domain-drift.sh` 0 unresolved; tag `domain-pass/n4` on the merge commit |
+| N4 | Chapters + Progress (#22–#32) | Chapters from the table of contents (leaf entries, ADR 0004); the top line names the Chapter the Page goes by, the footer the minutes left in it, the Shelf a percent; the end page comes before Back matter and sets Finished; Contents jumps to a Chapter and back to the Shelf; after a size change a Page starts on a whole word, never above its Chapter (ADR 0007 clarified); div and table text, and readable front matter, reach the Page; a QA walkthrough's fixes (#27–#32). 501 unit tests; `mise run ci` green on the emulator and the LP3 |
+| D5 | N4 closing domain pass (#33) | Glossary: Part (new), and a Page goes by one Chapter; amended Front matter (the table of contents decides, not the Book's marking; capitalised as a term), Back matter (a trailing run; a Place can open in it), Spine item (documents that aren't reading matter are left out), Place (the heading and Chapter rules, the Contents jump), Progress (the minutes follow the Page), Finished (what clears it). `contentsAt`'s `place` → `point`; Edition capitalised in comments; `Pass` KDoc says what its anchor is; AGENTS.md names closing-pass tags. ADR 0007's #30 edit is a clarification of the same decision; no new ADR. `scripts/domain-drift.sh` 0 unresolved; tag `domain-pass/n4-close` on the merge commit |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
@@ -69,8 +71,8 @@ Ordered. Each item ends on its _done-when_.
   but not their Spines (16 against 9 items), and reuse idrefs such as `item5` for different text, so
   a same-id Spine item can hold other text entirely. (Done in N3's pure core: a Book with no
   `dc:identifier` is hashed over its Spine documents' CRC-32 and length, pinned by a test; with no
-  `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: the end page's
-  "Back to Shelf" sets Finished, and turning back from the end, or jumping to a Chapter of the text, clears it. At the
+  `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: showing
+  the end page sets Finished, and turning back from it, or jumping to a Chapter of the text, clears it. At the
   first release after N2: the upgrade-path test (release N over N-1 with a populated store).
 - **N3 follow-ups.** `ci.sh` checks the size of the alice fixture it pushed, since a host-side cut
   can still install a truncated file. Images: flip `PREFER_IMAGES_EDITION` in `Catalogue.kt` when
@@ -83,21 +85,22 @@ Ordered. Each item ends on its _done-when_.
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min and 600 wpm filters, whole minutes under 15, 5-minute buckets
   above, "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
-  ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back from
-  the end, or jumping to a Chapter of the text, clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
-  Spine item or a Part heading continues the Chapter before it; with none, each Spine item is a Chapter
+  ADR 0002; end page "The end." + "Back to Shelf"; showing it sets Finished, and turning back from
+  it, or jumping to a Chapter of the text, clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted Spine item
+  continues the Chapter before it, and a Page opening on a Part's heading goes by the Chapter after it; with none, each Spine item is a Chapter
   labelled by its first heading, else "Chapter N", never "Section N". Front matter shows the Book title
   and no minutes line. Settled in the pre-N4 domain pass (the N4 review may revisit):
-  - The stored key is `progress` on the Place: the share (0–1) of the Book's text before the Place,
-    front and back matter included; Chapter minutes are never stored. A Place saved before N4 has none,
+  - The stored key is `progress` on the Place: the share (0–1) of all the Book's characters before the
+    Place, Front matter and Back matter included; Chapter minutes are never stored. A Place saved before N4 has none,
     and the Shelf shows no percent for it until the next page turn.
   - Nested tables of contents: only leaf entries are Chapters (ADR 0004's nearest leaf), so a "Part
-    One" page continues the Chapter before it, or is front matter.
+    One" page belongs to the Chapter before it, or to Front matter, though a Page opening on it goes by
+    the Chapter after it (`pagePoint`).
   - Back matter: Back matter always starts a Chapter, listed or not (N4 (c)). Unmarked trailing material is text: listed, it
     is its own Chapter; unlisted, it continues the last one. Finished needs the last Page of the text. Back matter (`CONTEXT.md`) starts at
     `OpenBook.textEnd`: Project Gutenberg's `pg-footer`, or a trailing run of Spine items marked
     `backmatter`. The end page follows the last Page of the text, which ends exactly there.
-  - Leaving the end page by system back or "Back to Shelf" sets Finished. The Place stays on the last
+  - Showing the end page sets Finished; leaving it, by system back or "Back to Shelf", keeps it. The Place stays on the last
     Page (the end page is not a Page), so a Finished Book reopens there.
   - Reading-speed samples belong to the reader: the last 20 are kept in memory across Books, not saved.
   - The Spine-item counter (`ReaderScreen.kt`, `${shown.pass.item + 1}/…`) goes when the top bar shows
@@ -143,7 +146,7 @@ Ordered. Each item ends on its _done-when_.
     `textEnd` and the listed license, so the first Chapter after Back matter's start moves back to it when
     no Chapter already starts there and no heading comes between (no second, "Chapter N" row). Standard
     Ebooks Books keep their `backmatter` Spine items (colophon, uncopyright) as Back matter, and their
-    dedication, epigraph, foreword and other front matter: only the title page, half-title, imprint and
+    dedication, epigraph, foreword and the rest of what they mark `frontmatter`: only the title page, half-title, imprint and
     table of contents are dropped. Listed ones are Chapters, and the Book opens at its start, the first of
     them (Alice on its epigraph; `scripts/ci.sh`'s dev start moves to Chapter I, the text it opened on).
     Existing Places are re-found by their text (ADR 0002), nearest their stale block and offset: the
@@ -192,8 +195,8 @@ Ordered. Each item ends on its _done-when_.
   "CHAPTER I" ×17 with no Part named on the row or the top line, ~70 flings end to end; show the
   enclosing Part where titles repeat, and a way to the start or end); and the top line doesn't read as
   a control (the overlay's top bar replaces its job, or a cue until then). Parked: identical rows in
-  search results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3, different
-  Editions) want a telling detail; Catalogue author forms keep titles of nobility ("graf Leo Tolstoy"),
+  search results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3: different identifiers, so
+  separate Books once added) want a telling detail; Catalogue author forms keep titles of nobility ("graf Leo Tolstoy"),
   which could be dropped as life dates are.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.

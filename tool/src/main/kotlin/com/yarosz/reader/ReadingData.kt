@@ -214,7 +214,7 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
 /**
  * Finds [place] in this Book (ADR 0002): at its block and offset when the snippet still matches there.
  * Else the Place is re-found by its text, within its Spine item, nearest its stale spot (the block and
- * offset read in today's blocks), as a new parse or edition moves text only so far:
+ * offset read in today's blocks), as a new parse or Edition moves text only so far:
  * - at the occurrence of the snippet nearest that spot, preferring one at or after its stale block's start
  *   (a newer parse only moves text later, so a refrain's earlier copy can be nearer), else of the snippet
  *   without a leading run of spaces that holds a line break and with each run of line breaks as one (a
@@ -225,14 +225,14 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
  *   snippet spanning the least added text wins, then the nearest; else the nearest match of part of it,
  *   at least [MIN_MATCH] characters, or the whole of a shorter snippet,
  *   or, for a Place at its block's start, the whole of its first blocks from a block start (a heading
- *   whose next paragraph a new edition changed). A partial match more than [LENGTH_GAP] characters shorter
+ *   whose next paragraph a new Edition changed). A partial match more than [LENGTH_GAP] characters shorter
  *   than the longest is passed over, so a spot sharing only the snippet's first words doesn't win on
  *   nearness alone.
  * A snippet shorter than [SNIPPET_CHARS] - 1 reached its Spine item's end, so the block and offset must
  * still reach it, and among matches one that reaches the text's end wins. Where two spots match alike
  * (list items that open alike) only the stale spot tells them apart. A Place whose block is gone is
  * anchored at the Spine item's last block. With no match it lands at the start of its block, or of its
- * Spine item when the block is gone: a Place whose text a new edition changed, the parser now skips, or
+ * Spine item when the block is gone: a Place whose text a new Edition changed, the parser now skips, or
  * a newer parse moved past [partialWindow].
  *
  * A match that starts on the separator before a block, for a Place no further into its block than the

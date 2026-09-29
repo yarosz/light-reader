@@ -30,7 +30,7 @@ data class Download(val title: String, val author: String?, val startedAt: Long,
 }
 
 /**
- * The largest Book downloaded. Text EPUBs are well under 10 MB, and Gutenberg's image editions of
+ * The largest Book downloaded. Text EPUBs are well under 10 MB, and Gutenberg's image Editions of
  * long illustrated works run to tens of MB (Pride and Prejudice's is 25 MB); 300 MB leaves room for
  * any real Book while bounding what a broken or hostile server can write to the phone. Opening a Book
  * never loads the whole file (the zip is read by entry), so this bounds storage and time, not memory.

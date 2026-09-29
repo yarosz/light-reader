@@ -22,7 +22,8 @@ phone to read more deliberately. One clear capability, nothing else.
      `CONTEXT.md`, the ADRs, `DESIGN.md` and the code. `grill-with-docs` is user-invoked only.
   3. Resolve every candidate as a glossary term, a rename, UI vocabulary or an ignore entry. Offer an
      ADR only when a decision is hard to reverse, surprising, and a real trade-off.
-  4. Done when `domain-drift.sh` reports 0 unresolved. Tag the merged commit `domain-pass/<milestone>`.
+  4. Done when `domain-drift.sh` reports 0 unresolved. Tag the merged commit `domain-pass/<milestone>`
+     for the pass before a milestone, `domain-pass/<milestone>-close` for the one after it.
 
 ## Layout
 

@@ -72,8 +72,9 @@ private fun wordStarts(text: String): IntArray {
 }
 
 /**
- * The share (0–1) of the Book's text characters before [point], rounded to 4 decimals: a prefix sum over
- * the Spine items' lengths ([OpenBook.charsBefore]), front and back matter included. It is [Place.progress].
+ * The share (0–1) of all the Book's characters before [point], rounded to 4 decimals: a prefix sum over
+ * the Spine items' lengths ([OpenBook.charsBefore]), Front matter and Back matter included.
+ * It is [Place.progress].
  */
 fun OpenBook.progressAt(point: SpinePoint): Double {
     val total = charsBefore.last()
@@ -97,7 +98,7 @@ data class ProgressLine(val full: String, val short: String)
 
 /**
  * The Progress line for a Page starting at [point]: the minutes left in its Chapter at [wpm]
- * ([minutesLeftCopy]). Null, for no line, in front matter, from [OpenBook.textEnd] on, and in a Chapter
+ * ([minutesLeftCopy]). Null, for no line, in Front matter, from [OpenBook.textEnd] on, and in a Chapter
  * whose whole text reads in under a minute.
  */
 fun OpenBook.minutesLine(words: WordIndex, point: SpinePoint, wpm: Double): ProgressLine? {
