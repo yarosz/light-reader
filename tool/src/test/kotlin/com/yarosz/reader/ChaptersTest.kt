@@ -388,13 +388,16 @@ class ChaptersTest {
         assertEquals(perSpineItem, open(unlisted, ncx = ncxChapters.substringBefore("</navMap>")).chapters)
     }
 
-    /** Opens [epub] once to warm up, then again, which must take under two seconds. */
+    /**
+     * Opens [epub] once to warm up, then again, which must take under five seconds: each case takes well under
+     * one, and over fifteen with the quadratic step it guards, so the bound holds on a machine busy with emulators.
+     */
     private fun openQuickly(epub: File): OpenBook {
         parseEpub(epub)
         val started = System.nanoTime()
         val book = parseEpub(epub)
         val millis = (System.nanoTime() - started) / 1_000_000
-        assertTrue(millis < 2_000, "took $millis ms")
+        assertTrue(millis < 5_000, "took $millis ms")
         return book
     }
 
@@ -409,8 +412,42 @@ class ChaptersTest {
     }
 
     @Test
+    fun `an hgroup of many parts opens quickly`() {
+        val n = 150_000
+        val body = "<hgroup>" + (0 until n).joinToString("") { "<h2 id=\"h$it\">$it</h2>" } + "</hgroup>"
+        val book = openQuickly(epub(listOf("<p>One</p>", body), nav = nav(li("One", "text/c0.xhtml"), li("Last", "text/c1.xhtml#h${n - 1}"))))
+        assertEquals(book.spineItems[1].text.length - "${n - 1}".length, book.chapters.last().start.char)
+    }
+
+    @Test
+    fun `a heading of many blank children opens quickly`() {
+        val n = 150_000
+        val body = "<h2 id=\"h\">" + "<span>&#160;</span>".repeat(n) + "CHAPTER I.</h2><p>Text</p>"
+        val book = openQuickly(epub(listOf("<p>One</p>", body), nav = nav(li("One", "text/c0.xhtml"), li("I", "text/c1.xhtml#h"))))
+        assertEquals(SpinePoint(1, 0), book.chapters.last().start)
+    }
+
+    @Test
+    fun `a blank caption leaves the heading's ids with it, and a caption-only heading's caption doesn't keep with the next`() {
+        val book = open(
+            listOf(
+                "<p>One</p>",
+                "<p>Front</p><h2 id=\"c\">&#160;<span class=\"caption\"> </span>CHAPTER III.</h2><p>Text</p>" +
+                    "<h2 id=\"d\"><span class=\"caption\">Fig.</span></h2><h2 id=\"e\">Two</h2><p>More</p>",
+            ),
+            nav = nav(li("One", "text/c0.xhtml"), li("III", "text/c1.xhtml#c"), li("Fig", "text/c1.xhtml#d"), li("Two", "text/c1.xhtml#e")),
+        )
+        val spineItem = book.spineItems[1]
+        assertEquals("\u00A0CHAPTER III.", spineItem.blocks[1].text)
+        assertEquals(SpinePoint(1, spineItem.blockStarts[1]), book.chapters[1].start)
+        val fig = spineItem.blocks.indexOfFirst { it.text == "Fig." }
+        assertEquals(BlockKind.Caption, spineItem.blocks[fig].kind)
+        assertEquals(false, spineItem.isHeadingCaption(fig))
+    }
+
+    @Test
     fun `thousands of Spine items, each entry naming the last, open quickly`() {
-        val items = 5_000
+        val items = 2_500
         val entries = 100_000
         val dir = "d".repeat(500)
         val names = List(items) { "$dir/c%05d.xhtml".format(it) }

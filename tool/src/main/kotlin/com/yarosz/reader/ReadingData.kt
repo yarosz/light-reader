@@ -197,8 +197,9 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
  * at the start of its block, or of its Spine item when the block is gone. An occurrence that starts on the
  * separator before a block, for a Place no further into its block than the line breaks its snippet starts
  * with, is taken past them: that Place was saved inside a heading's leading line breaks, which no block
- * has now, so it lands on the heading, not on the end of the block before. Null only when no Spine item
- * has the Place's Spine item.
+ * has now, so it lands on the heading, not on the end of the block before. That holds for every Place in
+ * a run of up to two line breaks and the first half of a longer one; a current Place on a separator keeps
+ * its spot. Null only when no Spine item has the Place's Spine item.
  */
 fun OpenBook.resolve(place: Place): SpinePoint? {
     val index = spineItems.indexOfFirst { it.spineId == place.spineId }.takeIf { it >= 0 } ?: return null

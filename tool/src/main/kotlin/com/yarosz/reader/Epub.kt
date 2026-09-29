@@ -366,6 +366,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
     private var skipDepth = 0 // inside <head>, <script>, <style>
     private var verseDepth = 0
     private var hgroupParts: MutableList<String>? = null
+    private var hgroupLength = 0 // the parts so far, each with its ": "
 
     private var kind: BlockKind? = null
     private var blockDepth = 0
@@ -390,11 +391,14 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         attrs.getValue("id")?.takeIf { it in fragments }?.let { ids += it }
         when {
             name == "body" -> isBodyMatter = "bodymatter" in markers
-            name == "hgroup" -> hgroupParts = mutableListOf()
+            name == "hgroup" -> {
+                hgroupParts = mutableListOf()
+                hgroupLength = 0
+            }
             kind != null -> {
                 blockDepth++
-                if (kind == BlockKind.Heading && hgroupParts == null && captionStart == null && text.isBlank() &&
-                    "caption" in attrs.getValue("class").orEmpty().split(WHITESPACE_RUN)
+                if (kind == BlockKind.Heading && hgroupParts == null && captionStart == null &&
+                    "caption" in attrs.getValue("class").orEmpty().split(WHITESPACE_RUN) && text.isBlank()
                 ) {
                     captionStart = text.length
                     captionDepth = blockDepth
@@ -495,12 +499,16 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
             .filter { it.end > from }.map { Span(maxOf(it.start - from, 0), it.end - from, it.emphasis) }
         spans.replaceAll { it.copy(end = minOf(it.end, from)) }
         spans.removeAll { it.start >= it.end }
-        emit(BlockKind.Caption, caption, captionSpans, from, headingCaption = true)
+        if (caption.isNotBlank()) emit(BlockKind.Caption, caption, captionSpans, from, headingCaption = true)
     }
 
     private fun finishBlock() {
         splitCaption()
+        val added = blocks.size
         emit(kind!!, text.toString(), spans.toList(), 0)
+        if (kind == BlockKind.Heading && blocks.size == added && hgroupParts == null) {
+            blocks.lastOrNull()?.takeIf { it.headingCaption }?.let { blocks[blocks.lastIndex] = it.copy(headingCaption = false) }
+        }
         kind = null
         text.setLength(0)
         spans.clear()
@@ -519,7 +527,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         val lead = if (first > 0 && '\n' in content.substring(0, first)) first else 0
         val kept = content.substring(lead)
         val parts = hgroupParts
-        val start = textBefore + (parts?.sumOf { it.length + 2 } ?: 0)
+        val start = textBefore + if (parts != null) hgroupLength else 0
         for ((run, anchor) in blockAnchors.withIndex()) {
             val (from, at) = anchor
             val offset = at - base - lead
@@ -534,6 +542,7 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         if (first < 0) return
         if (parts != null) {
             parts += kept
+            hgroupLength += kept.length + 2
         } else {
             add(Block(blockKind, kept, spans.map { Span(maxOf(it.start - lead, 0), minOf(it.end - lead, kept.length), it.emphasis) }
                 .filter { it.start < it.end }, headingCaption))
