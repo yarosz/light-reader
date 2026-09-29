@@ -17,6 +17,12 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
   <img src="docs/screenshots/caption.png" width="30%" alt="An illustration's description shown as a grey italic caption, followed by the story text">
 </p>
 
+<p>
+  <img src="docs/screenshots/shelf.png" width="30%" alt="The Shelf: four books by title, each with its author, and War and Peace at 99%">
+  <img src="docs/screenshots/catalogue-page.png" width="30%" alt="Standard Ebooks' new releases: a search field above a list of titles and authors">
+  <img src="docs/screenshots/contents.png" width="30%" alt="Contents: the book's chapters in order, the first marked 'you're here', with Shelf at the top right">
+</p>
+
 <sub>On a Light Phone III, from an early build. Book text is set in Literata; illustrations appear as their
 descriptions for now.</sub>
 
