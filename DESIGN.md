@@ -73,8 +73,9 @@ may point mid-line), by the last Chapter starting there, so a jump names the Cha
 large-text setting grows it and nothing clips, but no title changes it (a script drawn in a fallback
 font with a taller line would otherwise re-pack the Pages at a Chapter change). It has 4 dp below it.
 In front matter, and on the end page, it shows the Book's title as the Shelf shows it. Tapping it opens
-Contents. Its tap target is the full width of the screen's top 48 dp, or the top line's full height when
-that is taller, so it takes the top of the Page; the rest of the Page turns Pages. The footer is 48 dp:
+Contents; to a screen reader it is a button, "Contents: " and the title. Its tap target is the full
+width of the screen's top 48 dp, or the top line's full height when that is taller, so it takes the top
+of the Page; the rest of the Page turns Pages. The footer is 48 dp:
 "A−" and "A+" at its ends, each with 8 dp of padding at the sides, each filling the footer's height as
 its tap target, and the Progress line between them.
 The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.

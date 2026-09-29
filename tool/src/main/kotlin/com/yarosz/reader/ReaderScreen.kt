@@ -66,6 +66,7 @@ class ReaderScreen(
         val themeColors by LightThemeController.colors.collectAsState()
         val book by viewModel.book.collectAsState()
         val status by viewModel.status.collectAsState()
+        val topLine by viewModel.topLine.collectAsState()
         val measurer = rememberTextMeasurer(cacheSize = 0)
         val source = MeasurerSource(LocalDensity.current, LocalFontFamilyResolver.current, LocalLayoutDirection.current)
         LaunchedEffect(measurer) { viewModel.warmUp(measurer) }
@@ -86,7 +87,7 @@ class ReaderScreen(
                         Modifier
                             .fillMaxWidth()
                             .height(contentsTargetHeight(TOP_BOTTOM_MARGIN, topLineHeight))
-                            .semantics { contentDescription = CONTENTS_TITLE }
+                            .semantics { contentDescription = "$CONTENTS_TITLE: $topLine" }
                             .lightClickable(role = Role.Button) { openContents() }
                     )
                 }
