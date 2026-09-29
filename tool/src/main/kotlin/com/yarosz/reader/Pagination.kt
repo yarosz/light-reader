@@ -65,12 +65,13 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  * end (the Spine item's first line always is), or, if no such start leaves the page at least
  * [MIN_PAGE_FILL] full, the earliest start that fits. So every page end is legal unless the guard fired,
  * in both directions; what remains asymmetric is that a backward pass may tile a stretch differently,
- * but as legally, from a forward one. Backward, only the Spine item's first page may be short. A single
+ * but as legally, from a forward one. Backward, only the Spine item's first page, and the pages on either
+side of [pageBreak], may be short. A single
  * line taller than the page gets a page to itself. Heights add across a window seam, and a page spanning
  * windows gets a band per window.
  *
  * A page is emitted only once no further window can change it: the next line on its side doesn't fit,
- * or the Spine item ends there. So when the anchor lies within about a page of its measured run's end and
+ * the Spine item ends there, or [pageBreak] follows it. So when the anchor lies within about a page of its measured run's end and
  * the next window is unmeasured, the anchor's own page is withheld: [PackedPages.fromAnchor] is empty
  * and [PackedPages.needAfter] names the window to measure. Each page depends only on lines on its own
  * side of the anchor, so re-packing with more windows measured, for the same anchor, only appends pages
@@ -78,7 +79,8 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  *
  * [pageBreak], when a line starts there, starts a Page whatever the rules above say: no Page holds lines
  * on both sides of it, so the Page before it ends there however short. It is the Book's text end
- * ([OpenBook.textEnd]) inside its Spine item, which [windows] also starts a window at.
+ * ([OpenBook.textEnd]) inside its Spine item. [windows] starts a window there, so the Page before it is
+ * emitted without waiting for the next window's lines.
  */
 fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pageHeight: Float, pageBreak: Int? = null): PackedPages {
     require(lines.size == windows.size) { "${lines.size} line lists for ${windows.size} windows" }

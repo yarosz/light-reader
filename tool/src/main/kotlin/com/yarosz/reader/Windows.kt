@@ -18,7 +18,7 @@ const val WINDOW_CHARS = 10_000
  * greedily; a single block longer than [maxChars] gets a window to itself. A heading, or a caption split out
  * of the heading after it ([SpineItem.isHeadingCaption]), starts a new window once the current one is at least half full,
  * so windows tend to begin where Chapters do. A block starting at [pageBreak] always starts a window, so
- * [pack] can end the Page before it there.
+ * [pack] emits the Page before it without measuring the next window.
  */
 fun windows(spineItem: SpineItem, maxChars: Int = WINDOW_CHARS, pageBreak: Int? = null): List<Window> {
     val blocks = spineItem.blocks

@@ -112,7 +112,7 @@ Book's last Page does nothing, and no second end page shows. A Place saved there
 **Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
 either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so
 a merge with an older copy of the file keeps the change. A Finished Book opens at its Place, the last
-Page. The first back turn clears Finished, as a Contents jump to a Page of the text will, and a forward
+Page of the text. The first back turn clears Finished, as a Contents jump to a Page of the text will, and a forward
 turn shows the end page again. A back turn inside Back matter keeps Finished; the one onto the last Page
 of the text clears it. A font change keeps Finished, and so does reopening the Book and leaving at once. At
 another font size a Finished Book's Place may land before the last Page, and forward turns reach the

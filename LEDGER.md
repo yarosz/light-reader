@@ -93,8 +93,8 @@ Ordered. Each item ends on its _done-when_.
     and the Shelf shows no percent for it until the next page turn.
   - Nested tables of contents: only leaf entries are Chapters (ADR 0004's nearest leaf), so a "Part
     One" page continues the Chapter before it, or is front matter.
-  - Back matter: listed back matter is its own Chapter, and unmarked trailing material is text, part of
-    the last Chapter; Finished needs the last Page of the text. Back matter (`CONTEXT.md`) starts at
+  - Back matter: listed Back matter is its own Chapter. Unmarked trailing material is text: listed, it
+    is its own Chapter; unlisted, it continues the last one. Finished needs the last Page of the text. Back matter (`CONTEXT.md`) starts at
     `OpenBook.textEnd`: Project Gutenberg's `pg-footer`, or a trailing run of Spine items marked
     `backmatter`. The end page follows the last Page of the text, which ends exactly there.
   - Leaving the end page by system back or "Back to Shelf" sets Finished. The Place stays on the last

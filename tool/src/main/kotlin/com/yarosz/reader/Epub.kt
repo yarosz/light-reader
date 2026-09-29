@@ -99,10 +99,9 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
         resolved.ifEmpty { null }
     }.orEmpty()
     val footer = body.withIndex().firstNotNullOfOrNull { (i, doc) -> doc.second.anchors[PG_FOOTER]?.let { SpinePoint(i, it) } }
-    val backMatter = body.indexOfLast { !it.second.isBackMatter } + 1
     OpenBook(
         pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems),
-        textEndOf(spineItems, footer, SpinePoint(backMatter, 0).takeIf { backMatter < spineItems.size }),
+        textEndOf(spineItems, footer, backMatter = body.indexOfLast { !it.second.isBackMatter } + 1),
     )
 }
 
@@ -111,18 +110,20 @@ private const val PG_FOOTER = "pg-footer"
 
 /**
  * Where the text of a Book made of [spineItems] ends ([OpenBook.textEnd]): the earlier of [footer], where
- * the element with the id `pg-footer` starts, and [backMatter], the start of the trailing run of Spine
- * items marked `backmatter`. A [footer] inside a block moves to the next block's start, so no Page is
- * cut mid-block. A point at the start of a Spine item other than the first is written as the end of the
- * Spine item before. With neither, or with no text before the result, it is the end of the Book.
+ * the element with the id `pg-footer` starts, and the start of Spine item [backMatter], the first of the
+ * trailing run marked `backmatter` ([spineItems]' size when there is none). A [footer] inside a block moves
+ * to the next block's start, so no Page is cut mid-block. A point at the start of a Spine item other than
+ * the first is written as the end of the Spine item before. With neither, or with no text before the
+ * result, it is the end of the Book.
  */
-internal fun textEndOf(spineItems: List<SpineItem>, footer: SpinePoint?, backMatter: SpinePoint?): SpinePoint {
+private fun textEndOf(spineItems: List<SpineItem>, footer: SpinePoint?, backMatter: Int): SpinePoint {
     val end = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0)
     val snapped = footer?.let { (item, char) ->
         val starts = spineItems[item].blockStarts
         SpinePoint(item, starts.firstOrNull { it >= char } ?: spineItems[item].text.length)
     }
-    val point = listOfNotNull(snapped, backMatter).minOrNull() ?: return end
+    val trailing = SpinePoint(backMatter, 0).takeIf { backMatter < spineItems.size }
+    val point = listOfNotNull(snapped, trailing).minOrNull() ?: return end
     if (point == SpinePoint(0, 0)) return end
     return if (point.char == 0) SpinePoint(point.item - 1, spineItems[point.item - 1].text.length) else point
 }

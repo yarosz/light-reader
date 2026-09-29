@@ -117,7 +117,7 @@ class ReaderViewModel(
                         val item = start.item.coerceIn(opened.spineItems.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
                         spinePoint.value = SpinePoint(item, start.char.coerceIn(0, opened.spineItems[item].text.length))
-                        val ends = windows(opened.spineItems[item], windowChars).joinToString(",") { it.end.toString() }
+                        val ends = windows(opened.spineItems[item], windowChars, opened.textEnd.takeIf { it.item == item }?.char).joinToString(",") { it.end.toString() }
                         Log.i(PERF_TAG, "windows item=$item windowChars=$windowChars ends=$ends")
                     } else {
                         val place = saver.data.books[opened.identifier]?.place
@@ -185,6 +185,7 @@ class ReaderViewModel(
             publishLines()
             return
         }
+        if (isLastPage(shown)) return
         timer.finish(now())
         val next = turn(back = false) { it.next() } ?: return
         val words = words ?: return
@@ -259,6 +260,10 @@ class ReaderViewModel(
     private fun reachesEnd(shown: Shown<WindowLayout>): Boolean = book.value?.let {
         inText(shown) && SpinePoint(shown.pass.item, shown.page.end) >= it.textEnd
     } == true
+
+    /** Whether [shown] is the Book's last Page, where a forward turn does nothing and its timer keeps running. */
+    private fun isLastPage(shown: Shown<WindowLayout>): Boolean =
+        book.value?.let { shown.pass.item == it.spineItems.lastIndex && shown.page.end >= shown.pass.length } == true
 
     /** Whether [shown] is a Page of the text, not of Back matter: it starts before [OpenBook.textEnd]. */
     private fun inText(shown: Shown<WindowLayout>): Boolean =

@@ -87,7 +87,10 @@ class ReaderViewModelTest {
     }
 
     private val ReaderViewModel.onLastPage: Boolean
-        get() = frame.value!!.let { SpinePoint(it.pass.item, it.page.end) >= book.value!!.textEnd }
+        get() = frame.value!!.let {
+            val textEnd = book.value!!.textEnd
+            SpinePoint(it.pass.item, it.page.start) < textEnd && SpinePoint(it.pass.item, it.page.end) >= textEnd
+        }
 
     private fun ReaderViewModel.toLastPage() {
         repeat(10_000) { if (onLastPage) return else nextPage() }
@@ -532,6 +535,23 @@ class ReaderViewModelTest {
         assertTrue(turns >= 2, "the license is several Pages")
         assertEquals(SpinePoint(book.spineItems.lastIndex, book.spineItems.last().text.length), vm.pageEnd)
         assertFalse(stored(vm).finished)
+    }
+
+    @Test
+    fun `forward on the Book's last Page gives no sample, and the Page stays timed`() {
+        val vm = gutenberg { it.textEnd.copy(char = it.textEnd.char + 1) }
+        val book = vm.book.value!!
+        val bookEnd = SpinePoint(book.spineItems.lastIndex, book.spineItems.last().text.length)
+        repeat(10_000) { if (vm.pageEnd < bookEnd) vm.nextPage() }
+        val shown = vm.frame.value!!
+        assertTrue(vm.inBackMatter)
+        assertEquals(bookEnd, vm.pageEnd)
+        val words = WordIndex(book.spineItems).between(vm.pageStart, vm.pageEnd)
+        assertTrue(words >= SAMPLE_MIN_WORDS, "the last Page has $words words")
+        repeat(MEASURED_AFTER - 1) { speed.record(100, 20_000) }
+        vm.readThenTurn()
+        assertSame(shown, vm.frame.value)
+        assertEquals(PRIOR_WPM, speed.wpm)
     }
 
     @Test
