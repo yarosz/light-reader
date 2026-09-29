@@ -20,9 +20,10 @@ data class Page(val start: Int, val end: Int, val bands: List<Band>)
 
 /**
  * Pages packed outward from an anchor. [before] ends where [fromAnchor] begins, and [fromAnchor]'s
- * first page starts on the line holding the anchor. [needBefore] and [needAfter] are null when no
- * unmeasured window can add pages on that side; otherwise the index of the next one that could, or the
- * anchor's own window, which must be measured first.
+ * first page starts on the line holding the anchor, or a few lines (at most 30% of a page) above it
+ * where that line starts mid-word (see [pack]). [needBefore] and [needAfter] are null when no unmeasured
+ * window can add pages on that side; otherwise the index of the next one that could, or the anchor's own
+ * window, which must be measured first.
  *
  * [fromAnchor] is empty, and [anchorPage] null, in two cases: the anchor is at the Spine item's end, or
  * the anchor's page is withheld because window [needAfter] might still add lines to it (see [pack]).
@@ -58,31 +59,45 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  * for a window not measured yet, one entry per window. A negative anchor packs from the Spine item's start;
  * one at or past its end packs everything backward.
  *
- * The line holding the anchor starts a page. Forward from it, each page ends on the last fitting line
- * that ends at a legal break and isn't a heading, or, if no such line leaves the page at least
- * [MIN_PAGE_FILL] full, on the last line that fits. Backward from it the rules mirror: each page ends
- * where the page below starts, and takes the earliest fitting start whose preceding line is such a legal
- * end (the Spine item's first line always is), or, if no such start leaves the page at least
+ * The line holding the anchor starts a page, or, unless [exact], the nearest line at or above it whose
+ * predecessor is a legal end, when that is within 1 − [MIN_PAGE_FILL] of a page and starts at or after
+ * [floor] (see [wordStart]); a Chapter jump passes [exact], as its page must start on the Chapter's own
+ * line. [floor] is where the anchor's Chapter starts in this Spine item ([pageFloor]), so the walk never
+ * starts the page in the Chapter before, which would name it. Forward from it, each page ends on the
+ * last fitting line that ends at a legal break and isn't a heading, or, if no such line leaves the page
+ * at least [MIN_PAGE_FILL] full, on the last line that fits. Backward from it the rules mirror: each page
+ * ends where the page below starts, and takes the earliest fitting start whose preceding line is such a
+ * legal end (the Spine item's first line always is), or, if no such start leaves the page at least
  * [MIN_PAGE_FILL] full, the earliest start that fits. So every page end is legal unless the guard fired,
- * in both directions; what remains asymmetric is that a backward pass may tile a stretch differently,
- * but as legally, from a forward one. Backward, only the Spine item's first page, and the pages on either
-side of [pageBreak], may be short. A single
- * line taller than the page gets a page to itself. Heights add across a window seam, and a page spanning
- * windows gets a band per window.
+ * in both directions, or the page above the anchor's ends illegally because [exact], [floor],
+ * [wordStart]'s guard or a window's first line (a window cut right after a heading) kept the anchor's
+ * own line; what remains asymmetric is that a backward pass may tile a stretch differently, but as
+ * legally, from a forward one. Backward, only the Spine item's first
+ * page, and the pages on either side of [pageBreak], may be short. A single line taller than the page
+ * gets a page to itself. Heights add across a window seam, and a page spanning windows gets a band per
+ * window.
  *
  * A page is emitted only once no further window can change it: the next line on its side doesn't fit,
- * the Spine item ends there, or [pageBreak] follows it. So when the anchor lies within about a page of its measured run's end and
- * the next window is unmeasured, the anchor's own page is withheld: [PackedPages.fromAnchor] is empty
- * and [PackedPages.needAfter] names the window to measure. Each page depends only on lines on its own
- * side of the anchor, so re-packing with more windows measured, for the same anchor, only appends pages
- * at either end, and the caller may keep pages across calls.
+ * the Spine item ends there, or [pageBreak] follows it. So when the anchor lies within about a page of
+ * its measured run's end and the next window is unmeasured, the anchor's own page is withheld:
+ * [PackedPages.fromAnchor] is empty and [PackedPages.needAfter] names the window to measure. Each page
+ * depends only on lines on its own side of the anchor, so re-packing with more windows measured, for the
+ * same anchor, only appends pages at either end, and the caller may keep pages across calls.
  *
  * [pageBreak], when a line starts there, starts a Page whatever the rules above say: no Page holds lines
  * on both sides of it, so the Page before it ends there however short. It is the Book's text end
  * ([OpenBook.textEnd]) inside its Spine item. [windows] starts a window there, so the Page before it is
  * emitted without waiting for the next window's lines.
  */
-fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pageHeight: Float, pageBreak: Int? = null): PackedPages {
+fun pack(
+    windows: List<Window>,
+    lines: List<List<LineMetrics>?>,
+    anchor: Int,
+    pageHeight: Float,
+    pageBreak: Int? = null,
+    exact: Boolean = false,
+    floor: Int = 0,
+): PackedPages {
     require(lines.size == windows.size) { "${lines.size} line lists for ${windows.size} windows" }
     if (windows.isEmpty()) return PackedPages(emptyList(), emptyList(), needBefore = null, needAfter = null)
     val at = windowIndexFor(windows, anchor)
@@ -93,7 +108,11 @@ fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pa
     while (hi < windows.lastIndex && lines[hi + 1] != null) hi++
     val stacked = stack(lines.subList(lo, hi + 1).filterNotNull(), lo, at - lo)
     val runEnd = windows[hi].end
-    val from = if (anchor >= runEnd) stacked.size else stacked.indexContaining(anchor) { it.line.start }
+    val from = when {
+        anchor >= runEnd -> stacked.size
+        exact -> stacked.indexContaining(anchor) { it.line.start }
+        else -> wordStart(stacked, stacked.indexContaining(anchor) { it.line.start }, pageHeight, floor)
+    }
 
     fun page(first: Int, last: Int): Page {
         val end = if (last < stacked.lastIndex) stacked[last + 1].line.start else runEnd
@@ -142,6 +161,26 @@ fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pa
         needBefore = (lo - 1).takeIf { lo > 0 },
         needAfter = (hi + 1).takeIf { hi < windows.lastIndex },
     )
+}
+
+/**
+ * The line a page anchored on line [line] starts on: the nearest line at or above it whose predecessor is
+ * a legal end (a break that isn't a heading), so a Place from another layout that falls on the tail of a
+ * hyphenated word ("hor-/rors") shows the whole word, a heading above it comes along, and the page above
+ * ends legally. The walk never goes above the line holding [floor] (a Chapter may start mid-line, and
+ * that line is still its own), so when [line] holds [floor] it stays put. Only when that line is more
+ * than 1 − [MIN_PAGE_FILL] of a page up (a long cascade), or would push [line] off the page, does [line]
+ * itself start the page. A window's first line starts a block (windows are cut at blocks), so the walk
+ * stops there and never depends on the window above: the packer stays deterministic, as [floor] depends
+ * only on the anchor.
+ */
+private fun wordStart(stacked: List<Stacked>, line: Int, pageHeight: Float, floor: Int): Int {
+    var start = line
+    fun legalEndAbove(s: Int) = stacked[s - 1].line.let { it.endsAtBreak && !it.heading }
+    fun walks(s: Int) = s > 0 && stacked[s - 1].window == stacked[s].window && stacked[s].line.start > floor && !legalEndAbove(s)
+    while (walks(start)) start--
+    val fits = stacked[line].y - stacked[start].y <= (1 - MIN_PAGE_FILL) * pageHeight && stacked[line].yEnd - stacked[start].y <= pageHeight
+    return if (fits) start else line
 }
 
 /**

@@ -478,4 +478,35 @@ class ChaptersTest {
         assertEquals("VII: A Mad Tea-Party", alice.chapters[8].title)
         assertEquals("I: Down the Rabbit-Hole", alice.chapterAt(SpinePoint(2, 0))?.let { alice.chapters[it].title }, "where scripts/ci.sh's dev start opens")
     }
+
+    /** "One" / "text one" / caption / "II" / "text two", "middle"; blocks start at 0, 4, 13, 21, 24 and 33. */
+    private val item = SpineItem(
+        "c1",
+        listOf(
+            Block(BlockKind.Heading, "One"),
+            Block(BlockKind.Paragraph, "text one"),
+            Block(BlockKind.Caption, "caption", headingCaption = true),
+            Block(BlockKind.Heading, "II"),
+            Block(BlockKind.Paragraph, "text two"),
+            Block(BlockKind.Paragraph, "middle"),
+        ),
+    )
+
+    @Test
+    fun `a Page's floor is its Chapter's start, or the headings right before it, never text between`() {
+        assertEquals(listOf(0, 4, 13, 21, 24, 33), item.blockStarts)
+        assertEquals(13, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 24)), item, 1, 35), "heading and its caption come along")
+        assertEquals(13, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 21)), item, 1, 24), "a Chapter at its heading")
+        assertEquals(33, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 33)), item, 1, 35), "a paragraph before: no heading")
+        assertEquals(27, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 27)), item, 1, 35), "mid-block: the start itself")
+        assertEquals(0, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 24)), item, 1, 20), "the first Chapter")
+        assertEquals(21, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 13), SpinePoint(1, 21)), item, 1, 24), "a heading another Chapter starts in stays its own")
+    }
+
+    @Test
+    fun `a Page's floor is 0 in front matter and when its Chapter starts in an earlier Spine item`() {
+        assertEquals(0, pageFloor(listOf(SpinePoint(1, 24)), item, 1, 10))
+        assertEquals(0, pageFloor(listOf(SpinePoint(0, 5)), item, 1, 35))
+        assertEquals(0, pageFloor(emptyList(), item, 1, 35))
+    }
 }
