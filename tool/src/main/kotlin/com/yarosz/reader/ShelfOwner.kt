@@ -71,6 +71,9 @@ class ShelfOwner(
     /** What the Shelf knows, which its rows ([ShelfSnapshot.rows]) and the Catalogue screens read; null until the reading data is loaded. */
     val snapshot: StateFlow<ShelfSnapshot?> = snapshots
 
+    /** The reader's reading speed, shared by every Book this process opens and never saved. */
+    val speed = ReadingSpeed()
+
     /** A dev-start session to open once (see [DEV_BOOK_FILE]); the Shelf clears it when it navigates. */
     val devStart = MutableStateFlow<DevStart?>(null)
 

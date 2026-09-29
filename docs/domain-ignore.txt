@@ -11,6 +11,7 @@ Settings
 
 # Layout and pagination
 SpinePoint
+WindowMeasurer
 Band
 Landing
 LayoutKey
@@ -91,8 +92,7 @@ DevStart
 Order
 
 # UI copy (DESIGN.md "Shelf"; the certificate line goes with D15 in N3c). "file" is an _Avoid_ word
-# for Book, but this is the Book's file, as in CONTEXT.md. "This book has no text." is a LEDGER.md
-# follow-up.
+# for Book, but this is the Book's file, as in CONTEXT.md.
 can't download again · certificate not trusted
 can't download again · needs https
 can't download again · not an EPUB
@@ -100,8 +100,6 @@ Standard Ebooks: new releases
 Project Gutenberg
 file missing
 file missing · tap to download again
-${shown.pass.item + 1}/${book.spineItems.size}
-This book has no text.
 
 # Doc headings and labels
 default
@@ -168,3 +166,23 @@ Removing
 Search
 Stored
 The list
+
+# N4: Progress plumbing. Reading speed and its samples are the reader's, never stored: implementation,
+# not glossary (DESIGN.md "Reading").
+WordIndex
+ReadingSpeed
+PageTimer
+
+# N4: the minutes line's templates, whose rounding DESIGN.md "Reading" tabulates as ⌈m⌉ and ⌈m/5⌉×5
+about ${ceil(minutes).toInt()} min left in this chapter
+about ${ceil(minutes / 5).toInt() * 5} min left in this chapter
+
+# N4: the Progress line near a Chapter's end. "done" is an _Avoid_ word for Finished, but this is a
+# Chapter nearly read, not a Book read to the end.
+almost done with this chapter
+
+# N4: DESIGN.md "Reading" headings
+Layout
+Progress line
+Reading speed
+End page

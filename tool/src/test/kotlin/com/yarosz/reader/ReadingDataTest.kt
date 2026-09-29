@@ -330,6 +330,39 @@ class ReadingDataTest {
         val merged = merge(data("b" to disk), data("b" to mine)).books.getValue("b")
         assertEquals(Triple("Disk", "https://m.example.org/m.epub", 2L), Triple(merged.author, merged.source, merged.addedAt))
     }
+
+    @Test
+    fun `a Place's progress round-trips with its unknown fields, reads as null when a Place from before N4 has none, and fails mistyped`() {
+        val stored = place(updatedAt = 3).copy(progress = 0.4213, extras = mapOf("xNewer" to JsonPrimitive("kept")))
+        assertEquals(stored, decodeReadingData(data("b" to book(place = stored)).encode()).getOrThrow().books.getValue("b").place)
+        val old = decodeReadingData("{\"books\": {\"b\": {\"place\": {\"spineId\": \"c\", \"updatedAt\": 1}}}}").getOrThrow()
+        assertNull(old.books.getValue("b").place?.progress)
+        assertTrue(decodeReadingData("{\"books\": {\"b\": {\"place\": {\"progress\": \"0.5\"}}}}").isFailure)
+    }
+
+    @Test
+    fun `progress travels with the newer Place through a merge`() {
+        val disk = book(place = place(updatedAt = 1).copy(progress = 0.1))
+        val mine = book(place = place(updatedAt = 2, offset = 5).copy(progress = 0.2))
+        assertEquals(0.2, merge(data("b" to disk), data("b" to mine)).books.getValue("b").place?.progress)
+        assertEquals(0.2, merge(data("b" to mine), data("b" to disk)).books.getValue("b").place?.progress)
+    }
+
+    @Test
+    fun `setting or clearing Finished re-stamps the same Place, so it survives a merge with an older disk copy`() {
+        val reading = book(place = place(updatedAt = 10).copy(progress = 0.99))
+        val disk = data("b" to reading)
+        val finished = disk.withFinished("b", true, place(updatedAt = 10).copy(progress = 0.99))
+        val stamped = finished.books.getValue("b")
+        assertTrue(stamped.finished)
+        assertEquals(reading.place?.copy(updatedAt = 11), stamped.place)
+        assertTrue(merge(disk, finished).books.getValue("b").finished)
+        assertTrue(merge(finished, disk).books.getValue("b").finished)
+        val cleared = finished.withFinished("b", false, place(updatedAt = 10).copy(progress = 0.99))
+        assertEquals(false, merge(finished, cleared).books.getValue("b").finished)
+        assertEquals(false, merge(cleared, finished).books.getValue("b").finished)
+        assertEquals(disk, disk.withFinished("unknown", true, place(updatedAt = 1)))
+    }
 }
 
 private fun place(updatedAt: Long, offset: Int = 0) = Place("chapter-1.xhtml", 2, offset, "snippet", updatedAt)
@@ -369,7 +402,8 @@ private fun randomPlace(rnd: Random) = Place(
     offset = rnd.nextInt(0, 10_000),
     snippet = randomString(rnd, SNIPPET_CHARS),
     updatedAt = rnd.nextLong(0, 4_000_000_000_000),
-    extras = randomExtras(rnd, setOf("spineId", "block", "offset", "snippet", "updatedAt")),
+    progress = if (rnd.nextBoolean()) null else rnd.nextInt(0, 10_001) / 10_000.0,
+    extras = randomExtras(rnd, setOf("spineId", "block", "offset", "snippet", "updatedAt", "progress")),
 )
 
 private fun randomEntry(rnd: Random) = Book(

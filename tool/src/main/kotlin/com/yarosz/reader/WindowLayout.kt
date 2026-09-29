@@ -1,13 +1,14 @@
 package com.yarosz.reader
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -33,8 +34,15 @@ private val Literata = FontFamily(
 /** Narrow enough at the default size that the warm-up string hyphenates, so the hyphenator loads too. */
 private const val WARM_UP_WIDTH_PX = 240
 
-/** A window measured at one [LayoutKey]: its layout, for drawing, and its lines, for packing. */
-class WindowLayout(val layout: TextLayoutResult, val lines: List<LineMetrics>)
+/** A window measured at one [LayoutKey]: its lines, for packing, and how to draw it in a colour. */
+class WindowLayout(val lines: List<LineMetrics>, val draw: DrawScope.(Color) -> Unit)
+
+/** Lays windows out for the Reader: a [Typesetter] on the phone, a stand-in in tests, which have no platform text layout. */
+interface WindowMeasurer {
+    fun key(fontStep: Int): LayoutKey
+
+    fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout
+}
 
 /**
  * The body style at [FONT_SIZES] step [fontStep] (DESIGN.md). Body colour is left to drawing, but
@@ -61,11 +69,11 @@ fun readingStyle(fontStep: Int): TextStyle {
  * objects on background thread" and whose typeface caches are lock-guarded; with no layout cache the
  * measurer holds no state of its own, and the platform layout it returns is immutable once built.
  */
-class Typesetter(private val measurer: TextMeasurer, private val captionColor: Color, val widthPx: Int, val pageHeightPx: Int) {
+class Typesetter(private val measurer: TextMeasurer, private val captionColor: Color, val widthPx: Int, val pageHeightPx: Int) : WindowMeasurer {
 
-    fun key(fontStep: Int) = LayoutKey(fontStep, widthPx, pageHeightPx)
+    override fun key(fontStep: Int) = LayoutKey(fontStep, widthPx, pageHeightPx)
 
-    fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
+    override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
         val style = readingStyle(fontStep)
         val layout = measurer.measure(spineItem.annotate(window, style, captionColor), style, constraints = Constraints(maxWidth = widthPx))
         val lines = List(layout.lineCount) { i ->
@@ -79,7 +87,7 @@ class Typesetter(private val measurer: TextMeasurer, private val captionColor: C
                 heading = spineItem.keepsWithNext(start),
             )
         }
-        return WindowLayout(layout, lines)
+        return WindowLayout(lines) { color -> drawText(layout, color = color) }
     }
 }
 

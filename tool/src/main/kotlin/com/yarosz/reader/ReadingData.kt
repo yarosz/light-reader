@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.math.abs
@@ -20,6 +21,10 @@ private const val TAG = "Reader"
  * and written back. An older build therefore never loses what a newer one wrote, with one exception:
  * a page turn creates a fresh Place, so a newer build's Place-level extras describe the old Place and
  * are dropped with it. Extras at the top level, in settings, and on a Book survive.
+ *
+ * Fields added since schema 1: `catalogues` (N3) and a Place's `progress` (N4). `progress` is how far
+ * through the Book the Place is, for the Shelf's percent; the minutes left in a Chapter are never
+ * stored, because they depend on the reader's speed.
  */
 const val CURRENT_SCHEMA = 1
 
@@ -37,7 +42,11 @@ data class SpinePoint(val item: Int, val char: Int) : Comparable<SpinePoint> {
 /**
  * A Place as stored (ADR 0002): the Spine item, the block within it, the offset within that
  * block, and the first [SNIPPET_CHARS] characters of text there. [updatedAt] is epoch millis; the
- * newer Place wins a [merge]. Relayout never rewrites a Place; only turning a Page does.
+ * newer Place wins a [merge]. Relayout never rewrites a Place; turning a Page records a new one, and
+ * setting or clearing Finished re-stamps it ([withFinished]). [progress] is the share (0–1) of the
+ * Book's text characters before the Place, through the whole Book, front and back matter included,
+ * rounded to 4 decimals ([progressAt]); null in a Place saved before N4. It describes this Place only,
+ * so it is written with every Place. Progress within a Chapter (its minutes left) is never stored.
  */
 data class Place(
     val spineId: String,
@@ -45,6 +54,7 @@ data class Place(
     val offset: Int,
     val snippet: String,
     val updatedAt: Long,
+    val progress: Double? = null,
     val extras: Map<String, JsonElement> = emptyMap(),
 )
 
@@ -167,6 +177,17 @@ fun ReadingData.withPlace(identifier: String, place: Place): ReadingData {
     val book = books[identifier] ?: return this
     val updatedAt = book.place?.let { maxOf(place.updatedAt, it.updatedAt + 1) } ?: place.updatedAt
     return copy(books = books + (identifier to book.copy(place = place.copy(updatedAt = updatedAt))))
+}
+
+/**
+ * Records [place] as [withPlace] does, and the Book's [Book.finished] with it. Setting or clearing
+ * Finished always re-stamps the Place, even when [place] is where the Book already is, so the change
+ * is the newer side of a [merge], which carries the flag with the Place.
+ */
+fun ReadingData.withFinished(identifier: String, finished: Boolean, place: Place): ReadingData {
+    val placed = withPlace(identifier, place)
+    val book = placed.books[identifier] ?: return this
+    return placed.copy(books = placed.books + (identifier to book.copy(finished = finished)))
 }
 
 /**
@@ -304,12 +325,12 @@ private val prettyJson = Json { prettyPrint = true }
 private val TOP_FIELDS = setOf("schemaVersion", "settings", "books", "catalogues")
 private val SETTINGS_FIELDS = setOf("fontStep")
 private val ENTRY_FIELDS = setOf("title", "file", "place", "finished", "onShelf", "author", "source", "addedAt")
-private val PLACE_FIELDS = setOf("spineId", "block", "offset", "snippet", "updatedAt")
+private val PLACE_FIELDS = setOf("spineId", "block", "offset", "snippet", "updatedAt", "progress")
 private val CATALOGUE_FIELDS = setOf("name", "url", "removed", "updatedAt")
 
 /**
- * The file's text. Absent Places, files, authors, sources, dates, names and URLs are omitted, and so
- * is an empty `catalogues`; unknown fields are written back as they came.
+ * The file's text. Absent Places, progress, files, authors, sources, dates, names and URLs are
+ * omitted, and so is an empty `catalogues`; unknown fields are written back as they came.
  */
 fun ReadingData.encode(): String = prettyJson.encodeToString(
     JsonElement.serializer(),
@@ -355,6 +376,7 @@ private fun Book.toJson() = jsonObject(
             "offset" to JsonPrimitive(it.offset),
             "snippet" to JsonPrimitive(it.snippet),
             "updatedAt" to JsonPrimitive(it.updatedAt),
+            "progress" to it.progress?.let(::JsonPrimitive),
         )
     },
 )
@@ -413,6 +435,7 @@ private fun JsonObject.toBook(id: String) = Book(
             offset = it.int("offset") ?: 0,
             snippet = it.string("snippet").orEmpty(),
             updatedAt = it.long("updatedAt") ?: 0,
+            progress = it.double("progress"),
             extras = it.unknown(PLACE_FIELDS),
         )
     },
@@ -453,6 +476,8 @@ private fun JsonObject.literal(name: String): JsonPrimitive? =
 private fun JsonObject.int(name: String): Int? = literal(name)?.let { it.intOrNull ?: corrupt(name) }
 
 private fun JsonObject.long(name: String): Long? = literal(name)?.let { it.longOrNull ?: corrupt(name) }
+
+private fun JsonObject.double(name: String): Double? = literal(name)?.let { it.doubleOrNull ?: corrupt(name) }
 
 private fun JsonObject.boolean(name: String): Boolean? = literal(name)?.let { it.booleanOrNull ?: corrupt(name) }
 
