@@ -199,20 +199,20 @@ Chapter starts there and no heading comes between (Gutenberg's `*** END OF THE P
 drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
 with the bar's back on the left and "Shelf" on the right, and one row per Chapter in order, each the
 Chapter's title verbatim at full strength; Back matter's rows follow the text's with no divider. The
-current row alone has the detail line "you're here": the Chapter the Page goes by, as the top line
-names it (of two starting at one point, the later), or on the end page the last Chapter of the text.
-In Front matter no row is current. The list opens with the row before the current one at the top, so the current row is second, or
-with the current row at the top when it is first; with no current row it opens at the top. The list has a top and a bottom; "start" and "end" stay the
-Book's and a Chapter's. Tapping a row
+current row alone has the detail line "you're here": the Chapter the Page goes by, as the top line names
+it (of two starting at one point, the later), or on the end page the last Chapter of the text. In Front
+matter no row is current. The list opens with the row before the current one at the top, so the current
+row is second, or with the current row at the top when it is first; with no current row it opens at the
+top. The list has a top and a bottom; "start" and "end" stay the Book's and a Chapter's. Tapping a row
 goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
 Page (Back matter's first row may open on Back matter's opening lines instead), even for the current
 Chapter, and even when that line starts mid-word (a Chapter anchored inside a paragraph): a jump never
 moves the start up to a whole word as a font change does. The Pages before it may tile differently, as
 after a font change. That Page is the Place, it is untimed, and the jump leaves the end page. Back, from
-the bar or the system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
-no frame of the reading view, and keeps the Place and Finished as they were. For half a second after
-Contents opens, "Shelf" does nothing, so a double tap on the top line stays in Contents. The volume keys
-stay LightOS's on this screen.
+the bar or the system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to
+the Shelf with no frame of the reading view, and keeps the Place and Finished as they were. For half a
+second after Contents opens, "Shelf" does nothing, so a double tap on the top line stays in Contents. The
+volume keys stay LightOS's on this screen.
 
 **Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
 either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so

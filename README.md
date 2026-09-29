@@ -8,8 +8,8 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
 
 > **Status: early development (0.1.0).** Reader downloads books from catalogues onto a Shelf, turns
 > pages by tap or volume key, keeps your place in each book at any font size, and lists each book's
-> chapters. Hideable reading controls, an About screen and a smaller font size are being built next. Not yet
-> signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
+> chapters. Hideable reading controls, an About screen and a smaller font size are being built next.
+> Not yet signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>
   <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: the heading 'I: Down the Rabbit-Hole' above the first paragraph, white serif text on black">
