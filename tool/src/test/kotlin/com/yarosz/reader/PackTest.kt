@@ -37,18 +37,21 @@ class PackTest {
     private fun anchorLine(case: Case, anchor: Int) = case.lines.indexContaining(anchor) { it.start }
 
     /**
-     * The line the anchor's Page starts on: the nearest line at or above the anchor's that starts a word
-     * (the line above ends at a legal break), when that is at most 30% of a Page higher and keeps the
-     * anchor's line on the Page; otherwise the anchor's own line.
+     * The line the anchor's Page starts on: the nearest line at or above the anchor's that follows a legal
+     * end (a break, not a heading) or starts a window, when that is at most 30% of a Page higher and keeps
+     * the anchor's line on the Page; otherwise the anchor's own line.
      */
-    private fun startLine(lines: List<LineMetrics>, anchorLine: Int, height: Float): Int {
+    private fun startLineAbove(case: Case, anchorLine: Int): Int {
+        val lines = case.lines
+        val windowStarts = case.windows.map { it.start }.toSet()
         var s = anchorLine
-        while (s > 0 && !lines[s - 1].endsAtBreak) s--
+        while (s > 0 && lines[s].start !in windowStarts && !lines[s - 1].legal()) s--
+        val height = case.height
         val fits = lines[anchorLine].top - lines[s].top <= (1 - MIN_PAGE_FILL) * height && lines[anchorLine].bottom - lines[s].top <= height
         return if (fits) s else anchorLine
     }
 
-    private fun startLine(case: Case, anchor: Int) = startLine(case.lines, anchorLine(case, anchor), case.height)
+    private fun startLine(case: Case, anchor: Int) = startLineAbove(case, anchorLine(case, anchor))
 
     private fun textRanges(pages: List<Page>) = pages.map { it.start to it.end }
 
@@ -100,18 +103,21 @@ class PackTest {
     /**
      * Two checks: the split matches a single-window pack of the same lines, and the forward pages match
      * the oracle. The first is exact only because the fixture's pixels are whole numbers (the product never
-     * lays out a whole Spine item, so a one-ulp seam difference there would not be a product fault).
+     * lays out a whole Spine item, so a one-ulp seam difference there would not be a product fault). The
+     * single window is anchored exactly on the split's start line: the split's walk up to a word start
+     * stops at a window's first line, which the single window doesn't have.
      */
     @Test
     fun `the window split changes no page, and forward pages match the whole-Spine-item pagination from the start line`() = forAll { rnd ->
         val case = randomCase(rnd)
         val anchor = randomAnchor(rnd, case)
         val split = pack(case.windows, case.cut, anchor, case.height)
-        val whole = pack(listOf(wholeWindow(case.length)), listOf(case.lines), anchor, case.height)
+        val from = if (anchor >= case.length) case.lines.size else startLine(case, anchor)
+        val wholeAnchor = if (anchor >= case.length) anchor else case.lines[from].start
+        val whole = pack(listOf(wholeWindow(case.length)), listOf(case.lines), wholeAnchor, case.height, exact = true)
         assertEquals(textRanges(whole.before), textRanges(split.before))
         assertEquals(textRanges(whole.fromAnchor), textRanges(split.fromAnchor))
         assertEquals(whole.pages.map { it.height }, split.pages.map { it.height })
-        val from = if (anchor >= case.length) case.lines.size else startLine(case, anchor)
         val expected = referencePaginate(case.lines, from, case.length, case.height)
         assertEquals(expected, split.fromAnchor.map { Triple(it.start, it.end, it.height) })
     }
@@ -266,7 +272,7 @@ class PackTest {
     fun `a Place on a line starting mid-word starts its Page on the word's first half, holding the Place, at any width`() = forAll { rnd ->
         val case = randomCase(rnd)
         val lines = case.lines
-        val tails = lines.indices.filter { it > 0 && !lines[it - 1].endsAtBreak }
+        val tails = lines.indices.filter { it > 0 && !lines[it - 1].legal() }
         if (tails.isEmpty()) return@forAll
         val tail = tails.random(rnd)
         val lineEnd = lines.getOrNull(tail + 1)?.start ?: case.length
@@ -276,13 +282,11 @@ class PackTest {
         val page = packed.anchorPage!!
         assertTrue(anchor >= page.start && anchor < page.end, "anchor $anchor not on $page")
         val first = lines.indexOfFirst { it.start == page.start }
-        var wordStart = tail
-        while (wordStart > 0 && !lines[wordStart - 1].endsAtBreak) wordStart--
-        val reachable = lines[tail].top - lines[wordStart].top <= (1 - MIN_PAGE_FILL) * case.height &&
-            lines[tail].bottom - lines[wordStart].top <= case.height
-        if (reachable) {
+        val wordStart = startLineAbove(case, tail)
+        if (wordStart != tail) {
             assertEquals(wordStart, first, "page $page starts mid-word")
-            assertEquals(page.start, packed.before.lastOrNull()?.end ?: 0)
+            val windowStart = case.windows.any { it.start == page.start }
+            assertTrue(first == 0 || windowStart || lines[first - 1].legal(), "the Page above $page ends on line ${first - 1}, not a legal end")
         } else {
             assertEquals(tail, first)
         }

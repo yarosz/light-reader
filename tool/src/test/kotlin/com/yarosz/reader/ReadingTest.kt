@@ -127,9 +127,9 @@ class ReadingTest {
                 assertTrue(place >= page.start && place < page.end, "seed $seed step $step: $place not on $page")
                 val lines = book.linesOf(pass)[page.bands.first().window]
                 val first = lines.indexOfFirst { it.start == page.start }
-                if (first == 0 || lines[first - 1].endsAtBreak) continue
+                if (first == 0 || lines[first - 1].legal()) continue
                 var wordStart = first
-                while (wordStart > 0 && !lines[wordStart - 1].endsAtBreak) wordStart--
+                while (wordStart > 0 && !lines[wordStart - 1].legal()) wordStart--
                 assertEquals(lines.indexContaining(place) { it.start }, first, "seed $seed step $step: $page starts mid-word above the Place's line")
                 val reach = (1 - MIN_PAGE_FILL) * key.pageHeightPx
                 assertTrue(
@@ -223,6 +223,30 @@ class ReadingTest {
             assertEquals(jumped, book.reading.jump(0, offset, key), "seed $seed: the new pass has that Page now")
         }
         assertTrue(buried > 50, "only $buried seeds buried a block start")
+    }
+
+    /**
+     * A Chapter anchored mid-paragraph can start on a line that begins mid-word. The jump's Page starts on
+     * that line, not on the word's first half above it as a relayout at the Place would: so its first line
+     * holds the Chapter's start, and jumping there again reuses the pass.
+     */
+    @Test
+    fun `a jump to a line starting mid-word shows a Page starting on that line`() {
+        var tried = 0
+        repeat(100) { seed ->
+            val book = Fixture(seed, count = 1, windowChars = 3_000)
+            val lines = book.linesOf(book.reading.open(0, 0, key).pass)
+            val reach = (1 - MIN_PAGE_FILL) * key.pageHeightPx
+            val tail = lines.flatMap { window ->
+                window.indices.filter { i -> i > 0 && !window[i - 1].legal() && window[i].top - window[i - 1].top <= reach }.map { window[it] }
+            }.randomOrNull(Random(seed)) ?: return@repeat
+            tried++
+            val jumped = book.reading.jump(0, tail.start, key)
+            assertEquals(tail.start, jumped.page.start, "seed $seed")
+            assertTrue(tail.start < jumped.pass.firstLineEnd(jumped.page))
+            assertSame(jumped.pass, book.reading.jump(0, tail.start, key).pass, "seed $seed: the new pass has that Page now")
+        }
+        assertTrue(tried > 50, "only $tried seeds had a line starting mid-word")
     }
 
     @Test

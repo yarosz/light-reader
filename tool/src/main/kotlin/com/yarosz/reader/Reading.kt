@@ -15,7 +15,8 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  * for drawing and its lines for packing; the pass reads only the lines, through [linesOf]. A Page once
  * packed never changes (see [pack]), so turning back shows the Page just read. [id] is for logs: it
  * is unique within one [Reading] only, so compare passes by identity. [item] is [spineItem]'s index in
- * the Book's Spine items. A Page never spans [pageBreak] (see [pack]).
+ * the Book's Spine items. A Page never spans [pageBreak] (see [pack]). With [exact], as for a Chapter
+ * jump, the first Page starts on [anchor]'s own line, even one that starts mid-word ([pack]).
  */
 class Pass<M>(
     val id: Int,
@@ -25,6 +26,7 @@ class Pass<M>(
     val windows: List<Window>,
     val anchor: Int,
     private val pageBreak: Int? = null,
+    private val exact: Boolean = false,
     private val linesOf: (M) -> List<LineMetrics>,
 ) {
     private val measured = MutableList<M?>(windows.size) { null }
@@ -45,7 +47,7 @@ class Pass<M>(
         packed = repack()
     }
 
-    private fun repack() = pack(windows, measured.map { it?.let(linesOf) }, anchor, key.pageHeightPx.toFloat(), pageBreak)
+    private fun repack() = pack(windows, measured.map { it?.let(linesOf) }, anchor, key.pageHeightPx.toFloat(), pageBreak, exact)
 
     /** Where [page]'s first line ends: the next line's start, capped at the Page's end. [page] is one of [pages], so its first window is measured. */
     fun firstLineEnd(page: Page): Int {
@@ -131,9 +133,10 @@ class Reading<M>(
 
     /**
      * Shows the Page whose first line holds [offset] in Spine item [item] at [key], as a jump to a Chapter
-     * needs: from a cached pass only when it has such a Page, else a new pass anchored there, whose first Page
-     * starts on [offset]'s line ([pack]; a line or two above when that line starts mid-word, which a block
-     * start never does). At a line start, as Chapters mostly are, that Page starts exactly at [offset]. An [offset] at the end of a Spine item jumps to the next one's start.
+     * needs: from a cached pass only when it has such a Page, else a new exact pass anchored there, whose
+     * first Page starts on [offset]'s line even when that line starts mid-word, as a Chapter anchored
+     * mid-paragraph may ([pack]). At a line start, as Chapters mostly are, that Page starts exactly at
+     * [offset]. An [offset] at the end of a Spine item jumps to the next one's start.
      */
     fun jump(item: Int, offset: Int, key: LayoutKey): Shown<M> {
         passes.values.removeAll { it.key != key }
@@ -174,7 +177,7 @@ class Reading<M>(
         val spineItem = spineItems[item]
         val pageBreak = textEnd?.takeIf { it.item == item }?.char
         val pass = passes.remove(item)?.takeIf { cached -> cached.pageAt(offset)?.let { !exact || offset < cached.firstLineEnd(it) } == true }
-            ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, linesOf)
+            ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, exact, linesOf)
         passes[item] = pass
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())
         return turnTo(pass, offset)

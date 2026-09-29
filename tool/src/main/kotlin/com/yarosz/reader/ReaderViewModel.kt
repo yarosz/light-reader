@@ -48,7 +48,10 @@ class ReaderViewModel(
     val book = MutableStateFlow<OpenBook?>(null)
     val status = MutableStateFlow("Opening…")
 
-    /** The Place: the top of the page being read. Relayouts never rewrite it, so font changes can't drift. */
+    /**
+     * The Place: the top of the page being read, or, after a relayout, a few lines down it when its line
+     * starts mid-word ([pack]). Relayouts never rewrite it, so font changes can't drift.
+     */
     val spinePoint = MutableStateFlow(SpinePoint(0, 0))
     val fontStep = MutableStateFlow(DEFAULT_FONT_STEP)
 

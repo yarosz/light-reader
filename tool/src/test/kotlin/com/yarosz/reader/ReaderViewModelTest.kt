@@ -65,13 +65,19 @@ class ReaderViewModelTest {
         return ReaderViewModel(File(dir, "alice.epub"), owner, start, io) { clock }
     }
 
-    /** Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a Page. */
-    private data class LineMeasurer(private val pageHeightPx: Int = 300) : WindowMeasurer {
+    /**
+     * Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a
+     * Page. With [tailAt] (a Spine item's id and an offset in it), the line holding that offset starts mid-word instead.
+     */
+    private data class LineMeasurer(private val pageHeightPx: Int = 300, private val tailAt: Pair<String, Int>? = null) : WindowMeasurer {
         override fun key(fontStep: Int) = LayoutKey(fontStep, 1_000, pageHeightPx)
 
         override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
-            val lines = (window.start until window.end step 1_000 / (fontStep + 1)).mapIndexed { i, start ->
-                LineMetrics(start, i * 30f, (i + 1) * 30f, endsAtBreak = true, heading = false)
+            val starts = (window.start until window.end step 1_000 / (fontStep + 1)).toList()
+            val tail = tailAt?.takeIf { (id, char) -> id == spineItem.spineId && char in window.start until window.end }
+                ?.let { (_, char) -> starts.indexContaining(char) { it } }
+            val lines = starts.mapIndexed { i, start ->
+                LineMetrics(start, i * 30f, (i + 1) * 30f, endsAtBreak = tail == null || i != tail - 1, heading = false)
             }
             return WindowLayout(lines) { }
         }
@@ -681,6 +687,33 @@ class ReaderViewModelTest {
         val landed = vm.frame.value!!
         vm.jumpTo(1)
         assertSame(landed.pass, vm.frame.value!!.pass)
+    }
+
+    /**
+     * The same Chapter, its line now starting mid-word (the tail of a hyphenated word): a jump is exempt
+     * from moving a Page's start up to a whole word, so the Page still starts on the Chapter's line, the
+     * top line and Contents name the Chapter, and the Place is that line.
+     */
+    @Test
+    fun `a jump to a Chapter whose line starts mid-word still lands on the Page starting on that line`() {
+        val bodies = listOf(
+            "<h1>One</h1><p>First.</p>",
+            "<p>${"word ".repeat(301)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
+        )
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        val two = opened.chapters[1].start
+        vm.bind(LineMeasurer(tailAt = opened.spineItems[two.item].spineId to two.char))
+        settle()
+        vm.jumpTo(1)
+        val shown = vm.frame.value!!
+        assertTrue(vm.pageStart <= two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        assertEquals(vm.pageStart, vm.spinePoint.value)
     }
 
     @Test

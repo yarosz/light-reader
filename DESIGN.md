@@ -44,15 +44,21 @@ to match (a three-button bar leaves 341 × 360 dp and pillarboxes Reader).
 
 The rules hold in both directions. A Page packed backward (reached by turning back past the Place of
 the current pass) ends where the Page below it starts, so its start is chosen so that the line above
-it is a legal end, with the same 70% guard: every Page end is legal unless the guard fired. What
-remains asymmetric: a backward pass may tile a stretch differently (but as legally) from a forward
-one, and a cold backward crossing may leave a short first Page in the Spine item (ADR 0007).
+it is a legal end, with the same 70% guard: every Page end is legal unless the guard fired, or the
+Place guard (below). What remains asymmetric: a backward pass may tile a stretch differently (but as
+legally) from a forward one, and a cold backward crossing may leave a short first Page in the Spine
+item (ADR 0007).
 
-They hold at the Place too. After a font change the Place can fall on a line that starts mid-word (the
-tail of "hor-/rors"); the Page then starts on the nearest line above that starts a word, so the Page
-before it ends legally, and the Place sits a line or two down that Page. Guard: if that line is more
-than 30% of a Page above the Place's line (a long cascade), the Place's own line starts the Page. The
-Place itself doesn't move, so repeated font changes can't drift it.
+At the Place the break and heading rules hold for the Page above, within a guard of their own. After a
+font change the Place can fall on a line that starts mid-word (the tail of "hor-/rors") or right under
+a heading; the Page then starts on the nearest line above whose predecessor is a legal end (a break that
+isn't a heading), so the word is whole, a heading comes with its text, and the Page before ends legally;
+the Place sits a few lines (at most 30% of a Page) down its Page. Place guard: if that line is more than
+30% of a Page above the Place's line (a long cascade), or the Place's line wouldn't then fit, the Place's
+own line starts the Page and the Page above ends where it must. The walk also stops at the first line of
+a layout window, so a window cut right after a heading keeps the Place's line. The Place itself doesn't
+move, so repeated font changes can't drift it. A Chapter jump is exempt: its Page starts on the Chapter
+start's own line (Contents).
 
 ## Paragraph indent
 
@@ -132,9 +138,10 @@ one point, the later), or on the end page the last Chapter of the text. In front
 current. The list opens with the row before the current one at the top, so the current row is second, or
 with the current row at the top when it is first; with no current row it opens at the top. Tapping a row
 goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
-Page, even for the current Chapter; the Pages before it may tile differently, as after a font change.
-That Page is the Place, it is untimed, and the jump leaves the end page. Back, from the bar or the
-system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
+Page, even for the current Chapter, and even when that line starts mid-word (a Chapter anchored inside a
+paragraph): a jump never moves the start up to a whole word as a font change does. The Pages before it
+may tile differently, as after a font change. That Page is the Place, it is untimed, and the jump leaves
+the end page. Back, from the bar or the system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
 no frame of the reading view, and keeps the Place and Finished as they were. For half a second after
 Contents opens, "Shelf" does nothing, so a double tap on the top line stays in Contents. The volume keys
 stay LightOS's on this screen.
