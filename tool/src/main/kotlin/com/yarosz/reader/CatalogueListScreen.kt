@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
  * clears an old screen's view model when it relaunches the activity (ADR 0008), so following it for
  * the view model's life would leave one callback per relaunch.
  */
-class CatalogueListViewModel(private val owner: ShelfOwner, networkStatus: Flow<NetworkStatus>) : LightViewModel<Unit>() {
+class CatalogueListViewModel(private val owner: ShelfOwner, networkStatus: Flow<NetworkStatus>) : LightViewModel<OpenFromShelf>() {
     val catalogues: StateFlow<List<ListedCatalogue>?> =
         owner.snapshot.map { it?.data?.catalogueList() }.stateIn(viewModelScope, SharingStarted.Eagerly, owner.snapshot.value?.data?.catalogueList())
     val mode = MutableStateFlow<CatalogueListMode>(CatalogueListMode.Browsing)
@@ -53,7 +53,7 @@ class CatalogueListViewModel(private val owner: ShelfOwner, networkStatus: Flow<
     }
 
     /** Rechecks the Shelf's files, which the Catalogue pages match against. */
-    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = owner.refresh()
+    override fun onScreenShow(screen: SimpleLightScreen<OpenFromShelf>) = owner.refresh()
 
     /** Edit is hidden while the list is empty, so it can't start then. */
     fun toggleEdit() {
@@ -85,7 +85,7 @@ const val UNSUBSCRIBED_GRACE_MS = 5_000L
  * "Add a Book": each Catalogue by name (one the reader added has its host below), then "Add a
  * Catalogue". Edit removes a Catalogue, inline, keeping its name above the question.
  */
-class CatalogueListScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, CatalogueListViewModel>(sealedActivity) {
+class CatalogueListScreen(sealedActivity: SealedLightActivity) : LightScreen<OpenFromShelf, CatalogueListViewModel>(sealedActivity) {
 
     override val viewModelClass: Class<CatalogueListViewModel>
         get() = CatalogueListViewModel::class.java
@@ -131,7 +131,7 @@ class CatalogueListScreen(sealedActivity: SealedLightActivity) : LightScreen<Uni
         ListRow(
             catalogue.name,
             catalogue.url.host.takeUnless { listed.shipped },
-            onClick = if (mode == CatalogueListMode.Browsing) ({ navigateTo({ CataloguePageScreen(it, catalogue, PageSource.Root) }) }) else null,
+            onClick = if (mode == CatalogueListMode.Browsing) ({ navigateTo({ CataloguePageScreen(it, catalogue, PageSource.Root) }, ::goBack) }) else null,
             trailing = if (mode is CatalogueListMode.Editing) ({
                 TextAction(CATALOGUES_REMOVE, { viewModel.askToRemove(catalogue.url) }, Modifier.padding(start = 1f.gridUnitsAsDp()), lighten = true)
             }) else null,

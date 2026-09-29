@@ -302,12 +302,15 @@ download merges into the Book by `dc:identifier`.
 | Match | Action | Beside it |
 |---|---|---|
 | None | "Add to Shelf" | the size |
-| On the Shelf with its file | "Read", which opens the Book at its Place | "On your Shelf" |
+| On the Shelf with its file | "Read", which opens the Book at its Place, from the Shelf | "On your Shelf" |
 | On the Shelf, file missing | "Download again", keeping the Book's row and Place | the size |
 | Removed | "Add to Shelf", keeping the Place | the size |
 | A download running | "downloading…" in secondary text | |
 
-The page stays while a download runs and follows it: "downloading…", then "Read" when it lands.
+"Read" closes the Catalogue screens and opens the Reader over the Shelf, with no frame of the screens
+between, so leaving the Book (system back, "Shelf" in Contents, "Back to Shelf") always lands on the
+Shelf; the place in the Catalogue is not kept. The page stays while a download runs and follows it:
+"downloading…", then "Read" when it lands.
 The download belongs to the Shelf, so leaving the page doesn't stop it, and the Shelf shows it as a
 row meanwhile. A failure shows its copy above the action: a retryable one turns the action into
 "Retry", and a permanent one (CopyProtected, NotAnEpub, NoHttps) removes it and adds nothing to the

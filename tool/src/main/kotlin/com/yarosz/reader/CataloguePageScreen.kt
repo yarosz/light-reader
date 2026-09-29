@@ -15,7 +15,6 @@ import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.ui.LightText
 import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.gridUnitsAsDp
-import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,7 +33,7 @@ class CataloguePageViewModel(
     private val owner: ShelfOwner,
     val catalogue: Catalogue,
     val source: PageSource,
-) : LightViewModel<Unit>() {
+) : LightViewModel<OpenFromShelf>() {
     val state = MutableStateFlow<PageState>(if (source is PageSource.Entry) PageState.Book(listOf(source.entry)) else PageState.Loading)
     val shipped = isShipped(catalogue.url)
 
@@ -113,7 +112,7 @@ class CataloguePageScreen(
     sealedActivity: SealedLightActivity,
     private val catalogue: Catalogue,
     private val source: PageSource,
-) : LightScreen<Unit, CataloguePageViewModel>(sealedActivity) {
+) : LightScreen<OpenFromShelf, CataloguePageViewModel>(sealedActivity) {
 
     override val viewModelClass: Class<CataloguePageViewModel>
         get() = CataloguePageViewModel::class.java
@@ -139,13 +138,13 @@ class CataloguePageScreen(
         listing.search?.let { search ->
             SearchField(searchPlaceholder(catalogue)) {
                 navigateTo({ TextEntryScreen(it, SEARCH, "", SEARCH) }) { terms ->
-                    if (terms.isNotBlank()) navigateTo({ CataloguePageScreen(it, catalogue, PageSource.Search(search, terms.trim())) })
+                    if (terms.isNotBlank()) navigateTo({ CataloguePageScreen(it, catalogue, PageSource.Search(search, terms.trim())) }, ::goBack)
                 }
             }
         }
         listing.entries.forEach { entry ->
             val target = entryTarget(entry)
-            ListRow(entry.title, entry.byline, onClick = target?.let { { navigateTo({ CataloguePageScreen(it, catalogue, target) }) } })
+            ListRow(entry.title, entry.byline, onClick = target?.let { { navigateTo({ CataloguePageScreen(it, catalogue, target) }, ::goBack) } })
         }
         if (listing.next != null) {
             when (val more = listing.more) {
@@ -164,7 +163,7 @@ class CataloguePageScreen(
         }
         detail.problem?.let { LightText(text = it.text, variant = LightTextVariant.Copy, modifier = rowPadding()) }
         when (val action = detail.action) {
-            is DetailAction.Read -> Action(DETAIL_READ, DETAIL_ON_SHELF) { navigateTo({ ReaderScreen(it, File(lightContext.filesDir, action.file)) }) }
+            is DetailAction.Read -> Action(DETAIL_READ, DETAIL_ON_SHELF) { goBack(OpenFromShelf(action.file)) }
             is DetailAction.Download -> Action(action.label, action.link.length?.let(::formatSize)) { viewModel.download(action) }
             DetailAction.Downloading -> SecondaryLine(DETAIL_DOWNLOADING, rowPadding())
             DetailAction.None -> Unit

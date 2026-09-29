@@ -108,3 +108,10 @@ fun detailSummary(entries: List<CatalogueEntry>): String? {
     val author = detailAuthor(entries)
     return entries.firstNotNullOfOrNull { it.summary?.takeIf { summary -> summary != author } }
 }
+
+/**
+ * "Read" on a Book's page: the Catalogue screens hand [file] back down to the Shelf, which opens the Reader
+ * over itself, so leaving the Reader, by system back, "Shelf" or "Back to Shelf", lands on the Shelf. Each
+ * screen passes it on as its result arrives, so no frame of the screens between shows.
+ */
+data class OpenFromShelf(val file: String)
