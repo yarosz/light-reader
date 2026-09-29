@@ -212,41 +212,105 @@ fun SpineItem.placeOf(textOffset: Int, now: Long): Place {
 }
 
 /**
- * Finds [place] in this Book: at its block and offset when the snippet still matches there, else at
- * the snippet's occurrence nearest that spot (a new edition or parser change shifted the text), else
- * at the nearest occurrence of the snippet without a leading run of spaces that holds a line break and
- * with each run of line breaks as one (a Place saved before blocks dropped such runs at their ends), else
- * at the nearest occurrence of that snippet cut at its first line break, the rest of the Place's own
- * block (a parser change put a new block within the snippet's reach after it, so its block index is stale
- * too), else at the start of its block, or of its Spine item when the block is gone. An occurrence that
- * starts on the separator before a block, for a Place no further into its block than the line breaks its
- * snippet starts with, is taken past them: that Place was saved inside a heading's leading line breaks,
- * which no block has now, so it lands on the heading, not on the end of the block before. That holds for
- * every Place in a run of up to two line breaks and the first half of a longer one; a current Place on a
- * separator keeps its spot. Null only when no Spine item has the Place's Spine item.
+ * Finds [place] in this Book (ADR 0002): at its block and offset when the snippet still matches there.
+ * Else the Place is re-found by its text, within its Spine item:
+ * - at an occurrence of the snippet, else of the snippet without a leading run of spaces that holds a
+ *   line break and with each run of line breaks as one (a Place saved before blocks dropped such runs at
+ *   their ends);
+ * - else where the most of that second snippet matches, at least [MIN_MATCH] characters or all of a
+ *   shorter one, allowing for what a newer parse adds to it ([matchFrom]): a Place saved when a list
+ *   item's paragraphs ran together, or before a caption or table was read between two of its blocks.
+ * Among equal matches, one reaching the text's end wins for a snippet shorter than [SNIPPET_CHARS] - 1,
+ * which reached its Spine item's end; then the one nearest the block and offset, which are stale when
+ * blocks were added before the Place. With no match it lands at the start of its block, or of its Spine
+ * item when the block is gone: a Place whose text a new edition changed or the parser now skips.
+ *
+ * A match that starts on the separator before a block, for a Place no further into its block than the
+ * line breaks its snippet starts with, is taken past them: that Place was saved inside a heading's leading
+ * line breaks, which no block has now, so it lands on the heading, not on the end of the block before.
+ * That holds for every Place in a run of up to two line breaks and the first half of a longer one; a
+ * current Place on a separator keeps its spot. Null only when no Spine item has the Place's Spine item.
  */
 fun OpenBook.resolve(place: Place): SpinePoint? {
     val index = spineItems.indexOfFirst { it.spineId == place.spineId }.takeIf { it >= 0 } ?: return null
-    val text = spineItems[index].text
-    val blockStart = spineItems[index].blockStarts.getOrNull(place.block)
+    val item = spineItems[index]
+    val text = item.text
+    val blockStart = item.blockStarts.getOrNull(place.block)
     val expected = blockStart?.plus(place.offset)?.takeIf { it in 0..text.length }
-    if (expected != null && text.startsWith(place.snippet, expected)) return SpinePoint(index, expected)
+    val reachedEnd = place.snippet.length < SNIPPET_CHARS - 1
+    if (expected != null && text.startsWith(place.snippet, expected) && (!reachedEnd || expected + place.snippet.length == text.length)) {
+        return SpinePoint(index, expected)
+    }
     val anchor = expected ?: blockStart ?: 0
-    fun nearest(snippet: String) = generateSequence(text.indexOf(snippet).takeIf { it >= 0 }) { from ->
-        text.indexOf(snippet, from + 1).takeIf { it >= 0 }
-    }.minByOrNull { abs(it - anchor) }
+    val floor = blockStart ?: 0
+    val order = compareBy<Match>(
+        { -it.length },
+        { reachedEnd && it.end != text.length },
+        { it.end - it.at },
+        { it.at < floor },
+        { abs(it.at - anchor) },
+    )
+    fun landing(snippet: String, at: Int): SpinePoint {
+        val lineBreaks = snippet.length - snippet.trimStart('\n').length
+        val onSeparator = text[at] == '\n' && item.blockStarts.binarySearch(at + 1) >= 0
+        return SpinePoint(index, at + if (onSeparator && place.offset <= lineBreaks) lineBreaks else 0)
+    }
     val lead = place.snippet.takeWhile { it in TRIMMED }
     val normalised = (if ('\n' in lead) place.snippet.substring(lead.length) else place.snippet).replace(LINE_BREAK_RUN, "\n")
-    for (snippet in listOf(place.snippet, normalised).distinct()) {
-        if (snippet.isEmpty()) continue
-        val found = nearest(snippet) ?: continue
-        val lineBreaks = snippet.length - snippet.trimStart('\n').length
-        val onSeparator = text[found] == '\n' && spineItems[index].blockStarts.binarySearch(found + 1) >= 0
-        return SpinePoint(index, found + if (onSeparator && place.offset <= lineBreaks) lineBreaks else 0)
+    val snippets = listOf(place.snippet, normalised).distinct().filter { it.isNotEmpty() }
+    for (snippet in snippets) {
+        val found = generateSequence(text.indexOf(snippet).takeIf { it >= 0 }) { from -> text.indexOf(snippet, from + 1).takeIf { it >= 0 } }
+            .map { Match(it, snippet.length, it + snippet.length) }
+            .minWithOrNull(order) ?: continue
+        return landing(snippet, found.at)
     }
-    val ownBlock = normalised.substringBefore('\n')
-    if (ownBlock.isNotEmpty() && ownBlock.length < normalised.length) nearest(ownBlock)?.let { return SpinePoint(index, it) }
+    for (snippet in snippets) {
+        val least = minOf(MIN_MATCH, snippet.length)
+        val found = text.indices.asSequence().mapNotNull { text.matchFrom(it, snippet) }.filter { it.length >= least }.minWithOrNull(order) ?: continue
+        return landing(snippet, found.at)
+    }
     return SpinePoint(index, blockStart ?: 0)
+}
+
+/** The fewest characters of a Place's snippet that re-find it without an exact match ([resolve]). */
+private const val MIN_MATCH = 10
+
+/** The most blocks a newer parse may have put inside a Place's snippet that [matchFrom] passes over. */
+private const val MAX_SKIPPED_BLOCKS = 3
+
+/** [length] characters of a Place's snippet match a Spine item's text from [at] to [end]. */
+private class Match(val at: Int, val length: Int, val end: Int)
+
+/**
+ * How much of [snippet] this Spine item text matches from [at], allowing for what a newer parse puts in
+ * it: a line break where the snippet has none or a space (list item paragraphs that ran together, a
+ * `<pre>`'s lines), and up to [MAX_SKIPPED_BLOCKS] whole blocks right after one of its line breaks (an
+ * illustration's caption, a table). Null when the first character differs, and when the match stops at
+ * one of the snippet's line breaks inside a block here: the snippet's block ended there, so this is other
+ * text sharing its end, "He said yes." for "She said yes.".
+ */
+private fun String.matchFrom(at: Int, snippet: String): Match? {
+    fun same(s: Char, t: Char) = s == t || s == ' ' && t == '\n'
+    if (!same(snippet[0], this[at])) return null
+    var i = 0
+    var j = at
+    var skips = MAX_SKIPPED_BLOCKS
+    while (i < snippet.length && j < length) {
+        when {
+            same(snippet[i], this[j]) -> {
+                i++
+                j++
+            }
+            snippet[i] == '\n' -> return null
+            this[j] == '\n' -> j++
+            skips > 0 && snippet[i - 1] == '\n' && this[j - 1] == '\n' -> {
+                skips--
+                j = indexOf('\n', j).let { if (it < 0) length else it + 1 }
+            }
+            else -> break
+        }
+    }
+    return Match(at, i, j)
 }
 
 private val LINE_BREAK_RUN = Regex("\n+")

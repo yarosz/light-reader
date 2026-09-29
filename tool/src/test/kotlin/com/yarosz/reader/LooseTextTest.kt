@@ -203,12 +203,53 @@ class LooseTextTest {
         val after = dialogue.mapIndexed { i, line -> (if (i in 1..3) "<div class=\"illus\">[Illustration $i]</div>" else "") + "<p>$line</p>" }.joinToString("")
         assertPlacesFound(before, after, dialogue.flatMap { listOf(it to 0, it to 2) })
 
-        val cells = listOf("CHAPTER I", "5", "CHAPTER II", "9")
         val rest = "<p>“Yes.”</p><p>“No.”</p><p>“Why not?”</p><p>The end of the chapter, long enough to end it.</p>"
         val table = "<h2>Contents</h2><table><tr><td>CHAPTER I</td><td>5</td></tr><tr><td>CHAPTER II</td><td>9</td></tr></table>$rest"
-        val places = (cells + listOf("“Yes.”", "“No.”", "“Why not?”")).map { it to 0 } + ("CHAPTER II" to 3)
-        assertPlacesFound("<h2>Contents</h2>" + cells.joinToString("") { "<p>$it</p>" } + rest, table, places)
-        assertPlacesFound("<h2>Contents</h2>$rest", table, listOf("“Yes.”", "“No.”", "“Why not?”").map { it to 0 })
+        assertPlacesFound("<h2>Contents</h2>$rest", table, listOf("Contents", "“Yes.”", "“No.”", "“Why not?”").flatMap { listOf(it to 0, it to 3) })
+    }
+
+    @Test
+    fun `a Place in a line whose end another line repeats is found at its own line when a block now follows it`() {
+        val lines = listOf("He said yes.", "A long line of narration, long enough to push the next reply away.", "She said yes.", "Next paragraph goes on for a while.")
+        val before = lines.joinToString("") { "<p>$it</p>" }
+        val after = lines.mapIndexed { i, line -> (if (i % 2 == 1) "<div class=\"illus\">[Illustration $i, with a caption]</div>" else "") + "<p>$line</p>" }
+            .joinToString("")
+        assertPlacesFound(before, after, lines.flatMap { line -> line.indices.map { line to it } })
+    }
+
+    @Test
+    fun `a Place saved when a list item's paragraphs, a definition's paragraphs or a nested list ran together is found at its text`() {
+        val notes = listOf("Apples grow on trees." to "They ripen in autumn.", "Bees make honey." to "It keeps for years.", "Cats sleep a lot." to "Mostly by day.")
+        assertOldPlacesFound(
+            listOf("Notes.") + notes.map { (a, b) -> a + b } + "After the list.",
+            "<p>Notes.</p><ol>" + notes.joinToString("") { (a, b) -> "<li><p>$a</p><p>$b</p></li>" } + "</ol><p>After the list.</p>",
+        )
+        assertOldPlacesFound(
+            notes.flatMapIndexed { i, (a, b) -> listOf("Term ${i + 1}", a + b) } + "Closing prose.",
+            "<dl>" + notes.withIndex().joinToString("") { (i, n) -> "<dt>Term ${i + 1}</dt><dd><p>${n.first}</p><p>${n.second}</p></dd>" } +
+                "</dl><p>Closing prose.</p>",
+        )
+        assertOldPlacesFound(
+            listOf("Before.", "Fruit growsapplepear", "Nuts fallwalnutpecan", "After."),
+            "<p>Before.</p><ul><li>Fruit grows<ul><li>apple</li><li>pear</li></ul></li><li>Nuts fall<ul><li>walnut</li><li>pecan</li></ul></li></ul>" +
+                "<p>After.</p>",
+        )
+    }
+
+    /**
+     * Saves a Place at every character of a Spine item of [oldBlocks], as an older parse read [after], and finds
+     * each at the same character in [after] as it parses now, which only adds line breaks to the text.
+     */
+    private fun assertOldPlacesFound(oldBlocks: List<String>, after: String) {
+        val old = SpineItem("c0", oldBlocks.map { Block(BlockKind.Paragraph, it) })
+        val new = open(listOf(after))
+        val text = new.spineItems.single().text
+        var at = 0
+        for (i in old.text.indices) {
+            while (text[at] != old.text[i]) at++
+            assertEquals(SpinePoint(0, at), new.resolve(old.placeOf(i, 1)), "old offset $i, \"${old.text.substring(i).take(20)}\"")
+            at++
+        }
     }
 
     /** Saves a Place [offset] into each block of text in [places] as [before] parses, and finds each at the same text in [after]. */
