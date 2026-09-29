@@ -25,14 +25,28 @@ class ProgressTest {
             20.0 to "about 20 min left in this chapter",
             61.0 to "about 65 min left in this chapter",
         )
-        assertEquals(expected, expected.mapValues { (minutes, _) -> minutesLeftCopy(minutes) })
+        assertEquals(expected, expected.mapValues { (minutes, _) -> minutesLeftCopy(minutes).full })
+    }
+
+    @Test
+    fun `the short form drops the chapter, for a footer too narrow for the full line`() {
+        assertEquals(ProgressLine(MINUTES_ALMOST_DONE, "under 1 min left"), minutesLeftCopy(0.5))
+        assertEquals(ProgressLine("about 10 min left in this chapter", "about 10 min left"), minutesLeftCopy(9.2))
+        assertEquals(ProgressLine("about 20 min left in this chapter", "about 20 min left"), minutesLeftCopy(15.01))
+    }
+
+    @Test
+    fun `the footer shows the full form only when it fits, to the pixel`() {
+        assertEquals(ProgressForm.Full, progressForm(fullWidthPx = 300, availableWidthPx = 300))
+        assertEquals(ProgressForm.Short, progressForm(fullWidthPx = 301, availableWidthPx = 300))
+        assertEquals(ProgressForm.Full, progressForm(fullWidthPx = 0, availableWidthPx = 300), "no line")
     }
 
     @Test
     fun `floating-point noise on a whole number of minutes doesn't round up a step`() {
-        assertEquals("about 3 min left in this chapter", minutesLeftCopy((0.1 + 0.2) * 10))
-        assertEquals("about 15 min left in this chapter", minutesLeftCopy(15 + 1e-12))
-        assertEquals("about 20 min left in this chapter", minutesLeftCopy(15 + 1e-6))
+        assertEquals("about 3 min left in this chapter", minutesLeftCopy((0.1 + 0.2) * 10).full)
+        assertEquals("about 15 min left in this chapter", minutesLeftCopy(15 + 1e-12).full)
+        assertEquals("about 20 min left in this chapter", minutesLeftCopy(15 + 1e-6).full)
     }
 
     @Test
@@ -74,13 +88,13 @@ class ProgressTest {
         val book = OpenBook("id", "", spineItems, chapters = chapters)
         val index = WordIndex(spineItems)
         assertNull(book.minutesLine(index, SpinePoint(0, 0), PRIOR_WPM), "front matter")
-        assertEquals("about 2 min left in this chapter", book.minutesLine(index, SpinePoint(1, 0), PRIOR_WPM))
-        assertEquals("about 4 min left in this chapter", book.minutesLine(index, SpinePoint(1, words(460).length + 1), PRIOR_WPM))
-        assertEquals("about 3 min left in this chapter", book.minutesLine(index, SpinePoint(2, 0), PRIOR_WPM))
-        assertEquals("about 1 min left in this chapter", book.minutesLine(index, SpinePoint(1, 0), 460.0))
+        assertEquals("about 2 min left in this chapter", book.minutesLine(index, SpinePoint(1, 0), PRIOR_WPM)?.full)
+        assertEquals("about 4 min left in this chapter", book.minutesLine(index, SpinePoint(1, words(460).length + 1), PRIOR_WPM)?.full)
+        assertEquals("about 3 min left in this chapter", book.minutesLine(index, SpinePoint(2, 0), PRIOR_WPM)?.full)
+        assertEquals("about 1 min left in this chapter", book.minutesLine(index, SpinePoint(1, 0), 460.0)?.full)
         assertNull(book.minutesLine(index, book.textEnd, PRIOR_WPM), "from the text's end on")
         val endsEarly = book.copy(textEnd = SpinePoint(2, words(230).length))
-        assertEquals("about 2 min left in this chapter", endsEarly.minutesLine(index, SpinePoint(1, words(460).length + 1), PRIOR_WPM))
+        assertEquals("about 2 min left in this chapter", endsEarly.minutesLine(index, SpinePoint(1, words(460).length + 1), PRIOR_WPM)?.full)
     }
 
     @Test
@@ -89,8 +103,8 @@ class ProgressTest {
         val book = OpenBook("id", "", spineItems)
         val index = WordIndex(spineItems)
         assertNull(book.minutesLine(index, SpinePoint(0, 0), PRIOR_WPM))
-        assertEquals(MINUTES_ALMOST_DONE, book.minutesLine(index, SpinePoint(1, 4), PRIOR_WPM))
-        assertEquals("about 1 min left in this chapter", book.minutesLine(index, SpinePoint(1, 0), PRIOR_WPM))
+        assertEquals(MINUTES_ALMOST_DONE, book.minutesLine(index, SpinePoint(1, 4), PRIOR_WPM)?.full)
+        assertEquals("about 1 min left in this chapter", book.minutesLine(index, SpinePoint(1, 0), PRIOR_WPM)?.full)
         assertNull(book.minutesLine(index, SpinePoint(1, 0), 231.0))
     }
 
@@ -102,6 +116,28 @@ class ProgressTest {
         assertNull(sampleWpm(20, 1_999))
         assertEquals(20 * 60_000.0 / 180_000, sampleWpm(20, 180_000))
         assertNull(sampleWpm(20, 180_001))
+    }
+
+    @Test
+    fun `a Page read faster than 600 words a minute gives no sample`() {
+        assertEquals(599.0, sampleWpm(599, 60_000))
+        assertEquals(SAMPLE_MAX_WPM, sampleWpm(600, 60_000))
+        assertNull(sampleWpm(601, 60_000))
+        assertNull(sampleWpm(250, 10_000), "1,500 wpm")
+    }
+
+    @Test
+    fun `skimming, a turn every 2 and a half seconds, leaves the speed where it was`() {
+        val speed = ReadingSpeed()
+        val timer = PageTimer(speed)
+        repeat(30) { turn ->
+            timer.start(turn * 2_500L, 50)
+            timer.finish((turn + 1) * 2_500L)
+        }
+        assertEquals(PRIOR_WPM, speed.wpm, "50 words in 2.5 s is 1,200 wpm")
+        repeat(MEASURED_AFTER) { speed.record(100, 20_000) }
+        repeat(10) { speed.record(50, 2_500) }
+        assertEquals(300.0, speed.wpm, "a skim after real reading doesn't move the median either")
     }
 
     @Test

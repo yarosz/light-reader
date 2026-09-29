@@ -1,6 +1,7 @@
 package com.yarosz.reader
 
 import android.view.KeyEvent
+import androidx.lifecycle.viewModelScope
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
@@ -17,10 +18,18 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
+
+/**
+ * Time on a Page in the speed tests: a [LineMeasurer] Page at [DEFAULT_FONT_STEP] holds about 900 words, 360 a
+ * minute at this, under [SAMPLE_MAX_WPM]. The headroom holds only there: a step-0 Page is about 1,800 words,
+ * 720 a minute.
+ */
+private const val READ_MS = 150_000L
 
 /**
  * Opens the checked-in Alice from a temp filesDir, through the directory's [ShelfOwner], loaded as
@@ -103,8 +112,8 @@ class ReaderViewModelTest {
     private val ReaderViewModel.shownWords: Int
         get() = frame.value!!.let { aliceWords.between(SpinePoint(it.pass.item, it.page.start), SpinePoint(it.pass.item, it.page.end)) }
 
-    /** Reads the shown Page for [ms], then turns forward. */
-    private fun ReaderViewModel.readThenTurn(ms: Long = 20_000) {
+    /** Reads the shown Page for [ms], then turns forward. The default reads [LineMeasurer]'s Pages under [SAMPLE_MAX_WPM]. */
+    private fun ReaderViewModel.readThenTurn(ms: Long = READ_MS) {
         clock += ms
         nextPage()
     }
@@ -394,7 +403,7 @@ class ReaderViewModelTest {
             val words = vm.shownWords
             assertTrue(words >= SAMPLE_MIN_WORDS)
             vm.readThenTurn()
-            words * 60_000.0 / 20_000
+            words * 60_000.0 / READ_MS
         }
         assertEquals(samples.sorted()[MEASURED_AFTER / 2], speed.wpm)
         val shown = vm.frame.value!!
@@ -444,7 +453,7 @@ class ReaderViewModelTest {
     fun `leaving the last Page for the end page gives no sample, since the end page isn't a Page`() {
         val vm = reading()
         vm.toLastPage()
-        assertTrue(vm.shownWords >= SAMPLE_MIN_WORDS)
+        assertTrue(sampleWpm(vm.shownWords, READ_MS) != null, "the last Page would otherwise count")
         repeat(MEASURED_AFTER - 1) { speed.record(100, 20_000) }
         vm.readThenTurn()
         assertTrue(vm.atEnd.value)
@@ -465,6 +474,40 @@ class ReaderViewModelTest {
         settle()
         assertEquals(3, vm.fontStep.value)
         assertEquals(3, ReadingStore(dir).load().settings.fontStep)
+    }
+
+    @Test
+    fun `A− does nothing at the smallest size and A+ nothing at the largest, so the footer shows them disabled`() {
+        assertFalse(canChangeFont(0, -1))
+        assertTrue(canChangeFont(0, +1))
+        assertTrue(canChangeFont(FONT_SIZES.lastIndex, -1))
+        assertFalse(canChangeFont(FONT_SIZES.lastIndex, +1))
+        assertTrue(canChangeFont(DEFAULT_FONT_STEP, -1) && canChangeFont(DEFAULT_FONT_STEP, +1))
+    }
+
+    @Test
+    fun `a change of 3 steps goes as far as the sizes go, and only its direction decides whether it can`() {
+        assertTrue(canChangeFont(DEFAULT_FONT_STEP, +3) && canChangeFont(DEFAULT_FONT_STEP, -3))
+        assertFalse(canChangeFont(0, -3))
+        assertFalse(canChangeFont(FONT_SIZES.lastIndex, +3))
+        val vm = reading()
+        vm.changeFont(-3)
+        assertEquals(0, vm.fontStep.value)
+        vm.changeFont(+3)
+        assertEquals(3, vm.fontStep.value)
+        vm.changeFont(+3)
+        assertEquals(FONT_SIZES.lastIndex, vm.fontStep.value)
+    }
+
+    @Test
+    fun `leaving the Reader mid-open does nothing, neither "couldn't open" nor a Book`() {
+        val vm = reader()
+        vm.openBook()
+        main.scheduler.runCurrent()
+        vm.viewModelScope.cancel()
+        settle()
+        assertEquals(READING_OPENING, vm.status.value)
+        assertNull(vm.book.value)
     }
 
     /**
@@ -550,7 +593,7 @@ class ReaderViewModelTest {
         assertTrue(vm.inBackMatter)
         assertEquals(bookEnd, vm.pageEnd)
         val words = WordIndex(book.spineItems).between(vm.pageStart, vm.pageEnd)
-        assertTrue(words >= SAMPLE_MIN_WORDS, "the last Page has $words words")
+        assertTrue(sampleWpm(words, READ_MS) != null, "the last Page, $words words, would otherwise count")
         repeat(MEASURED_AFTER - 1) { speed.record(100, 20_000) }
         vm.readThenTurn()
         assertSame(shown, vm.frame.value)
