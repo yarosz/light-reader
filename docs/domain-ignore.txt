@@ -119,10 +119,6 @@ Emulator fidelity
 Reading texture
 Revisit if
 
-# Possible domain terms, left for the next domain pass (not defined in CONTEXT.md yet)
-Download
-Downloads
-
 # N3c: Catalogue screens and their state. The *Screen names follow the SDK's LightScreen; "screen" is
 # an _Avoid_ word for Page only in the reading sense.
 AddCatalogueScreen
@@ -144,6 +140,7 @@ FailureCopy
 More
 # A Catalogue page is one fetch of its feed, not a reading Page (see CONTEXT.md "Page").
 PageState
+CataloguePage
 
 # N3c: storage and network plumbing
 CatalogueKey

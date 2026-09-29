@@ -9,6 +9,24 @@ import java.util.zip.ZipException
 import java.util.zip.ZipFile
 
 /**
+ * A foreground download the Shelf shows, keyed by its source. [title] is the one the Book gets: the
+ * Catalogue entry's, or for a download from the Shelf, the stored one. [startedAt] is epoch millis.
+ * [replacing] is the identifier of the Shelf row that started it, to download a missing file again;
+ * null for a download from a Catalogue, which shows as a row of its own until it arrives.
+ */
+data class Download(val title: String, val author: String?, val startedAt: Long, val status: Status, val replacing: String? = null) {
+    sealed interface Status {
+        data object Running : Status
+
+        /**
+         * A download from a Catalogue stays on the Shelf only after a retryable failure ([isRetryable]);
+         * a download from the Shelf keeps its row whatever the failure.
+         */
+        data class Failed(val reason: DownloadFailure) : Status
+    }
+}
+
+/**
  * The largest Book downloaded. Text EPUBs are well under 10 MB, and Gutenberg's image editions of
  * long illustrated works run to tens of MB (Pride and Prejudice's is 25 MB); 300 MB leaves room for
  * any real Book while bounding what a broken or hostile server can write to the phone. Opening a Book
@@ -37,12 +55,12 @@ sealed interface DownloadState {
         val fraction: Float? get() = total?.takeIf { it > 0 }?.let { (received.toFloat() / it).coerceIn(0f, 1f) }
     }
 
-    sealed interface Finished : DownloadState
+    sealed interface Outcome : DownloadState
 
     /** The Book is on the phone as [file], a name inside the Downloader's directory. [author] is its package's, if any. */
-    data class Done(val identifier: String, val title: String, val file: String, val author: String? = null) : Finished
+    data class Done(val identifier: String, val title: String, val file: String, val author: String? = null) : Outcome
 
-    data class Failed(val reason: DownloadFailure) : Finished, Fetch
+    data class Failed(val reason: DownloadFailure) : Outcome, Fetch
 }
 
 /** What [Downloader.fetch] brings back: a [Checked] Book, or why it failed. */
@@ -89,7 +107,7 @@ class Downloader(
         url: HttpsUrl,
         fallbackTitle: String,
         onProgress: (DownloadState.Downloading) -> Unit,
-    ): DownloadState.Finished =
+    ): DownloadState.Outcome =
         when (val fetched = fetch(url, fallbackTitle, onProgress)) {
             is Checked -> keep(fetched)
             is DownloadState.Failed -> fetched
@@ -129,7 +147,7 @@ class Downloader(
     }
 
     /** Renames [checked]'s temp file to its Book's name, replacing an earlier download of the Book. */
-    fun keep(checked: Checked): DownloadState.Finished {
+    fun keep(checked: Checked): DownloadState.Outcome {
         val target = File(dir, bookFileName(checked.identifier))
         if (!rename(checked.temp, target)) {
             checked.discard()

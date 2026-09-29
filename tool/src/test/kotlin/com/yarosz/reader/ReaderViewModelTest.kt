@@ -59,10 +59,10 @@ class ReaderViewModelTest {
         vm.openBook()
         settle()
         val book = assertNotNull(vm.book.value)
-        val entry = ReadingStore(dir).load().books.getValue(book.identifier)
-        val place = assertNotNull(entry.place)
+        val saved = ReadingStore(dir).load().books.getValue(book.identifier)
+        val place = assertNotNull(saved.place)
         assertEquals(book.spineItems[0].placeOf(0, place.updatedAt), place)
-        assertEquals(Book(book.title, "alice.epub", place, finished = false, onShelf = true, author = "Lewis Carroll"), entry.copy(addedAt = null))
+        assertEquals(Book(book.title, "alice.epub", place, finished = false, onShelf = true, author = "Lewis Carroll"), saved.copy(addedAt = null))
         assertEquals("Lewis Carroll", shelfRows(ReadingStore(dir).load(), setOf("alice.epub"), emptyMap()).single().detail)
     }
 

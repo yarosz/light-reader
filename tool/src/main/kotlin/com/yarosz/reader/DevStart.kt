@@ -4,10 +4,10 @@ package com.yarosz.reader
  * Where `scripts/perf.sh` asks the book to open: a Spine item, a character offset into it, and optionally
  * a window size that overrides [WINDOW_CHARS] for that run. The caller clamps both positions to the book.
  */
-data class DevStart(val item: Int, val offset: Int = 0, val windowChars: Int? = null)
+data class DevStart(val item: Int, val char: Int = 0, val windowChars: Int? = null)
 
 /**
- * Parses filesDir/dev-start: "<item>", "<item> <offset>" or "<item> <offset> <windowChars>",
+ * Parses filesDir/dev-start: "<item>", "<item> <char>" or "<item> <char> <windowChars>",
  * whitespace-separated. Anything else, including negative values or a zero window size, is null.
  */
 fun parseDevStart(text: String): DevStart? {

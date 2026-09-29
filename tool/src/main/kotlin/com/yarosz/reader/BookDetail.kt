@@ -28,13 +28,13 @@ sealed interface ShelfMatch {
  */
 fun ShelfSnapshot.match(links: Collection<HttpsUrl>): ShelfMatch? {
     val sources = links.map { it.value }.toSet()
-    return data.books.entries.filter { it.value.source in sources }.map { (identifier, entry) ->
-        val file = entry.file?.takeIf { it in present }
+    return data.books.entries.filter { it.value.source in sources }.map { (identifier, book) ->
+        val file = book.file?.takeIf { it in present }
         when {
-            entry.onShelf && file != null -> ShelfMatch.Here(identifier, file)
-            entry.onShelf -> ShelfMatch.Missing(identifier)
+            book.onShelf && file != null -> ShelfMatch.Here(identifier, file)
+            book.onShelf -> ShelfMatch.Missing(identifier)
             else -> ShelfMatch.Removed(identifier)
-        } to entry.addedAt
+        } to book.addedAt
     }.maxWithOrNull(compareBy<Pair<ShelfMatch, Long?>> { it.first.preference }.thenBy { it.second ?: Long.MIN_VALUE })?.first
 }
 

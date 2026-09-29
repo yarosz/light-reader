@@ -102,7 +102,7 @@ data class ReadingData(
 fun ReadingData.storedTitle(file: String): String? = books.values.firstOrNull { it.file == file }?.title?.takeIf { it.isNotBlank() }
 
 /**
- * Puts the Book on the Shelf, adding its entry when it has none, with [title] and [file] current. A
+ * Puts the Book on the Shelf, adding it when it isn't stored, with [title] and [file] current. A
  * null [author] or [source] keeps the one stored. [now] becomes [Book.addedAt] when the Book
  * wasn't on the Shelf; a Book already there keeps its date. Its Place is always kept.
  */
@@ -115,7 +115,7 @@ fun ReadingData.shelve(
     now: Long? = null,
 ): ReadingData {
     val old = books[identifier] ?: Book(title = title, file = file, place = null, finished = false, onShelf = false)
-    val entry = old.copy(
+    val book = old.copy(
         title = title,
         file = file,
         onShelf = true,
@@ -123,7 +123,7 @@ fun ReadingData.shelve(
         source = source ?: old.source,
         addedAt = if (!old.onShelf && now != null) now else old.addedAt,
     )
-    return copy(books = books + (identifier to entry))
+    return copy(books = books + (identifier to book))
 }
 
 /**
@@ -131,26 +131,26 @@ fun ReadingData.shelve(
  * kept, so adding it again brings back its Place.
  */
 fun ReadingData.unshelve(identifier: String): ReadingData {
-    val entry = books[identifier] ?: return this
-    return copy(books = books + (identifier to entry.copy(file = null, onShelf = false)))
+    val book = books[identifier] ?: return this
+    return copy(books = books + (identifier to book.copy(file = null, onShelf = false)))
 }
 
 /**
  * Moves the Book at [from] to [to], as when downloading it again brings a package that declares a
  * new identifier (Calibre mints one on every conversion): its Place, finished flag, date added,
- * title, source and unknown fields go to [to], replacing an entry there that is off the Shelf. A
+ * title, source and unknown fields go to [to], replacing a Book there that is off the Shelf. A
  * Book already on the Shelf at [to] stays as it is except for its Place, which becomes the newer of
  * the two (with its finished flag; a tie keeps its own). [from] stays behind off the Shelf with no
  * file, the state a removal leaves, rather than being dropped: [merge] keeps every Book the file on
  * disk has, so a dropped key would come back on the next save.
  */
 fun ReadingData.moveBook(from: String, to: String): ReadingData {
-    val entry = books[from]?.takeIf { from != to } ?: return this
+    val book = books[from]?.takeIf { from != to } ?: return this
     val moved = books[to]?.takeIf { it.onShelf }?.let { target ->
-        val reading = if (entry.placeTime > target.placeTime) entry else target
+        val reading = if (book.placeTime > target.placeTime) book else target
         target.copy(place = reading.place, finished = reading.finished)
-    } ?: entry
-    return copy(books = books + (to to moved) + (from to entry.copy(file = null, onShelf = false)))
+    } ?: book
+    return copy(books = books + (to to moved) + (from to book.copy(file = null, onShelf = false)))
 }
 
 /**
@@ -159,9 +159,9 @@ fun ReadingData.moveBook(from: String, to: String): ReadingData {
  * make the newest Place lose a [merge].
  */
 fun ReadingData.withPlace(identifier: String, place: Place): ReadingData {
-    val entry = books[identifier] ?: return this
-    val updatedAt = entry.place?.let { maxOf(place.updatedAt, it.updatedAt + 1) } ?: place.updatedAt
-    return copy(books = books + (identifier to entry.copy(place = place.copy(updatedAt = updatedAt))))
+    val book = books[identifier] ?: return this
+    val updatedAt = book.place?.let { maxOf(place.updatedAt, it.updatedAt + 1) } ?: place.updatedAt
+    return copy(books = books + (identifier to book.copy(place = place.copy(updatedAt = updatedAt))))
 }
 
 /**
@@ -214,7 +214,7 @@ fun OpenBook.resolve(place: Place): SpinePoint? {
  * that the save with the newest data). Idempotent: merge(x, x) == x, and merging the same [mine]
  * twice changes nothing.
  * - schemaVersion: the higher, so an older build never downgrades the file.
- * - books: both sides' Books. For a Book on both sides, see [mergeEntry].
+ * - books: both sides' Books. For a Book on both sides, see [mergeBook].
  * - settings: fontStep from [mine]; unknown fields from both, [mine] winning a clash.
  * - catalogues: both sides' records; for a Catalogue on both sides, see [mergeRecord]. A removal is a
  *   record too, so it survives a merge with a file that still lists the Catalogue, and adding it
@@ -226,7 +226,7 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
     books = (disk.books.keys + mine.books.keys).associateWith { id ->
         val d = disk.books[id]
         val m = mine.books[id]
-        if (d != null && m != null) mergeEntry(d, m) else m ?: d!!
+        if (d != null && m != null) mergeBook(d, m) else m ?: d!!
     },
     settings = Settings(mine.settings.fontStep, disk.settings.extras + mine.settings.extras),
     catalogues = (disk.catalogues.keys + mine.catalogues.keys).associateWith { key ->
@@ -243,7 +243,7 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
  * [mine], because this process owns the files. The title is [mine]'s unless blank; the author and
  * source are [mine]'s unless null. Unknown fields come from both, [mine] winning a clash.
  */
-private fun mergeEntry(disk: Book, mine: Book): Book {
+private fun mergeBook(disk: Book, mine: Book): Book {
     val reading = if (disk.placeTime > mine.placeTime) disk else mine
     return Book(
         title = mine.title.ifBlank { disk.title },
@@ -298,7 +298,7 @@ fun ReadingData.encode(): String = prettyJson.encodeToString(
         extras,
         "schemaVersion" to JsonPrimitive(schemaVersion),
         "settings" to jsonObject(SETTINGS_FIELDS, settings.extras, "fontStep" to JsonPrimitive(settings.fontStep)),
-        "books" to JsonObject(books.mapValues { (_, entry) -> entry.toJson() }),
+        "books" to JsonObject(books.mapValues { (_, book) -> book.toJson() }),
         "catalogues" to catalogues.takeIf { it.isNotEmpty() }?.let { records ->
             JsonObject(
                 records.entries.associate { (key, record) ->
@@ -357,7 +357,7 @@ fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
     val root = Json.parseToJsonElement(text) as? JsonObject ?: corrupt("top level")
     ReadingData(
         schemaVersion = root.int("schemaVersion") ?: CURRENT_SCHEMA,
-        books = root.obj("books")?.mapValues { (id, entry) -> (entry as? JsonObject ?: corrupt("books.$id")).toEntry(id) }.orEmpty(),
+        books = root.obj("books")?.mapValues { (id, json) -> (json as? JsonObject ?: corrupt("books.$id")).toBook(id) }.orEmpty(),
         settings = root.obj("settings")?.let { Settings(it.int("fontStep") ?: DEFAULT_FONT_STEP, it.unknown(SETTINGS_FIELDS)) } ?: Settings(),
         catalogues = root.obj("catalogues")?.let(::catalogueRecords).orEmpty(),
         extras = root.unknown(TOP_FIELDS),
@@ -383,7 +383,7 @@ private fun catalogueRecords(records: JsonObject): Map<CatalogueKey, CatalogueRe
         read + (key to (read[key]?.let { mergeRecord(it, record) } ?: record))
     }
 
-private fun JsonObject.toEntry(id: String) = Book(
+private fun JsonObject.toBook(id: String) = Book(
     title = string("title").orEmpty(),
     file = bookFile(id),
     place = obj("place")?.let {

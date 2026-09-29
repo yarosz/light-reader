@@ -54,12 +54,24 @@ again from its source; a Book with no source (one the reader imported) can only 
 is where Books are found; a source is one Book's file.
 _Avoid_: origin, URL
 
+**Download**:
+The Tool fetching a Book's file, from a Catalogue entry or from the Book's source. It belongs to the
+Shelf, not to the Catalogue page that started it, and a Book it brings back keeps its Place. A Book
+added from a file already on the phone is imported, not downloaded.
+_Avoid_: transfer
+
 ## Structure of a Book
 
 **Chapter**:
-A division named in the Book's own table of contents. When a Book has no usable table of contents,
-each Spine item counts as a Chapter.
+A division named in the Book's own table of contents, running until the next one or the end of the
+Book. When the table of contents nests, only divisions with none nested under them are Chapters. When
+a Book has no usable table of contents, each Spine item counts as a Chapter.
 _Avoid_: section
+
+**Front matter**:
+The part of a Book before its first Chapter, such as the title page and copyright page. It belongs to
+no Chapter. A preface the table of contents lists is a Chapter, not front matter.
+_Avoid_: prelims
 
 **Spine item**:
 One of the documents a Book is made of, in reading order. A Spine item may hold several Chapters,
@@ -76,7 +88,7 @@ _Avoid_: position, anchor, offset, location
 
 **Page**:
 What fits on the screen at the current font size. Recomputed whenever the layout changes; never
-saved and never shown outside the reading session. A Catalogue's page (one fetch of its list, which
+saved, and gone once the reader leaves the Book. A Catalogue's page (one fetch of its list, which
 "More" extends) is not a Page.
 _Avoid_: screen
 
@@ -87,9 +99,9 @@ percent ("42%").
 _Avoid_: position, page number
 
 **Finished**:
-A Book the reader has reached the end of and left from its last page. Finished Books sit at the bottom
-of the Shelf. Opening one again opens at its Place; reading on from any Page before the end makes it
-in progress again.
+A Book the reader has read to the end: turned past its last Page and left from there. Finished Books
+sit at the bottom of the Shelf. Opening one again opens at its Place; turning back from the end, or
+going to any earlier Page, makes it in progress again.
 _Avoid_: read, done, completed
 
 **Bookmark**:

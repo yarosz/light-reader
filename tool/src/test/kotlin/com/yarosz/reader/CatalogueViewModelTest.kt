@@ -122,10 +122,10 @@ class CatalogueViewModelTest {
         settle()
         val read = assertIs<DetailAction.Read>(book.detail.value!!.action)
         assertTrue(File(dir, read.file).exists())
-        val entry = stored().books.getValue("http://www.gutenberg.org/1342")
-        assertEquals(noImages.value, entry.source)
-        assertEquals("Pride and Prejudice", entry.title)
-        assertEquals("Jane Austen", entry.author)
+        val saved = stored().books.getValue("http://www.gutenberg.org/1342")
+        assertEquals(noImages.value, saved.source)
+        assertEquals("Pride and Prejudice", saved.title)
+        assertEquals("Jane Austen", saved.author)
     }
 
     @Test

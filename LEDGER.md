@@ -32,6 +32,7 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | N2 | Reading data store | `reading-data.json` per ADR 0002 (Place = Spine item, block, offset, snippet; Books keyed by `dc:identifier`), atomic replace with a separate `.bak`, a `.corrupt` copy of an unparseable file, debounced saves plus a flush on pause, merge tests; 105 unit tests, 19 mutations caught. Emulator and LP3: kill and relaunch lands on the same Page, the font step persists, a corrupt file opens at the `.bak` Place; emulator: main's build over it and back keeps the Place, a schemaVersion 2 file keeps its unknown fields |
 | N3 | Shelf + Catalogues (#15, #16, #17, #19) | One Atom parser (OPDS, OpenSearch), https only with typed http:// tried once, redirects followed in code, every XML document through one untrusted-XML parser with size caps; foreground downloads into filesDir owned by the process's `ShelfOwner`, copy-protected EPUBs refused; the Shelf (order, Edit, missing files), the Catalogue list, pages with search and "More", Book detail matched by source, Add a Catalogue, every failure's D14/D15 copy (`DESIGN.md` "Shelf", "Catalogues"); an additive `catalogues` field in `reading-data.json`; 310 unit tests. Emulator: a Gutenberg Book (Pride and Prejudice) and a Standard Ebooks Book downloaded, showed on the Shelf, and each reopened at its own Place offline after a force-stop |
 | G | Rename to the glossary (pre-N4) (#20) | Behaviour-preserving renames so the code says what `CONTEXT.md` says (`SpineItem`, `SpinePoint`, `Book`; `SpineRef` and `OpenBook` are parser names; `Download` waits for the pre-N4 domain pass); `reading-data.json` keys and the log lines `scripts/perf.sh` reads unchanged; 310 unit tests, as before; `scripts/domain-drift.sh` 0 unresolved |
+| D4 | Pre-N4 domain pass (#21) | Glossary: Download, Front matter, Chapter runs to the next one (leaf entries only), Finished set past the last Page, Page no longer leans on "reading session"; renames `DownloadState.Finished` → `Outcome`, stored-Book `entry` → `book`, `DevStart.offset` → `char`; `Download` moves to `Download.kt`. Kept as they are: `Reading`'s `offset` (a layout-internal string index; `open` agrees with `enter`), `RowTap.Download` (it starts a Download), "file" in row copy (the Book's file), `Pass.item` (KDoc added), `CataloguePage` (Page's own note). `scripts/domain-drift.sh` 0 unresolved; tag `domain-pass/n4` on the merge commit |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
@@ -77,25 +78,28 @@ Ordered. Each item ends on its _done-when_.
   change, whichever lands first. A connect timeout on a typed http:// address reads NoHttps only on a
   VALIDATED network, which the SDK can't report today, so it is Unreachable; revisit if
   `LightConnectivity` gains validation.
-- **Pre-N4 domain pass (AGENTS.md "Domain language").** Settle these parked questions:
-  - `Download`: is it a domain term? Resolve its clash with `RowTap.Download` and decide where it
-    lives (`Shelf.kt` today, not `Download.kt`).
-  - `DownloadState.Finished` against the glossary's Finished.
-  - Reading session.
-  - A Catalogue's page (`CataloguePage`) against Page.
-  - "file" in row copy.
-  - The `entry` helpers and locals that name a stored Book (`toEntry`, `mergeEntry`, `entry`), now that "Catalogue entry" is the only entry.
-  - `Pass.item` (an index) beside `Pass.spineItem`.
-  - `char` against `offset` for character indices (`SpinePoint`, `Reading.open`, `DevStart`). The `reading-data.json` key `offset` stays.
-
-  _Done when:_ `scripts/domain-drift.sh` reports 0 and the merged commit is tagged `domain-pass/n4`.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,
   "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
   ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back or jumping away from
-  the end clears it. A Spine item with no table-of-contents entry is labelled by its first heading,
-  else "Chapter N" counted over listed Chapters, never "Section N"; front matter shows the Book title.
+  the end clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
+  Spine item or a Part heading continues the Chapter before it; with none, each Spine item is a Chapter labelled by its
+  first heading, else "Chapter N", never "Section N". Front matter shows the Book title and no minutes
+  line. Settled in the pre-N4 domain pass (the N4 review may revisit):
+  - The stored key is `progress` on the Place: the share (0–1) of the Book's text before the Place,
+    front and back matter included; Chapter minutes are never stored. A Place saved before N4 has none, and the
+    Shelf shows no percent for it until the next page turn.
+  - Nested tables of contents: only leaf entries are Chapters (ADR 0004's nearest leaf), so a "Part
+    One" page continues the Chapter before it, or is front matter.
+  - Back matter: listed back matter is its own Chapter, unlisted back matter continues the last one,
+    and Finished needs the last Page.
+  - Leaving the end page by system back or "Back to Shelf" sets Finished. The Place stays on the last
+    Page (the end page is not a Page), so a Finished Book reopens there.
+  - Reading-speed samples belong to the reader: the last 20 are kept in memory across Books, not saved.
+  - The Spine-item counter (`ReaderScreen.kt`, `${shown.pass.item + 1}/…`) goes when the top bar shows
+    the Chapter title, and its ignore line with it. The perf key `chapters=` counts Spine items; log
+    real Chapters under a new key.
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.

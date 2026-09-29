@@ -10,7 +10,7 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
- * The reading session over fake Spine items: opening at a Place, turning pages within and across Spine items,
+ * Reading over fake Spine items: opening at a Place, turning pages within and across Spine items,
  * font changes, the cache rule, the backward-crossing decision, and what gets measured when.
  */
 class ReadingTest {
