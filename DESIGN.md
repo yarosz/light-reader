@@ -187,7 +187,7 @@ up) returns to the last Page. The end page is not a Page, so the Place stays on 
 last Page of the text ends where Back matter starts, however short that leaves it, so Back matter never
 shares a Page with the text.
 
-**Back matter.** Reached only through Contents, never by turning past the end page. Inside it, turns work
+**Back matter.** From the text, reached only through Contents, never by turning past the end page. Inside it, turns work
 as anywhere else: the top line shows its Chapter's title, the footer has no Progress line, forward on the
 Book's last Page does nothing, and no second end page shows. A Place saved there opens there. Back
 matter's first row starts where Back matter does: the first Chapter listed in it moves back there when no

@@ -72,7 +72,7 @@ _Avoid_: section
 **Part**:
 A division of a Book that groups Chapters, such as "BOOK ONE" or "PART II". When the table of contents
 nests Chapters under it, it is not a Chapter, and a Page opening on its heading goes by its first
-Chapter. When the table of contents lists it beside its Chapters, it is a Chapter too. A Part is never
+Chapter when only headings come between them. When the table of contents lists it beside its Chapters, it is a Chapter too. A Part is never
 a Book, whatever its heading says.
 _Avoid_: section, volume, book (for a Part)
 
@@ -87,13 +87,13 @@ _Avoid_: prelims
 The part of a Book after its text ends: from Project Gutenberg's license, or from the run of Spine
 items at the Book's end that it marks as back matter, whichever comes first. The end page comes before
 it. Turning forward from the text never reaches it; Contents does, and a Place already in it opens
-there. A Book that marks none has no Back matter.
+there. A Book with neither has no Back matter.
 _Avoid_: appendix, trailer
 
 **Spine item**:
 One of the documents a Book is made of, in reading order. A Spine item may hold several Chapters,
 and one Chapter may span several Spine items. Documents that aren't reading matter (a cover wrapper
-marked auxiliary, a Standard Ebooks title page or imprint, a document with no text) are left out:
+marked auxiliary that the table of contents doesn't list, a Standard Ebooks title page or imprint, a document with no text) are left out:
 they are no Spine item, and no Page shows them.
 _Avoid_: file, chapter
 
@@ -103,7 +103,7 @@ _Avoid_: file, chapter
 Where the reader is in a Book: the spot in the text at the top of the Page being read. A Book gets its
 Place when it is first opened; until then it hasn't been started. Font or layout changes never move
 it, though after one it may sit a few lines down its Page, so the Page doesn't start mid-word or part a
-heading from its text, and never goes by a Chapter before the Place's. Going to a Chapter from Contents
+heading from its text, and never goes by a Chapter before the Place's own. Going to a Chapter from Contents
 puts the Place at the top of the Page the Chapter starts on. The reader never sees it as a number; the
 Book simply opens there.
 _Avoid_: position, anchor, offset, location
