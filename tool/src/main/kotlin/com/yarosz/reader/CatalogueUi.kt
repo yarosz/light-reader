@@ -1,5 +1,6 @@
 package com.yarosz.reader
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -40,10 +42,16 @@ fun rowPadding(): Modifier = Modifier.fillMaxWidth().padding(horizontal = SIDE_M
 
 /**
  * A screen above the Shelf: the theme, a top bar with back, [title] in the centre and an optional
- * [right] button, then [content] scrolling below.
+ * [right] button, then [content] scrolling below, by [scrollState].
  */
 @Composable
-fun BackScreen(title: String, onBack: () -> Unit, right: LightBarButton? = null, content: @Composable ColumnScope.() -> Unit) {
+fun BackScreen(
+    title: String,
+    onBack: () -> Unit,
+    right: LightBarButton? = null,
+    scrollState: ScrollState = rememberScrollState(),
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val themeColors by LightThemeController.colors.collectAsState()
     LightTheme(colors = themeColors) {
         Column(Modifier.fillMaxSize().background(LightThemeTokens.colors.background)) {
@@ -53,7 +61,7 @@ fun BackScreen(title: String, onBack: () -> Unit, right: LightBarButton? = null,
                 rightButton = right,
                 modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
             )
-            LightScrollView(Modifier.weight(1f).fillMaxWidth(), content = content)
+            LightScrollView(Modifier.weight(1f).fillMaxWidth(), scrollState = scrollState, content = content)
         }
     }
 }

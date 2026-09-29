@@ -93,7 +93,7 @@ Ordered. Each item ends on its _done-when_.
     and the Shelf shows no percent for it until the next page turn.
   - Nested tables of contents: only leaf entries are Chapters (ADR 0004's nearest leaf), so a "Part
     One" page continues the Chapter before it, or is front matter.
-  - Back matter: listed Back matter is its own Chapter. Unmarked trailing material is text: listed, it
+  - Back matter: Back matter always starts a Chapter, listed or not (N4 (c)). Unmarked trailing material is text: listed, it
     is its own Chapter; unlisted, it continues the last one. Finished needs the last Page of the text. Back matter (`CONTEXT.md`) starts at
     `OpenBook.textEnd`: Project Gutenberg's `pg-footer`, or a trailing run of Spine items marked
     `backmatter`. The end page follows the last Page of the text, which ends exactly there.
@@ -109,6 +109,11 @@ Ordered. Each item ends on its _done-when_.
     listed title page).
   - A label that ends with its Chapter's first heading, after a caption, is titled by the heading
     ("CHAPTER III.").
+  - N4 (c), Contents: tapping the top line opens it (the screen's top 48 dp, so the top of the Page no
+    longer turns). One row per Chapter, the current one marked "you're here" (on the end page, the last
+    Chapter of the text); a jump lands on a Page starting exactly at the Chapter, laid out afresh, as the
+    Place, untimed; it clears Finished in the text and keeps it in Back matter. Opening Contents drops
+    the Page's timing. The volume keys stay LightOS's there until N5.
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's

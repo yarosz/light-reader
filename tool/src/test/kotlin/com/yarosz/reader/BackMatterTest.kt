@@ -42,10 +42,63 @@ class BackMatterTest {
     }
 
     @Test
-    fun `pg-footer counts without any table of contents naming it, and never becomes a Chapter`() {
+    fun `with no table of contents, a pg-footer mid-way through a Spine item starts a Chapter of its own, titled by its heading`() {
         val book = open(gutenbergBodies())
         assertEquals(book.startOf(LICENSE_HEADING), book.textEnd)
-        assertEquals(List(3) { SpinePoint(it, 0) }, book.chapters.map { it.start })
+        assertEquals(List(3) { SpinePoint(it, 0) } + book.textEnd, book.chapters.map { it.start })
+        assertEquals(listOf("PRIDE AND PREJUDICE", "Chapter I.", "Chapter II.", LICENSE_HEADING), book.chapters.map { it.title })
+    }
+
+    @Test
+    fun `a table of contents that doesn't list the license still gets a Back matter Chapter there, titled by its heading`() {
+        val book = open(gutenbergBodies(), ncx(navPoint("Title", "text/c0.xhtml"), navPoint("Chapter I.", "text/c1.xhtml#ch1"), navPoint("Chapter II.", "text/c2.xhtml#ch2")))
+        assertEquals(listOf("Title", "Chapter I.", "Chapter II.", LICENSE_HEADING), book.chapters.map { it.title })
+        assertEquals(book.textEnd, book.chapters.last().start)
+        assertTrue(book.isBackMatter(3))
+    }
+
+    @Test
+    fun `a Back matter Chapter with no heading is Chapter N`() {
+        val book = open(listOf("<p>One</p>", """<p>Two</p><div id="pg-footer"><p>License terms.</p></div>"""))
+        assertEquals(listOf("Chapter 1", "Chapter 2", "Chapter 3"), book.chapters.map { it.title })
+        assertEquals(book.startOf("License terms."), book.chapters.last().start)
+    }
+
+    @Test
+    fun `a listed license at the start of its own Spine item is the Back matter Chapter, with no second one at the text's end`() {
+        val bodies = listOf(
+            "<h1>Title</h1>",
+            "<h2>Chapter I.</h2><p>It is a truth universally acknowledged.</p>",
+            """<footer id="pg-footer"><h2 id="pg-footer-heading">$LICENSE_HEADING</h2><p>Terms.</p></footer>""",
+        )
+        val starts = listOf(SpinePoint(0, 0), SpinePoint(1, 0), SpinePoint(2, 0))
+        for (license in listOf("text/c2.xhtml#pg-footer-heading", "text/c2.xhtml")) {
+            val book = open(bodies, ncx(navPoint("Title", "text/c0.xhtml"), navPoint("Chapter I.", "text/c1.xhtml"), navPoint(LICENSE_HEADING, license)))
+            assertEquals(book.endOf(1), book.textEnd)
+            assertEquals(starts, book.chapters.map { it.start })
+        }
+        val unlisted = open(bodies, ncx(navPoint("Title", "text/c0.xhtml"), navPoint("Chapter I.", "text/c1.xhtml")))
+        assertEquals(starts, unlisted.chapters.map { it.start })
+        assertEquals(LICENSE_HEADING, unlisted.chapters.last().title)
+    }
+
+    @Test
+    fun `a Chapter listed at the end of the Spine item before Back matter counts as starting it`() {
+        val spineItems = listOf(SpineItem("a", listOf(Block(BlockKind.Paragraph, "One"))), SpineItem("b", listOf(Block(BlockKind.Heading, "Notes"))))
+        val listed = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Notes", SpinePoint(0, 3)))
+        assertEquals(listed, chaptersOf(listed, spineItems, textEnd = SpinePoint(0, 3)))
+        val unlisted = listOf(Chapter("One", SpinePoint(0, 0)), Chapter("Later", SpinePoint(0, 1)))
+        assertEquals(unlisted + Chapter("Notes", SpinePoint(1, 0)), chaptersOf(unlisted, spineItems, textEnd = SpinePoint(0, 3)))
+    }
+
+    @Test
+    fun `a Book with no Back matter gets no added Chapter`() {
+        val book = open(listOf("<h1>One</h1><p>Text</p>", "<p>Two</p>"))
+        assertEquals(book.bookEnd(), book.textEnd)
+        assertEquals(listOf(SpinePoint(0, 0), SpinePoint(1, 0)), book.chapters.map { it.start })
+        val listed = open(gutenbergBodies().map { it.replace("id=\"pg-footer\"", "id=\"elsewhere\"") }, gutenbergNcx())
+        assertEquals(listed.bookEnd(), listed.textEnd)
+        assertEquals(listOf("Title", "Chapter I.", "Chapter II.", LICENSE_HEADING), listed.chapters.map { it.title })
     }
 
     @Test

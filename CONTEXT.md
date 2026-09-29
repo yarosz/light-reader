@@ -65,7 +65,8 @@ _Avoid_: transfer
 **Chapter**:
 A division named in the Book's own table of contents, running until the next one or the end of the
 Book. When the table of contents nests, only divisions with none nested under them are Chapters. When
-a Book has no usable table of contents, each Spine item counts as a Chapter.
+a Book has no usable table of contents, each Spine item counts as a Chapter. Back matter always starts a
+Chapter.
 _Avoid_: section
 
 **Front matter**:
@@ -103,6 +104,11 @@ How far the reader is, derived from the Place. While reading, it is the time lef
 ("about 12 min left in this chapter"). On the Shelf, it is how far through the Book the reader is, as a
 percent ("42%").
 _Avoid_: position, page number
+
+**Contents**:
+The list of a Book's Chapters, in order, opened from the reading view. Choosing one goes to the start of
+that Chapter; it is the only way into Back matter.
+_Avoid_: table of contents (that is the Book's own list, which Contents is built from), TOC, index, chapters list
 
 **Finished**:
 A Book the reader has read to the end of its text, the last Page before any Back matter. It becomes

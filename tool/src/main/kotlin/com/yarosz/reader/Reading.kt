@@ -122,6 +122,17 @@ class Reading<M>(
         return enter(item, offset, key)
     }
 
+    /**
+     * Shows the Page starting at [offset] in Spine item [item] at [key], as a jump to a Chapter needs: from a
+     * cached pass only when it has a Page starting exactly there, else a new pass anchored there, whose first
+     * Page starts on [offset]'s line ([pack]). An [offset] at the end of a Spine item jumps to the next one's start.
+     */
+    fun jump(item: Int, offset: Int, key: LayoutKey): Shown<M> {
+        passes.values.removeAll { it.key != key }
+        if (offset == spineItems[item].text.length && item < spineItems.lastIndex) return enter(item + 1, 0, key, exact = true)
+        return enter(item, offset, key, exact = true)
+    }
+
     /** The Page after the shown one, the next Spine item's first past a Spine item's end; null at the book's end. */
     fun next(): Shown<M>? {
         val (pass, page) = shown ?: return null
@@ -150,10 +161,11 @@ class Reading<M>(
         return pass.prefetchFor(page.start, PREFETCH_WINDOWS)?.let { pass to it }
     }
 
-    private fun enter(item: Int, offset: Int, key: LayoutKey): Shown<M> {
+    /** Shows the Page holding [offset], or with [exact] the Page starting at it, from Spine item [item]'s cached pass when it has that Page, else a new pass anchored there. */
+    private fun enter(item: Int, offset: Int, key: LayoutKey, exact: Boolean = false): Shown<M> {
         val spineItem = spineItems[item]
         val pageBreak = textEnd?.takeIf { it.item == item }?.char
-        val pass = passes.remove(item)?.takeIf { it.pageAt(offset) != null }
+        val pass = passes.remove(item)?.takeIf { cached -> cached.pageAt(offset)?.let { !exact || it.start == offset } == true }
             ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, linesOf)
         passes[item] = pass
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())

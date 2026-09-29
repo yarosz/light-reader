@@ -209,6 +209,30 @@ class ReaderViewModel(
         turn(back = true) { it.previous() }
     }
 
+    /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
+    fun openContents(): Contents? {
+        timer.discard()
+        return book.value?.contentsAt(pageStart, atEnd.value)
+    }
+
+    /**
+     * A jump from Contents to Chapter [chapter]: leaves the end page and shows the Page starting at the
+     * Chapter's start ([Reading.jump]), even the Chapter already current, recording it as the Place, stamped.
+     * It clears Finished when the Chapter is text, keeps it when the Chapter is Back matter, and never sets
+     * it. The running timing is dropped and the landed Page is untimed, so it gives no sample.
+     */
+    fun jumpTo(chapter: Int) {
+        val opened = book.value ?: return
+        val measurer = measurer ?: return
+        val start = opened.chapters.getOrNull(chapter)?.start ?: return
+        timer.discard()
+        atEnd.value = false
+        val shown = show("jump") { it.jump(start.item, start.char, measurer.key(fontStep.value)) } ?: return
+        spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
+        val clears = start < opened.textEnd && saver.data.books[opened.identifier]?.finished == true
+        stamp(finished = if (clears) false else null)
+    }
+
     /** The page turn a key makes: volume down forward, volume up back; null for any other key. */
     private fun turnFor(keyCode: Int): (() -> Unit)? = when (keyCode) {
         KeyEvent.KEYCODE_VOLUME_DOWN -> { { nextPage() } }
@@ -291,9 +315,12 @@ class ReaderViewModel(
         }
     }
 
+    /** The start of the Page on screen, else (before a view binds) the Place. */
+    private val pageStart: SpinePoint get() = frame.value?.let { SpinePoint(it.pass.item, it.page.start) } ?: spinePoint.value
+
     private fun publishLines() {
         val opened = book.value ?: return
-        val point = frame.value?.let { SpinePoint(it.pass.item, it.page.start) } ?: spinePoint.value
+        val point = pageStart
         val chapter = opened.chapterAt(point).takeUnless { atEnd.value }
         topLine.value = chapter?.let { opened.chapters[it].title } ?: shelfTitle
         progressLine.value = words?.takeUnless { atEnd.value }?.let { opened.minutesLine(it, point, owner.speed.wpm) }

@@ -186,3 +186,6 @@ Layout
 Progress line
 Reading speed
 End page
+
+# N4 (c): the Contents screen. The *Screen name follows the SDK's LightScreen, as in N3c.
+ContentsScreen

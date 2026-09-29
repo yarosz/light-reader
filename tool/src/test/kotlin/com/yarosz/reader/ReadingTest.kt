@@ -179,6 +179,51 @@ class ReadingTest {
     }
 
     @Test
+    fun `a jump mid-way through a Spine item shows a Page starting there, where open still shows the cached Page holding it`() {
+        var buried = 0
+        repeat(100) { seed ->
+            val book = Fixture(seed, count = 1, windowChars = 3_000)
+            val walked = generateSequence(book.reading.open(0, 0, key)) { book.reading.next() }.toList()
+            val offset = book.spineItems[0].blockStarts.firstOrNull { start -> start > 0 && walked.none { it.page.start == start } } ?: return@repeat
+            buried++
+            val held = book.reading.open(0, offset, key)
+            assertSame(walked.first().pass, held.pass)
+            assertTrue(held.page.start < offset && offset < held.page.end, "seed $seed: open shows the Page holding $offset")
+            val jumped = book.reading.jump(0, offset, key)
+            assertNotSame(held.pass, jumped.pass)
+            assertEquals(offset, jumped.page.start, "seed $seed")
+            assertEquals(jumped, book.reading.jump(0, offset, key), "seed $seed: the new pass has that Page now")
+        }
+        assertTrue(buried > 50, "only $buried seeds buried a block start")
+    }
+
+    @Test
+    fun `a jump to a Spine item's start, or to the end of the one before, shows its first Page`() {
+        val book = Fixture(seed = 11, count = 2, windowChars = 3_000)
+        book.reading.open(0, book.spineItems[0].text.length / 2, key)
+        val first = book.reading.jump(1, 0, key)
+        assertEquals(1 to 0, first.pass.item to first.page.start)
+        book.reading.open(0, book.spineItems[0].text.length / 2, key)
+        assertEquals(first, book.reading.jump(0, book.spineItems[0].text.length, key))
+        val start = book.reading.jump(0, 0, key)
+        assertEquals(0 to 0, start.pass.item to start.page.start)
+    }
+
+    @Test
+    fun `a jump to where a cached Page starts reuses it without measuring`() {
+        repeat(30) { seed ->
+            val book = Fixture(seed, count = 1, windowChars = 3_000)
+            val walked = generateSequence(book.reading.open(0, 0, key)) { book.reading.next() }.toList()
+            val target = walked[walked.size / 2]
+            val measures = book.measures
+            val jumped = book.reading.jump(0, target.page.start, key)
+            assertSame(target.pass, jumped.pass)
+            assertEquals(target.page, jumped.page)
+            assertEquals(measures, book.measures, "seed $seed")
+        }
+    }
+
+    @Test
     fun `a text end inside a Spine item ends a Page and starts the next, walking either way and opening on either side`() {
         repeat(100) { seed ->
             val rnd = Random(seed)

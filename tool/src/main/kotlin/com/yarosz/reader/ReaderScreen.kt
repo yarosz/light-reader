@@ -27,12 +27,14 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
@@ -66,36 +68,49 @@ class ReaderScreen(
         LaunchedEffect(measurer) { viewModel.warmUp(measurer) }
 
         LightTheme(colors = themeColors) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(LightThemeTokens.colors.background)
-                    .padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)
-            ) {
+            val topLineHeight = with(LocalDensity.current) { LightThemeTokens.typography.detail.lineHeight.value.designVerticalPxToSp().toDp() }
+            Box(Modifier.fillMaxSize().background(LightThemeTokens.colors.background)) {
                 val opened = book
-                when {
-                    opened == null -> LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
-                    opened.spineItems.isEmpty() -> LightText(text = READING_NO_TEXT, variant = LightTextVariant.Copy, lighten = true)
-                    else -> Reader(measurer)
+                Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
+                    when {
+                        opened == null -> LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
+                        opened.spineItems.isEmpty() -> LightText(text = READING_NO_TEXT, variant = LightTextVariant.Copy, lighten = true)
+                        else -> Reader(measurer, topLineHeight)
+                    }
+                }
+                if (opened != null && opened.spineItems.isNotEmpty()) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(contentsTargetHeight(TOP_BOTTOM_MARGIN, topLineHeight))
+                            .semantics { contentDescription = CONTENTS_TITLE }
+                            .lightClickable(role = Role.Button) { openContents() }
+                    )
                 }
             }
         }
     }
 
+    /** Opens Contents over the Reader; a Chapter chosen there is jumped to, and back changes nothing. */
+    private fun openContents() {
+        val contents = viewModel.openContents() ?: return
+        navigateTo({ ContentsScreen(it, contents) }) { chapter -> viewModel.jumpTo(chapter) }
+    }
+
     /**
      * The top line, the Page (or the end page) and the footer, stacked (DESIGN.md "Reading"). The Page gets
      * whatever height the top line and footer leave, so a change to either re-packs the Pages at the Place.
-     * The top line is one Detail line high at the system font scale, whatever the title: a title in a
-     * fallback font's taller line can't re-pack the Pages at a Chapter change.
+     * The top line is [topLineHeight], one Detail line high at the system font scale, whatever the title: a
+     * title in a fallback font's taller line can't re-pack the Pages at a Chapter change. Its tap target,
+     * which opens Contents, lies over it and the top of the Page ([contentsTargetHeight]).
      */
     @Composable
-    private fun Reader(measurer: TextMeasurer) {
+    private fun Reader(measurer: TextMeasurer, topLineHeight: Dp) {
         val frame by viewModel.frame.collectAsState()
         val atEnd by viewModel.atEnd.collectAsState()
         val topLine by viewModel.topLine.collectAsState()
         val progressLine by viewModel.progressLine.collectAsState()
         val colors = LightThemeTokens.colors
-        val topLineHeight = with(LocalDensity.current) { LightThemeTokens.typography.detail.lineHeight.value.designVerticalPxToSp().toDp() }
 
         Column(Modifier.fillMaxSize()) {
             LightText(
@@ -171,6 +186,12 @@ class ReaderScreen(
         }
     }
 }
+
+/**
+ * The height of the top line's tap target, measured from the screen's top edge: 48 dp, or the top [margin],
+ * the top line ([topLine] high) and the 4 dp under it when that is taller (large text).
+ */
+fun contentsTargetHeight(margin: Dp, topLine: Dp): Dp = maxOf(48.dp, margin + topLine + 4.dp)
 
 /** Draws a Page as its bands stacked in order: each its window's layout shifted up by the band's top and clipped to the band's height. */
 private fun DrawScope.drawPage(shown: Shown<WindowLayout>, color: Color) {
