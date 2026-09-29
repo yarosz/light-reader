@@ -74,22 +74,23 @@ Ordered. Each item ends on its _done-when_.
   first release after N2: the upgrade-path test (release N over N-1 with a populated store).
 - **N3 follow-ups.** `ci.sh` checks the size of the alice fixture it pushed, since a host-side cut
   can still install a truncated file. Images: flip `PREFER_IMAGES_EDITION` in `Catalogue.kt` when
-  images ship. The "This Book has no text." copy fix rides on N4 (below) or the next reading-view
-  change, whichever lands first. A connect timeout on a typed http:// address reads NoHttps only on a
-  VALIDATED network, which the SDK can't report today, so it is Unreachable; revisit if
-  `LightConnectivity` gains validation.
+  images ship. In the images EPUB, drop caps are `<img alt="M">` inside a `<p>`, and the `img` branch
+  only fires outside a block, so the letter is lost; handle it before the flip. The "This Book has no
+  text." copy fix rides on N4 (below) or the next reading-view change, whichever lands first. A
+  connect timeout on a typed http:// address reads NoHttps only on a VALIDATED network, which the SDK
+  can't report today, so it is Unreachable; revisit if `LightConnectivity` gains validation.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,
   "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
   ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back or jumping away from
   the end clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
-  Spine item or a Part heading continues the Chapter before it; with none, each Spine item is a Chapter labelled by its
-  first heading, else "Chapter N", never "Section N". Front matter shows the Book title and no minutes
-  line. Settled in the pre-N4 domain pass (the N4 review may revisit):
+  Spine item or a Part heading continues the Chapter before it; with none, each Spine item is a Chapter
+  labelled by its first heading, else "Chapter N", never "Section N". Front matter shows the Book title
+  and no minutes line. Settled in the pre-N4 domain pass (the N4 review may revisit):
   - The stored key is `progress` on the Place: the share (0–1) of the Book's text before the Place,
-    front and back matter included; Chapter minutes are never stored. A Place saved before N4 has none, and the
-    Shelf shows no percent for it until the next page turn.
+    front and back matter included; Chapter minutes are never stored. A Place saved before N4 has none,
+    and the Shelf shows no percent for it until the next page turn.
   - Nested tables of contents: only leaf entries are Chapters (ADR 0004's nearest leaf), so a "Part
     One" page continues the Chapter before it, or is front matter.
   - Back matter: listed back matter is its own Chapter, unlisted back matter continues the last one,
@@ -100,9 +101,18 @@ Ordered. Each item ends on its _done-when_.
   - The Spine-item counter (`ReaderScreen.kt`, `${shown.pass.item + 1}/…`) goes when the top bar shows
     the Chapter title, and its ignore line with it. The perf key `chapters=` counts Spine items; log
     real Chapters under a new key.
+  - Two Chapters starting at the same point are both kept; the Place belongs to the later, so the top
+    bar shows its title. Contents lists both, and either lands on the same Page.
+  - Labels are the Chapter's title, never a computed "Chapter N of M" (ADR 0004's example predates the
+    listed title page).
+  - A label that ends with its Chapter's first heading, after a caption, is titled by the heading
+    ("CHAPTER III.").
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
-  `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice shows 61 Chapters across 9 Spine items.
+  `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's
+  no-images EPUB 2) shows its 61 novel Chapters, "Chapter I." to "CHAPTER LXI.", plus the title page and
+  license its table of contents lists, across 15 Spine items; the images EPUB 3 gives the same 63
+  Chapters across 7.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
   tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`

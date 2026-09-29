@@ -16,28 +16,43 @@ enum class Emphasis { Italic, Bold }
 /** [start, end) offsets are relative to the owning [Block.text]. */
 data class Span(val start: Int, val end: Int, val emphasis: Emphasis)
 
-data class Block(val kind: BlockKind, val text: String, val spans: List<Span> = emptyList())
+/** [headingCaption]: a Caption block the parser split out of the heading after it. */
+data class Block(val kind: BlockKind, val text: String, val spans: List<Span> = emptyList(), val headingCaption: Boolean = false)
 
 /** [spineId] is this Spine item's idref; a Place names its Spine item by it (ADR 0002). */
-data class SpineItem(val spineId: String, val title: String, val blocks: List<Block>) {
+data class SpineItem(val spineId: String, val blocks: List<Block>) {
     /** Blocks joined by '\n'. Reading positions are offsets into this string. */
     val text: String = blocks.joinToString("\n") { it.text }
 
     /** Offset of each block's first character within [text]. */
     val blockStarts: List<Int> = blocks.runningFold(0) { acc, b -> acc + b.text.length + 1 }.dropLast(1)
 
+    /** Index of the block holding [offset], -1 before the first; a separating '\n' belongs to the block before it. */
+    fun blockAt(offset: Int): Int = blockStarts.binarySearch(offset).let { if (it >= 0) it else -it - 2 }
+
     /** Kind of the block holding [offset]; a separating '\n' belongs to the block before it. */
-    fun kindAt(offset: Int): BlockKind? {
-        val found = blockStarts.binarySearch(offset)
-        return blocks.getOrNull(if (found >= 0) found else -found - 2)?.kind
-    }
+    fun kindAt(offset: Int): BlockKind? = blocks.getOrNull(blockAt(offset))?.kind
+
+    /** Whether block [i] is a caption split out of the heading right after it, which windows and Pages keep with that heading. */
+    fun isHeadingCaption(i: Int): Boolean =
+        blocks.getOrNull(i)?.headingCaption == true && blocks.getOrNull(i + 1)?.kind == BlockKind.Heading
+
+    /** Whether a Page may not end after the line at [offset]: it is in a heading or in its [isHeadingCaption]. */
+    fun keepsWithNext(offset: Int): Boolean = blockAt(offset).let { blocks.getOrNull(it)?.kind == BlockKind.Heading || isHeadingCaption(it) }
 }
 
 /**
  * [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see
- * [bookIdentifier]. [author] is its package's `dc:creator`s, null when it names none.
+ * [bookIdentifier]. [author] is its package's `dc:creator`s, null when it names none. [chapters] are its
+ * Chapters in reading order ([chaptersOf]); by default each Spine item is one.
  */
-data class OpenBook(val identifier: String, val title: String, val spineItems: List<SpineItem>, val author: String? = null)
+data class OpenBook(
+    val identifier: String,
+    val title: String,
+    val spineItems: List<SpineItem>,
+    val author: String? = null,
+    val chapters: List<Chapter> = chaptersOf(emptyList(), spineItems),
+)
 
 /** The most a container, package, or encryption document may decompress to; real ones are a few KB. */
 const val MAX_PACKAGE_XML_BYTES = 4L * 1024 * 1024
@@ -48,19 +63,33 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
  * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does).
+ * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
+ * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
+ * its Spine item doesn't have starts at that Spine item's start, or at the previous entry's start if that
+ * is later in the same Spine item.
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
 fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): OpenBook = ZipFile(file).use { zip ->
     val pkg = readPackage(zip, fallbackTitle)
-    val docs = pkg.spine.map { item -> item.idref to XhtmlHandler().also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) } }
+    val tables = readTablesOfContents(zip, pkg)
+    val fragments = tables.flatten().mapNotNullTo(HashSet()) { it.fragment }
+    val docs = pkg.spine.map { item -> item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
-    OpenBook(
-        identifier = pkg.identifier,
-        title = pkg.title,
-        spineItems = body.mapIndexed { i, (idref, doc) -> SpineItem(idref, doc.title ?: "Section ${i + 1}", doc.blocks) },
-        author = pkg.author,
-    )
+    val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
+    val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
+    val listed = tables.firstNotNullOfOrNull { entries ->
+        val resolved = mutableListOf<Chapter>()
+        for (entry in entries) {
+            val index = indexOfPath[entry.path] ?: continue
+            val char = entry.fragment?.let { fragment ->
+                body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
+            } ?: 0
+            resolved += Chapter(entry.label, SpinePoint(index, char))
+        }
+        resolved.ifEmpty { null }
+    }.orEmpty()
+    OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems))
 }
 
 /** A Spine item's idref and the path of its document inside the zip. */
@@ -68,9 +97,17 @@ data class SpineRef(val idref: String, val path: String)
 
 /**
  * What a Book's package document says about it, read without parsing the text. [author] is every
- * non-empty `dc:creator`, joined by ", ", or null when there is none.
+ * non-empty `dc:creator`, joined by ", ", or null when there is none. [nav] is the zip path of its EPUB 3
+ * nav document, and [ncx] of the EPUB 2 NCX its Spine's `toc` names, each null when there is none.
  */
-data class Package(val identifier: String, val title: String, val spine: List<SpineRef>, val author: String? = null)
+data class Package(
+    val identifier: String,
+    val title: String,
+    val spine: List<SpineRef>,
+    val author: String? = null,
+    val nav: String? = null,
+    val ncx: String? = null,
+)
 
 /**
  * Reads the package document that the container names. [fallbackTitle] titles a Book whose package
@@ -87,16 +124,20 @@ fun readPackage(zip: ZipFile, fallbackTitle: String): Package {
     val documents = spine.map { zip.entry(it.path) }
     val title = opf.title?.takeIf { it.isNotEmpty() } ?: fallbackTitle
     val author = opf.creators.filter { it.isNotEmpty() }.joinToString(", ").ifEmpty { null }
-    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, documents), title, spine, author)
+    val nav = opf.manifest.values.firstOrNull { "nav" in it.properties.split(WHITESPACE_RUN) }?.path
+    val ncx = opf.toc?.let { opf.manifest[it] }?.path
+    return Package(bookIdentifier(opf.identifiers, opf.uniqueIdentifier, documents), title, spine, author, nav, ncx)
 }
 
 /** The package document the container names, its manifest paths resolved inside the zip. */
 private fun readOpf(zip: ZipFile): OpfHandler {
     val opfPath = ContainerHandler().also { parseUntrusted(zip.open("META-INF/container.xml"), it, MAX_PACKAGE_XML_BYTES) }.opfPath
         ?: error("container.xml has no rootfile")
-    val opfDir = opfPath.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
-    return OpfHandler(opfDir).also { parseUntrusted(zip.open(opfPath), it, MAX_PACKAGE_XML_BYTES) }
+    return OpfHandler(directoryOf(opfPath)).also { parseUntrusted(zip.open(opfPath), it, MAX_PACKAGE_XML_BYTES) }
 }
+
+/** The directory holding the zip entry at [path]: "" at the root, else ending in "/". */
+internal fun directoryOf(path: String): String = path.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
 
 /**
  * The zip path that [href] names relative to [dir] ("" or ending in "/"). An href is a URI path, not
@@ -115,7 +156,7 @@ internal fun zipPath(dir: String, href: String): String {
     return segments.joinToString("/")
 }
 
-private fun decodePercent(text: String): String {
+internal fun decodePercent(text: String): String {
     if ('%' !in text) return text
     val out = StringBuilder()
     val bytes = ByteArrayOutputStream()
@@ -232,13 +273,14 @@ private class ContainerHandler : DefaultHandler() {
     }
 }
 
-/** A manifest item: its zip path and media type. */
-private class ManifestItem(val path: String, val mediaType: String)
+/** A manifest item: its zip path, media type, and `properties`. */
+private class ManifestItem(val path: String, val mediaType: String, val properties: String)
 
 /** Reads a package document in [dir] ("" or ending in "/"). */
 private class OpfHandler(private val dir: String) : DefaultHandler() {
     val manifest = mutableMapOf<String, ManifestItem>()
     val spine = mutableListOf<String>()
+    var toc: String? = null
     var title: String? = null
     var uniqueIdentifier: String? = null
     val identifiers = mutableListOf<Pair<String?, String>>()
@@ -254,8 +296,11 @@ private class OpfHandler(private val dir: String) : DefaultHandler() {
             "item" -> {
                 val id = attrs.getValue("id")
                 val href = attrs.getValue("href")
-                if (id != null && href != null) manifest[id] = ManifestItem(zipPath(dir, href), attrs.getValue("media-type").orEmpty().lowercase())
+                if (id != null && href != null) {
+                    manifest[id] = ManifestItem(zipPath(dir, href), attrs.getValue("media-type").orEmpty().lowercase(), attrs.getValue("properties").orEmpty())
+                }
             }
+            "spine" -> toc = attrs.getValue("toc")
             "itemref" -> spine += attrs.getValue("idref")
             "title" -> if (title == null) inTitle = true
             "package" -> uniqueIdentifier = attrs.getValue("unique-identifier")
@@ -291,19 +336,37 @@ private class OpfHandler(private val dir: String) : DefaultHandler() {
     }
 }
 
-private val WHITESPACE_RUN = Regex("\\s+")
+internal val WHITESPACE_RUN = Regex("\\s+")
 
 private val BLOCK_ELEMENTS = setOf("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "dt", "dd", "figcaption", "pre")
 private val VERSE_MARKERS = listOf("verse", "poem", "song", "lyrics")
 
-private class XhtmlHandler : DefaultHandler() {
+/** What a block's leading and trailing runs are made of: spaces, no-break spaces, and line breaks. */
+internal val TRIMMED = charArrayOf(' ', '\u00A0', '\n')
+
+/**
+ * Reads one Spine document into [blocks]. [anchors] maps each id in [fragments] that the document has to
+ * the offset in its [SpineItem.text] of the first character its element puts in a block's kept text, a
+ * no-break space included; an element with none maps to the next text, or to the end of the text when
+ * none follows. An element whose class includes the token `caption` inside a heading, before any of the
+ * heading's own text, is its own Caption block, before that text; later, it stays in the heading. A block's
+ * leading and trailing line breaks are dropped.
+ */
+private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler() {
     val blocks = mutableListOf<Block>()
     var isBodyMatter = false
-    var title: String? = null
+    val anchors = mutableMapOf<String, Int>()
+    private val ids = mutableListOf<String>() // the document's ids in [fragments], in document order
+    private var pending = 0 // ids from this index on wait for text
+    // Runs of ids anchored in the open block: (first id's index, offset into [text]). A run ends where the
+    // next starts, the last at [pending], so a blank block hands its ids back in one step.
+    private val blockAnchors = mutableListOf<Pair<Int, Int>>()
+    private var textBefore = 0 // the blocks so far, each with its separating '\n'
 
     private var skipDepth = 0 // inside <head>, <script>, <style>
     private var verseDepth = 0
     private var hgroupParts: MutableList<String>? = null
+    private var hgroupLength = 0 // the parts so far, each with its ": "
 
     private var kind: BlockKind? = null
     private var blockDepth = 0
@@ -311,6 +374,8 @@ private class XhtmlHandler : DefaultHandler() {
     private val spans = mutableListOf<Span>()
     private val openEmphasis = ArrayDeque<Pair<Emphasis, Int>>()
     private val elementIsVerse = ArrayDeque<Boolean>()
+    private var captionStart: Int? = null
+    private var captionDepth = 0
 
     override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
         val name = qName.substringAfter(':').lowercase()
@@ -323,11 +388,21 @@ private class XhtmlHandler : DefaultHandler() {
             skipDepth++
             return
         }
+        attrs.getValue("id")?.takeIf { it in fragments }?.let { ids += it }
         when {
             name == "body" -> isBodyMatter = "bodymatter" in markers
-            name == "hgroup" -> hgroupParts = mutableListOf()
+            name == "hgroup" -> {
+                hgroupParts = mutableListOf()
+                hgroupLength = 0
+            }
             kind != null -> {
                 blockDepth++
+                if (kind == BlockKind.Heading && hgroupParts == null && captionStart == null &&
+                    "caption" in attrs.getValue("class").orEmpty().split(WHITESPACE_RUN) && text.isBlank()
+                ) {
+                    captionStart = text.length
+                    captionDepth = blockDepth
+                }
                 when (name) {
                     "br" -> { trimTrailingSpace(); text.append('\n') }
                     "em", "i", "cite" -> openEmphasis.addLast(Emphasis.Italic to text.length)
@@ -344,7 +419,8 @@ private class XhtmlHandler : DefaultHandler() {
                 blockDepth = 0
             }
             name == "img" -> attrs.getValue("alt")?.takeIf { it.isNotBlank() }?.let {
-                blocks += Block(BlockKind.Caption, it.trim())
+                anchor(textBefore)
+                add(Block(BlockKind.Caption, it.trim()))
             }
         }
     }
@@ -355,13 +431,21 @@ private class XhtmlHandler : DefaultHandler() {
             val c = ch[i]
             when {
                 c == '\uFEFF' || c == '\u00AD' -> Unit // zero-width no-break space, soft hyphen
-                c.isWhitespace() && c != ' ' -> {
+                c.isWhitespace() && c != '\u00A0' -> {
                     if (text.isNotEmpty() && text.last() != ' ' && text.last() != '\n') text.append(' ')
                 }
-                else -> text.append(c)
+                else -> {
+                    if (pending < ids.size) {
+                        blockAnchors += pending to text.length
+                        pending = ids.size
+                    }
+                    text.append(c)
+                }
             }
         }
     }
+
+    override fun endDocument() = anchor(maxOf(textBefore - 1, 0))
 
     override fun endElement(uri: String, localName: String, qName: String) {
         val name = qName.substringAfter(':').lowercase()
@@ -372,19 +456,28 @@ private class XhtmlHandler : DefaultHandler() {
         }
         when {
             kind != null && blockDepth > 0 -> {
-                blockDepth--
                 if (name in setOf("em", "i", "cite", "strong", "b")) closeEmphasis()
+                if (blockDepth == captionDepth) splitCaption()
+                blockDepth--
             }
             kind != null -> finishBlock()
             name == "hgroup" -> {
                 hgroupParts?.takeIf { it.isNotEmpty() }?.let { parts ->
-                    val heading = parts.joinToString(": ")
-                    blocks += Block(BlockKind.Heading, heading)
-                    if (title == null) title = heading
+                    add(Block(BlockKind.Heading, parts.joinToString(": ")))
                 }
                 hgroupParts = null
             }
         }
+    }
+
+    private fun add(block: Block) {
+        blocks += block
+        textBefore += block.text.length + 1
+    }
+
+    private fun anchor(offset: Int) {
+        for (i in pending until ids.size) anchors.putIfAbsent(ids[i], offset)
+        pending = ids.size
     }
 
     private fun closeEmphasis() {
@@ -396,23 +489,63 @@ private class XhtmlHandler : DefaultHandler() {
         while (text.isNotEmpty() && text.last() == ' ') text.setLength(text.length - 1)
     }
 
+    /** Moves the caption that opened at [captionStart] out of [text] into a Caption block of its own, with the ids anchored so far. */
+    private fun splitCaption() {
+        val from = captionStart ?: return
+        captionStart = null
+        val caption = text.substring(from)
+        text.setLength(from)
+        val captionSpans = (spans + openEmphasis.map { (emphasis, start) -> Span(start, text.length + caption.length, emphasis) })
+            .filter { it.end > from }.map { Span(maxOf(it.start - from, 0), it.end - from, it.emphasis) }
+        spans.replaceAll { it.copy(end = minOf(it.end, from)) }
+        spans.removeAll { it.start >= it.end }
+        if (caption.isNotBlank()) emit(BlockKind.Caption, caption, captionSpans, from, headingCaption = true)
+    }
+
     private fun finishBlock() {
-        trimTrailingSpace()
-        val content = text.toString()
-        val blockKind = kind!!
-        if (content.isNotBlank()) {
-            val parts = hgroupParts
-            if (parts != null) {
-                parts += content
-            } else {
-                blocks += Block(blockKind, content, spans.filter { it.start < content.length }
-                    .map { it.copy(end = minOf(it.end, content.length)) })
-                if (blockKind == BlockKind.Heading && title == null) title = content
-            }
+        splitCaption()
+        val added = blocks.size
+        emit(kind!!, text.toString(), spans.toList(), 0)
+        if (kind == BlockKind.Heading && blocks.size == added && hgroupParts == null) {
+            blocks.lastOrNull()?.takeIf { it.headingCaption }?.let { blocks[blocks.lastIndex] = it.copy(headingCaption = false) }
         }
         kind = null
         text.setLength(0)
         spans.clear()
         openEmphasis.clear()
+    }
+
+    /**
+     * Adds a block of [raw] text, which starts at offset [base] of [text], with its [spans] (offsets into
+     * [raw]), without its leading and trailing line breaks and the spaces among them, and anchors the ids in
+     * [blockAnchors]. Ids at or past the end of what is kept, all of them for blank text, which adds nothing,
+     * go back to waiting for the next text.
+     */
+    private fun emit(blockKind: BlockKind, raw: String, spans: List<Span>, base: Int, headingCaption: Boolean = false) {
+        val content = raw.trimEnd(*TRIMMED)
+        val first = content.indexOfFirst { it !in TRIMMED }
+        val lead = if (first > 0 && '\n' in content.substring(0, first)) first else 0
+        val kept = content.substring(lead)
+        val parts = hgroupParts
+        val start = textBefore + if (parts != null) hgroupLength else 0
+        for ((run, anchor) in blockAnchors.withIndex()) {
+            val (from, at) = anchor
+            val offset = at - base - lead
+            if (first < 0 || offset >= kept.length) {
+                pending = from
+                break
+            }
+            val end = blockAnchors.getOrNull(run + 1)?.first ?: pending
+            for (i in from until end) anchors.putIfAbsent(ids[i], start + maxOf(offset, 0))
+        }
+        blockAnchors.clear()
+        if (first < 0) return
+        if (parts != null) {
+            parts += kept
+            hgroupLength += kept.length + 2
+        } else {
+            add(Block(blockKind, kept, spans.map { Span(maxOf(it.start - lead, 0), minOf(it.end - lead, kept.length), it.emphasis) }
+                .filter { it.start < it.end }, headingCaption))
+        }
     }
 }

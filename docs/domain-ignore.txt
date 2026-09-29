@@ -36,6 +36,10 @@ TextBudget
 TextCapture
 TooLargeException
 XhtmlEntityStream
+TableOfContentsEntry
+TableOfContentsHandler
+# A Chapter's fallback title, the "Chapter N" of DESIGN.md "Copy".
+Chapter ${i + 1}
 
 # Network and downloads
 Transport

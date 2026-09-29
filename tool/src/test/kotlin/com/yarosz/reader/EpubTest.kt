@@ -19,8 +19,8 @@ class EpubTest {
     fun `keeps only the twelve Spine items of body matter`() {
         assertEquals("Alice’s Adventures in Wonderland", book.title)
         assertEquals(12, book.spineItems.size)
-        assertEquals("I: Down the Rabbit-Hole", book.spineItems[0].title)
-        assertEquals("XII: Alice’s Evidence", book.spineItems[11].title)
+        assertEquals("I: Down the Rabbit-Hole", book.chapters[0].title)
+        assertEquals("XII: Alice’s Evidence", book.chapters[11].title)
     }
 
     @Test

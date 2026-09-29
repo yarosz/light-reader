@@ -65,7 +65,7 @@ class PaginationTest {
 
     @Test
     fun `kindAt finds the block holding an offset`() {
-        val spineItem = SpineItem("spine", "", listOf(Block(BlockKind.Heading, "Title"), Block(BlockKind.Paragraph, "Body")))
+        val spineItem = SpineItem("spine", listOf(Block(BlockKind.Heading, "Title"), Block(BlockKind.Paragraph, "Body")))
         assertEquals(BlockKind.Heading, spineItem.kindAt(0))
         assertEquals(BlockKind.Heading, spineItem.kindAt(4))
         assertEquals(BlockKind.Heading, spineItem.kindAt(5))

@@ -183,6 +183,25 @@ class PackTest {
     }
 
     @Test
+    fun `a page never ends between a caption split out of a heading and the heading, unless the guard fired`() = forAll { rnd ->
+        val blocks = List(rnd.nextInt(1, 40)) { rnd.nextDouble() < 0.3 }.flatMap { chapter ->
+            val paragraph = Block(BlockKind.Paragraph, "x".repeat(rnd.nextInt(1, 1_500)))
+            if (!chapter) listOf(paragraph)
+            else listOf(Block(BlockKind.Caption, "x".repeat(rnd.nextInt(1, 200)), headingCaption = true), Block(BlockKind.Heading, "x".repeat(rnd.nextInt(1, 60))), paragraph)
+        }
+        val spineItem = FakeSpineItem(SpineItem("spine", blocks))
+        val lines = spineItem.layout(randomFont(rnd), rnd)
+        val height = randomPageHeight(rnd)
+        val headings = spineItem.spineItem.blockStarts.filterIndexed { i, _ -> blocks[i].kind == BlockKind.Heading }.toSet()
+        val pages = pack(listOf(wholeWindow(spineItem.length)), listOf(lines), 0, height).fromAnchor
+        lineRanges(lines, pages).zip(pages).dropLast(1).forEach { (range, page) ->
+            val top = lines[range.first].top
+            val guardFired = (range.first..greedyLast(lines, range.first, height)).none { lines[it].legal() && lines[it].filled(top, height) }
+            assertTrue(page.end !in headings || guardFired, "page $page ends between a caption and its heading")
+        }
+    }
+
+    @Test
     fun `bands lie on their window's lines, one per adjacent window, and sum to at most a page`() = forAll { rnd ->
         val case = randomCase(rnd)
         val measured = case.cut.map { if (rnd.nextBoolean()) it else null }

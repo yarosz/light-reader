@@ -29,13 +29,14 @@ internal class FakeSpineItem(val spineItem: SpineItem) {
             var offset = spineItem.blockStarts[i]
             var remaining = block.text.length
             val heading = block.kind == BlockKind.Heading
+            val keepsWithNext = spineItem.keepsWithNext(offset)
             do {
                 // Real line breaking wraps at word boundaries, so lines run a bit short.
                 val take = minOf(remaining, (charsPerLine * rnd.nextDouble(0.75, 1.0)).toInt().coerceAtLeast(1))
                 val height = if (heading) px(lineHeight * 1.25f) else lineHeight
                 remaining -= take
                 midWord = remaining > 0 && rnd.nextDouble() < if (midWord) 0.7 else hyphenRate
-                lines += LineMetrics(offset, y, y + height, endsAtBreak = !midWord, heading = heading)
+                lines += LineMetrics(offset, y, y + height, endsAtBreak = !midWord, heading = keepsWithNext)
                 offset += take
                 y += height
             } while (remaining > 0)
@@ -55,7 +56,7 @@ internal class FakeSpineItem(val spineItem: SpineItem) {
 
     companion object {
         /** Up to 60 blocks of 1 to 1,500 characters (the parser drops blank ones); the first is a heading and about one in ten of the rest. */
-        fun random(rnd: Random) = FakeSpineItem(SpineItem("spine", "", List(rnd.nextInt(1, 60)) { i ->
+        fun random(rnd: Random) = FakeSpineItem(SpineItem("spine", List(rnd.nextInt(1, 60)) { i ->
             val kind = if (i == 0 || rnd.nextDouble() < 0.1) BlockKind.Heading else BlockKind.Paragraph
             Block(kind, "x".repeat(rnd.nextInt(1, 1_500)))
         }))

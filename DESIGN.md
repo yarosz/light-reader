@@ -34,7 +34,8 @@ to match (a three-button bar leaves 341 × 360 dp and pillarboxes Reader).
 - A Page may end only at a line whose break falls at whitespace or a paragraph end, which rules out
   soft-hyphen breaks ("trou-/ble") and hard-hyphen compounds ("well-/known"). Defined on the source
   text, not on layout internals.
-- A Page never ends on a heading; the heading moves to the next Page with its text.
+- A Page never ends on a heading, or on the caption split out of the heading after it; they move to the
+  next Page with the heading's text.
 - Guard: those rules give way if the Page would fall below 70% full. Consecutive hyphenated lines (a
   cascade) are an explicit test case.
 - No widow or orphan rules in v1. At 26–38 characters per line most paragraphs are one to three lines,

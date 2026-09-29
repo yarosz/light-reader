@@ -3,6 +3,7 @@ package com.yarosz.reader
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Property tests of how a Spine item is cut into layout windows (ADR 0007), over thousands of random Spine items. */
@@ -74,16 +75,31 @@ class WindowsTest {
 
     @Test
     fun `an empty Spine item has no windows`() {
-        assertEquals(emptyList(), windows(SpineItem("spine", "", emptyList())))
+        assertEquals(emptyList(), windows(SpineItem("spine", emptyList())))
     }
 
     @Test
     fun `a heading cuts a window that is at least half full, but not one that is less`() {
         val paragraph = Block(BlockKind.Paragraph, "x".repeat(100))
         val heading = Block(BlockKind.Heading, "Title")
-        val spineItem = SpineItem("spine", "", listOf(paragraph, paragraph, heading, paragraph))
+        val spineItem = SpineItem("spine", listOf(paragraph, paragraph, heading, paragraph))
         assertEquals(listOf(Window(0, 1, 0, 202), Window(2, 3, 202, 308)), windows(spineItem, maxChars = 400))
         assertEquals(listOf(Window(0, 3, 0, 308)), windows(spineItem, maxChars = 1_000))
+    }
+
+    @Test
+    fun `a caption split out of a heading starts the window with it, and an image caption doesn't`() {
+        val paragraph = Block(BlockKind.Paragraph, "x".repeat(100))
+        val caption = Block(BlockKind.Caption, "He rode a black horse.", headingCaption = true)
+        val figure = Block(BlockKind.Caption, "He rode a black horse.")
+        val heading = Block(BlockKind.Heading, "Title")
+        val chapter = SpineItem("spine", listOf(paragraph, paragraph, caption, heading, paragraph))
+        assertEquals(listOf(Window(0, 1, 0, 202), Window(2, 4, 202, 331)), windows(chapter, maxChars = 400))
+        val figureBeforeHeading = SpineItem("spine", listOf(paragraph, paragraph, figure, heading, paragraph))
+        assertEquals(listOf(Window(0, 2, 0, 225), Window(3, 4, 225, 331)), windows(figureBeforeHeading, maxChars = 400))
+        assertTrue(chapter.isHeadingCaption(2))
+        assertFalse(chapter.isHeadingCaption(3))
+        assertFalse(figureBeforeHeading.isHeadingCaption(2))
     }
 
     @Test
@@ -92,7 +108,7 @@ class WindowsTest {
         val short = Block(BlockKind.Paragraph, "x".repeat(10))
         assertEquals(
             listOf(Window(0, 0, 0, 11), Window(1, 1, 11, 512), Window(2, 2, 512, 522)),
-            windows(SpineItem("spine", "", listOf(short, long, short)), maxChars = 100),
+            windows(SpineItem("spine", listOf(short, long, short)), maxChars = 100),
         )
     }
 }
