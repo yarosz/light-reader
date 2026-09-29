@@ -122,12 +122,16 @@ Ordered. Each item ends on its _done-when_.
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
-  - QA fixes, Catalogue and Shelf: failed Catalogue fetches log their URL and cause under `Reader`
-    (Gutenberg search's intermittent HttpError is m.gutenberg.org answering 504); a typed host that
-    doesn't resolve on a connected phone reads "Couldn't find that address. Check the spelling." with
-    no Retry; a download failing offline reads "download failed · you're offline"; "Add" ends the
-    Shelf's Edit; Add a Catalogue's placeholder is secondary text; a detail page names the author as
-    the list row did. A pre-N4 Book with no author gets one when next opened (already so).
+  - QA fixes, Catalogue and Shelf: failed Catalogue fetches log their URL (no query, user info or
+    fragment) and cause under `Reader`; a typed host that doesn't resolve on a connected phone reads
+    "Couldn't find that address. Check the spelling.", still with Retry; a download that fails
+    Unreachable while the phone reports no internet connection reads "download failed while offline ·
+    tap to retry"; "Add" ends the Shelf's Edit; Add a Catalogue's placeholder is secondary text; a
+    detail page names the author as the list row did when that row is the Book and names the same
+    person. A pre-N4 Book with no author gets one when next opened, if its file names one (already so).
+    Note: Gutenberg search's intermittent HttpError is its own. The search template points at
+    m.gutenberg.org, which intermittently answers 504 (after about 5 s) instead of its usual 301 to
+    www.gutenberg.org; a retry a little later works. Fetching www directly is a possible follow-up.
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's

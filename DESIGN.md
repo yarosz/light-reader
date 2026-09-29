@@ -174,7 +174,7 @@ set tighter (1.2) than body copy.
 | Never opened | "not started" | opens the Book |
 | Downloading | "downloading…" | nothing |
 | Failed, retryable | "download failed · tap to retry" | downloads again |
-| Failed, unreachable while the phone reported no connection | "download failed · you're offline" | downloads again |
+| Failed, Unreachable while the phone reports no internet connection | "download failed while offline · tap to retry" | downloads again |
 | Failed for good, downloading again from the Shelf | "can't download again · copy-protected", "· not an EPUB" or "· needs https" | nothing; the Book can only be removed |
 | Failed for good, the source needs a login (401) | "can't download again · needs a login" | nothing; the Book can only be removed |
 | Finished | "author · finished" (see below) | opens the Book |
@@ -184,8 +184,8 @@ set tighter (1.2) than body copy.
 The percent is the Place's `progress`, floored. Under 1%, or with no `progress` (a Place saved before
 N4, until the next page turn), the author stands alone. When there is no author, the state stands
 alone ("42%", "finished"), so an in-progress Book with neither has no second line until it is next
-opened, which records the author from the Book's file (`dc:creator`); the Shelf never opens a file to
-find one, so a Book stored before N4 shows its author only after that. A running download
+opened, if its file names one: opening records the author from the Book's file (`dc:creator`), and
+the Shelf never opens a file to find one. A running download
 wins over a Book's file, the file over a failed download (a Book that is here stays readable
 offline), and both over its reading state. Opening a Book counts as reading: it records the first
 Page's Place, so a Book opened but never paged reads as in progress, not "not started".
@@ -202,7 +202,7 @@ Catalogue list's Edit needs no such rule: while editing, its only way out is bac
 
 **Downloads.** Foreground only, with a visible state; no background service in v1. Only retryable
 failures (Unreachable, HttpError other than 401, DiskError, and UntrustedCertificate, D15) leave a
-row reading "download failed · tap to retry". An untrusted certificate is retryable because public
+row: "download failed · tap to retry", or the offline form (below). An untrusted certificate is retryable because public
 Wi-Fi intercepts TLS until the reader signs in to it. Permanent failures (CopyProtected, NotAnEpub,
 and also NoHttps and a 401, which a retry can't fix, since sign-in doesn't exist) of a download from a
 Catalogue show their copy on the Book's
@@ -211,14 +211,15 @@ downloading a missing file again from the Shelf fails for good, the Book's row s
 download again · …", table above) and can then only be removed. That state lives in memory: after a
 relaunch the row reads "file missing · tap to download again" again, and a tap tries once more.
 A download that fails as Unreachable while the phone reports no internet connection reads "download
-failed · you're offline" instead of "tap to retry", so a retry tapped offline visibly answers (it
-fails at once, too fast for "downloading…" to show); a tap still retries. When the phone can't
-report, the row reads "tap to retry".
+failed while offline · tap to retry", so a retry tapped offline visibly answers (it fails at once, too
+fast for "downloading…" to show). It is in the past tense because the row stays after the phone
+reconnects. Any other failure, or one when the phone can't report, reads "tap to retry".
 
 **Offline.** Nothing changes on the Shelf, because everything there works offline: no rows are
 removed and nothing is greyed out. "You're offline. Your Shelf still works." is one line of
 secondary text at the top of the Catalogue list, shown while the phone reports no internet
-connection (see "Catalogues").
+connection (see "Catalogues"). The one offline wording on the Shelf is a download's that failed
+offline, "download failed while offline · tap to retry", which stays true once the phone reconnects.
 
 **Missing file.** A Book whose file is gone reads "file missing · tap to download again", and the tap
 downloads it again from the Book's source, keeping its Place. If the download declares a different
@@ -266,8 +267,9 @@ connection is Unreachable, with Retry. The feed is fetched before
 anything is saved: a page that isn't a Catalogue feed shows Unreadable's copy and adds nothing. A host
 that doesn't resolve (no DNS record) is NoSuchHost only while the phone reports an internet
 connection: offline every lookup fails that way, so offline, or when the phone can't report, it is
-Unreachable, with Retry. A Catalogue already on the list never reads NoSuchHost (its host resolved
-when it was added), only Unreachable. The
+Unreachable, with Retry. NoSuchHost keeps Retry too (see the note under the failure copy). A
+Catalogue already on the list never reads NoSuchHost (its host resolved when it was added), only
+Unreachable. The
 name is the feed's title, else its host. An address already on the list reads "This Catalogue is
 already in your list." A failure shows below the field in body text (the SDK's Paragraph size) at
 line height 1.2, smaller than the rows. A failure that trying again can't fix hides "Add" until the address changes;
@@ -312,11 +314,15 @@ beside it ("558 KB"). The page matches the Shelf by source URL, never by title: 
 download links equal to a stored Book's source is that Book. A miss is harmless, because a landing
 download merges into the Book by `dc:identifier`.
 
-The author is the byline of the row that opened the page, so a list and its detail page name the
-author alike: Gutenberg's lists say "graf Leo Tolstoy" (the entry's content), where its Book pages
-say "Tolstoy, Leo, graf" (the OPDS author, which isn't the simple inverted form the Tool
-un-inverts). A page no row opened takes its Editions' authors. A download from the page records the
-same author until the Book's own `dc:creator` replaces it.
+The author is the Editions' authors, except that the byline of the row that opened the page wins
+when that row is this Book (its title is the page's first entry's, ignoring case and punctuation)
+and its words are the Editions' author's, ignoring case, order and punctuation, or the Editions name
+no author. So a list and its detail page name the author alike: Gutenberg's lists say "graf Leo
+Tolstoy" (the entry's content), where its Book pages say "Tolstoy, Leo, graf" (the OPDS author, which
+isn't the simple inverted form the Tool un-inverts). A row's second line isn't always an author
+(Gutenberg's "Our most popular books.", a Calibre category's "1 book", a description), hence both
+checks. A download records it only when the Book's file names no author (`dc:creator`), which
+otherwise wins when the file lands.
 
 | Match | Action | Beside it |
 |---|---|---|
@@ -341,7 +347,7 @@ N5; until then it shows its one line.
 | Failure | Copy | Retry |
 |---|---|---|
 | Unreachable | "Can't reach this Catalogue. Check your connection and try again." | yes |
-| NoSuchHost (a typed address, the phone connected) | "Couldn't find that address. Check the spelling." | no |
+| NoSuchHost (a typed address, the phone connected) | "Couldn't find that address. Check the spelling." | yes |
 | NoHttps | "This Catalogue needs an https:// address." | no |
 | HttpError | "This Catalogue isn't responding properly. Try again later." | yes |
 | HttpError 401 | "This Catalogue needs a username and password. Sign-in isn't supported yet." | no |
@@ -358,8 +364,11 @@ connections to port 443 times out, but so does a network with no internet. The S
 it, and asking Android directly needs a Context, which a Light Tool can't hold. So the Tool can't
 tell, and every connect timeout reads as Unreachable, with Retry.
 
+NoSuchHost keeps Retry for the same reason: the phone reporting a connection means only that the
+network claims internet. A Wi-Fi with a dead upstream, DNS failing for a moment, or a redirect to a
+host that is down fails a correctly typed address the same way, and trying again can fix those.
+
 Every failed Catalogue fetch (a page, "More", a search description) logs one line under the `Reader`
 tag: the URL, the HTTP status (with where redirects ended) or the exception, and the failure it
-became. Gutenberg's intermittent "isn't responding properly" on some searches is its own: the search
-template points at m.gutenberg.org, which sometimes answers 504 after about 5 s instead of its
-usual 301 to www.gutenberg.org, and a retry a little later works.
+became. Each URL is logged without its user info, query (shown as "?…") or fragment, so neither a
+search's terms nor credentials reach the log.

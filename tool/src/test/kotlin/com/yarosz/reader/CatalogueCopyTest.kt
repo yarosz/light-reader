@@ -34,8 +34,8 @@ class CatalogueCopyTest {
     }
 
     @Test
-    fun `a host that doesn't resolve is a misspelling, with no Retry, only for an address typed on a connected phone`() {
-        assertEquals(FailureCopy("Couldn't find that address. Check the spelling.", retry = false), feedFailureCopy(NoSuchHost, shipped = false, typedOnline = true))
+    fun `a host that doesn't resolve reads as a misspelling, with Retry, only for an address typed on a connected phone`() {
+        assertEquals(FailureCopy("Couldn't find that address. Check the spelling.", retry = true), feedFailureCopy(NoSuchHost, shipped = false, typedOnline = true))
         assertEquals(feedFailureCopy(Unreachable, shipped = false), feedFailureCopy(NoSuchHost, shipped = false))
         assertEquals(feedFailureCopy(Unreachable, shipped = true), feedFailureCopy(NoSuchHost, shipped = true))
     }

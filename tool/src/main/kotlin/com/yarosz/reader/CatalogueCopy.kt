@@ -49,13 +49,14 @@ data class FailureCopy(val text: String, val retry: Boolean)
  * ships with the Tool ([isShipped]): an untrusted certificate there is almost surely public Wi-Fi,
  * while a Catalogue the reader added may also have a private certificate (D15). [typedOnline] is
  * whether the address was just typed on a phone that reports a connection, the one case where a
- * host that doesn't resolve is a misspelling that Retry can't fix; offline, or for a Catalogue on
- * the list, it is Unreachable.
+ * host that doesn't resolve is most likely misspelt; offline, or for a Catalogue on the list, it is
+ * Unreachable. It keeps Retry: the phone reporting a connection doesn't mean it has internet (a
+ * Wi-Fi with a dead upstream, or DNS failing for a moment, fails a correct address the same way).
  */
 fun feedFailureCopy(failure: FeedFailure, shipped: Boolean, typedOnline: Boolean = false): FailureCopy = when (failure) {
     is NetworkFailure -> networkFailureCopy(failure, shipped)
     Unreadable -> FailureCopy(COPY_UNREADABLE, retry = false)
-    NoSuchHost -> if (typedOnline) FailureCopy(COPY_NO_SUCH_HOST, retry = false) else networkFailureCopy(Unreachable, shipped)
+    NoSuchHost -> if (typedOnline) FailureCopy(COPY_NO_SUCH_HOST, retry = true) else networkFailureCopy(Unreachable, shipped)
 }
 
 /** A download from a Catalogue that failed, shown on the Book's detail page. */

@@ -199,7 +199,7 @@ OpenFromShelf
 
 # A failed Catalogue fetch's log line (DESIGN.md "Catalogues"): the URL is a feed's, not a Book's source,
 # and "feed" is the wire format's word, never copy.
-catalogue fetch failed: $url: $cause -> $reason
-at ${it.url}
+catalogue fetch failed: ${url.forLog()}: $cause -> $reason
+at ${it.url.forLog()}
 not a feed$at
 HTTP ${it.status}$at

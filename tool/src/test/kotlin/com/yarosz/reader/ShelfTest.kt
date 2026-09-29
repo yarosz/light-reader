@@ -129,7 +129,7 @@ class ShelfTest {
     fun `a download that failed while the phone was offline says so, and a tap still retries it`() {
         val offline = Download.Status.Failed(Unreachable, offline = true)
         val arriving = rows(downloads = mapOf(other to Download("New", null, 1, offline)))
-        assertEquals(ShelfRow(RowKey.Arriving(other), "New", "download failed · you're offline", RowTap.Download(other, "New", null)), arriving.single())
+        assertEquals(ShelfRow(RowKey.Arriving(other), "New", "download failed while offline · tap to retry", RowTap.Download(other, "New", null)), arriving.single())
         val again = rows(book("Book", source = source), downloads = mapOf(source to Download("Book", null, 1, offline, replacing = "Book")), present = emptySet())
         assertEquals(ShelfRow(RowKey.Shelved("Book"), "Book", ROW_DOWNLOAD_FAILED_OFFLINE, RowTap.Download(source, "Book", null, "Book")), again.single())
     }

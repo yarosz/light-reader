@@ -111,7 +111,7 @@ class AddCatalogueScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit
     override val viewModelClass: Class<AddCatalogueViewModel>
         get() = AddCatalogueViewModel::class.java
 
-    override fun createViewModel() = AddCatalogueViewModel(ShelfOwner.of(lightContext.filesDir)) { lightContext.connectivity.reported() }
+    override fun createViewModel() = AddCatalogueViewModel(ShelfOwner.of(lightContext.filesDir), lightContext.connectivity.reporter())
 
     @Composable
     override fun Content() {

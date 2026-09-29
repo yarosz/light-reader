@@ -43,7 +43,7 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
     override val viewModelClass: Class<ShelfViewModel>
         get() = ShelfViewModel::class.java
 
-    override fun createViewModel() = ShelfViewModel(ShelfOwner.of(lightContext.filesDir)) { lightContext.connectivity.reported() }
+    override fun createViewModel() = ShelfViewModel(ShelfOwner.of(lightContext.filesDir), lightContext.connectivity.reporter())
 
     @Composable
     override fun Content() {

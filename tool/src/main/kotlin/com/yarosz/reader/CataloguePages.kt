@@ -96,29 +96,42 @@ fun entryTarget(entry: CatalogueEntry): PageSource? = when {
 fun searchPlaceholder(catalogue: Catalogue): String =
     if (catalogue.url.catalogueKey == STANDARD_EBOOKS_NEW_RELEASES.url.catalogueKey) SEARCH_STANDARD_EBOOKS else SEARCH
 
-/** The byline of the row the reader tapped to open this page, which its detail page repeats; null for none. */
-val PageSource.byline: String?
+/** The row the reader tapped to open this page; null for none. */
+val PageSource.opener: CatalogueEntry?
     get() = when (this) {
-        is PageSource.Feed -> opener.byline
-        is PageSource.Entry -> entry.byline
+        is PageSource.Feed -> opener
+        is PageSource.Entry -> entry
         PageSource.Root, is PageSource.Search -> null
     }
 
 /**
- * A Book's author on its detail page: [listed], the byline of the row that opened it, so a list and
- * the detail page name the author alike (Gutenberg's lists say "graf Leo Tolstoy" where its Book
- * pages say "Tolstoy, Leo, graf"); else the first Edition that names one; else the first entry's
- * second line.
+ * A Book's author on its detail page: the first Edition that names one, else the first entry's
+ * second line. The byline of [opener], the row that opened the page, wins when that row is the Book
+ * (the same title) and names the same person, so a list and the detail page name the author alike:
+ * Gutenberg's lists say "graf Leo Tolstoy" where its Book pages say "Tolstoy, Leo, graf". A byline
+ * can be a content line instead ("Our most popular books.", a category's "1 book"), hence both checks.
+ * With no Edition author, the Book's own row's byline is all there is.
  */
-fun detailAuthor(entries: List<CatalogueEntry>, listed: String? = null): String? =
-    listed ?: entries.firstNotNullOfOrNull { entry -> entry.authors.takeIf { it.isNotEmpty() }?.joinToString(", ") } ?: entries.firstOrNull()?.byline
+fun detailAuthor(entries: List<CatalogueEntry>, opener: CatalogueEntry? = null): String? {
+    val editions = entries.firstNotNullOfOrNull { entry -> entry.authors.takeIf { it.isNotEmpty() }?.joinToString(", ") }
+    val listed = opener?.byline?.takeIf { byline ->
+        words(opener.title) == entries.firstOrNull()?.title?.let(::words) &&
+            (editions == null || words(byline).sorted() == words(editions).sorted())
+    }
+    return listed ?: editions ?: entries.firstOrNull()?.byline
+}
+
+/** [text]'s words, lowercased, without punctuation. */
+private fun words(text: String): List<String> = WORD.findAll(text.lowercase()).map { it.value }.toList()
+
+private val WORD = Regex("""[\p{L}\p{N}]+""")
 
 /**
  * A Book's summary on its detail page: the first prose summary (the parser drops metadata dumps,
  * D14.4), unless it only repeats the author, as a Gutenberg list entry's short content does.
  */
-fun detailSummary(entries: List<CatalogueEntry>, listed: String? = null): String? {
-    val author = detailAuthor(entries, listed)
+fun detailSummary(entries: List<CatalogueEntry>, opener: CatalogueEntry? = null): String? {
+    val author = detailAuthor(entries, opener)
     return entries.firstNotNullOfOrNull { it.summary?.takeIf { summary -> summary != author } }
 }
 

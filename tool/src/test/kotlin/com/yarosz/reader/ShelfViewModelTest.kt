@@ -239,6 +239,14 @@ class ShelfViewModelTest {
     }
 
     @Test
+    fun `a download that fails another way while the phone reports no connection doesn't read as offline`() {
+        val vm = shelf(FakeTransport(mapOf(link.value to Answer(status = 503)))) { false }
+        vm.download(link, "Stormy Night", null)
+        settle()
+        assertEquals(ROW_DOWNLOAD_FAILED, vm.row("Stormy Night").detail)
+    }
+
+    @Test
     fun `leaving the Shelf for the Catalogues ends Edit`() {
         seed("urn:a" to book("A"))
         val vm = shelf()

@@ -1,6 +1,7 @@
 package com.yarosz.reader
 
 import android.util.Log
+import com.thelightphone.sdk.LightConnectivity
 import java.io.Closeable
 import java.io.IOException
 import java.io.InputStream
@@ -227,6 +228,19 @@ private fun isCertificateFailure(e: IOException): Boolean =
         it is CertificateException || it is CertPathValidatorException || it is CertPathBuilderException
     }
 
+/**
+ * Asks whether the phone reports an internet connection, answering null when it can't say (the
+ * permission missing, say), so a caller never claims more than the phone did. The function holds
+ * only this connectivity, not the screen that made it, since a download keeps it until it lands.
+ */
+fun LightConnectivity.reporter(): () -> Boolean? = {
+    try {
+        currentStatus.isConnected
+    } catch (e: RuntimeException) {
+        null
+    }
+}
+
 private const val TAG = "Reader"
 
 /** Logs why a Catalogue fetch failed; "Couldn't open" logs its reason the same way. */
@@ -235,8 +249,29 @@ private fun logFeedFailure(line: String) {
 }
 
 /**
- * Fetches a Catalogue page. Each failure is logged through [log], with the URL and the status or
- * exception behind it, since the copy the reader sees can't say which server answered or how.
+ * This URL as a log may keep it: no userinfo, no fragment, and its query replaced by "?…", so a
+ * search's terms and any credentials stay out of logcat.
+ */
+internal fun HttpsUrl.forLog(): String = urlForLog(value)
+
+private fun urlForLog(url: String): String {
+    val bare = url.substringBefore('#')
+    val rest = bare.substringAfter("://")
+    val authorityEnd = rest.indexOfFirst { it == '/' || it == '?' }.let { if (it < 0) rest.length else it }
+    val tail = rest.substring(authorityEnd)
+    return bare.substringBefore("://") + "://" + rest.substring(0, authorityEnd).substringAfterLast('@') +
+        if ('?' in tail) tail.substringBefore('?') + "?…" else tail
+}
+
+/** [e] for a log line, each URL its message names (a redirect to http:// names its target) cut as [forLog] cuts one. */
+private fun exceptionForLog(e: Exception): String = URL_IN_TEXT.replace(e.toString()) { urlForLog(it.value) }
+
+private val URL_IN_TEXT = Regex("""\b[A-Za-z][A-Za-z0-9+.-]*://\S*[^\s.,;:)\]"'>]""")
+
+/**
+ * Fetches a Catalogue page. Each failure is logged through [log], with the URL (as [forLog] cuts it)
+ * and the status or exception behind it, since the copy the reader sees can't say which server
+ * answered or how.
  */
 fun fetchPage(transport: Transport, url: HttpsUrl, log: (String) -> Unit = ::logFeedFailure): Fetched<CataloguePage> =
     fetch(transport, url, log, ::parseFeed)
@@ -247,25 +282,25 @@ fun fetchSearch(transport: Transport, description: HttpsUrl, log: (String) -> Un
 
 private fun <T> fetch(transport: Transport, url: HttpsUrl, log: (String) -> Unit, read: (InputStream, HttpsUrl) -> T?): Fetched<T> {
     fun failed(reason: FeedFailure, cause: String): Fetched.Failed {
-        log("catalogue fetch failed: $url: $cause -> $reason")
+        log("catalogue fetch failed: ${url.forLog()}: $cause -> $reason")
         return Fetched.Failed(reason)
     }
     val response = try {
         transport.get(url)
     } catch (e: UnknownHostException) {
-        return failed(NoSuchHost, e.toString())
+        return failed(NoSuchHost, exceptionForLog(e))
     } catch (e: IOException) {
-        return failed(unreachable(url, e), e.toString())
+        return failed(unreachable(url, e), exceptionForLog(e))
     }
     return response.use {
-        val at = if (it.url == url) "" else " at ${it.url}"
+        val at = if (it.url == url) "" else " at ${it.url.forLog()}"
         if (it.status !in 200..299) return failed(HttpError(it.status), "HTTP ${it.status}$at")
         try {
             read(it.body, it.url)?.let { value -> Fetched.Ok(value) } ?: failed(Unreadable, "not a feed$at")
         } catch (e: SAXException) {
-            failed(Unreadable, "$e$at")
+            failed(Unreadable, exceptionForLog(e) + at)
         } catch (e: IOException) {
-            failed(Unreachable, "$e$at")
+            failed(Unreachable, exceptionForLog(e) + at)
         }
     }
 }
