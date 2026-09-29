@@ -81,8 +81,8 @@ Ordered. Each item ends on its _done-when_.
   can't report today, so it is Unreachable; revisit if `LightConnectivity` gains validation.
 - **N4 · Chapters + Progress (ADR 0004).** TOC from nav.xhtml / NCX with fallbacks; top bar shows the
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
-  the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,
-  "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
+  the last 20 page-turn samples, 2 s–3 min and 600 wpm filters, whole minutes under 15, 5-minute buckets
+  above, "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
   ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back from
   the end, or jumping to a Chapter of the text, clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
   Spine item or a Part heading continues the Chapter before it; with none, each Spine item is a Chapter
@@ -114,17 +114,20 @@ Ordered. Each item ends on its _done-when_.
     Chapter of the text); a jump lands on a Page starting exactly at the Chapter, laid out afresh, as the
     Place, untimed; it clears Finished in the text and keeps it in Back matter. Opening Contents drops
     the Page's timing. The volume keys stay LightOS's there until N5.
-  - Leaving a Book: every Reader state but "Opening…" shows a way to the Shelf, since the back gesture
-    can't be seen. Contents has "Shelf" on the right of its bar (ignoring taps for half a second, so a
-    double tap on the top line stays in Contents); "Couldn't open this Book." and "This Book has no
+  - Leaving a Book: every Reader state shows a way to the Shelf, since the back gesture can't be seen.
+    Contents has "Shelf" on the right of its bar (ignoring taps for half a second, so a double tap on
+    the top line stays in Contents); "Opening…", "Couldn't open this Book." and "This Book has no
     text." have "Back to Shelf" under them, as the end page does. `scripts/ci.sh` checks that Contents'
     Shelf reaches the Shelf on the emulator and the LP3.
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
-  A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
-  book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
-  `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's
+  - Footer and speed fixes from the N4 walkthrough: a Page read faster than 600 wpm gives no speed
+    sample (skimming had dragged the Progress line near zero for as long as the Tool ran); "Opening…"
+    has "Back to Shelf" (a long Book takes seconds to open); the Progress line falls back to a short
+    form ("about 10 min left", "under 1 min left") when the full one doesn't fit, as at font scale 1.5;
+    A− and A+ show disabled at the smallest and largest sizes.
+  _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's
   no-images EPUB 2) shows its 61 novel Chapters, "Chapter I." to "CHAPTER LXI.", plus the title page and
   license its table of contents lists, across 15 Spine items; the images EPUB 3 gives the same 63
   Chapters across 7.

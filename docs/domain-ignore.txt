@@ -174,12 +174,16 @@ WordIndex
 ReadingSpeed
 PageTimer
 
-# N4: the minutes line's templates, whose rounding DESIGN.md "Reading" tabulates as ⌈m⌉ and ⌈m/5⌉×5
-about ${ceil(minutes).toInt()} min left in this chapter
-about ${ceil(minutes / 5).toInt() * 5} min left in this chapter
+# N4: the minutes line's templates, full and short, whose rounding DESIGN.md "Reading" tabulates as ⌈m⌉
+# and ⌈m/5⌉×5. ProgressLine is the footer's line in both forms (a DESIGN.md "Reading" UI surface), and
+# ProgressForm which of them the footer shows.
+about $shown min left in this chapter
+about $shown min left
+ProgressLine
+ProgressForm
 
-# N4: the Progress line near a Chapter's end. "done" is an _Avoid_ word for Finished, but this is a
-# Chapter nearly read, not a Book read to the end.
+# N4: the Progress line near a Chapter's end. "done" is an _Avoid_ word for Finished, but this names the
+# Chapter nearly read, not a Book read to the end; the short form, which can't name it, avoids "done".
 almost done with this chapter
 
 # N4: DESIGN.md "Reading" headings

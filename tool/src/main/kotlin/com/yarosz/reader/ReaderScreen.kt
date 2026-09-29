@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -37,6 +38,8 @@ import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thelightphone.sdk.LightScreen
@@ -49,6 +52,7 @@ import com.thelightphone.sdk.ui.LightThemeTokens
 import com.thelightphone.sdk.ui.designVerticalPxToSp
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
+import kotlin.math.sign
 
 /** Reads the Book in [file], opened from the Shelf; back returns there. See [ReaderViewModel] for [start]. */
 class ReaderScreen(
@@ -78,8 +82,7 @@ class ReaderScreen(
                 val opened = book
                 Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
                     when {
-                        opened == null && status == READING_COULDNT_OPEN -> NoPage(READING_COULDNT_OPEN)
-                        opened == null -> LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
+                        opened == null -> NoPage(status)
                         opened.spineItems.isEmpty() -> NoPage(READING_NO_TEXT)
                         else -> Reader(measurer, source, topLineHeight)
                     }
@@ -126,6 +129,7 @@ class ReaderScreen(
         val atEnd by viewModel.atEnd.collectAsState()
         val topLine by viewModel.topLine.collectAsState()
         val progressLine by viewModel.progressLine.collectAsState()
+        val fontStep by viewModel.fontStep.collectAsState()
         val colors = LightThemeTokens.colors
 
         Column(Modifier.fillMaxSize()) {
@@ -161,27 +165,30 @@ class ReaderScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                LightText(
-                    text = "A−",
-                    variant = LightTextVariant.Copy,
-                    modifier = Modifier.fillMaxHeight().lightClickable { viewModel.changeFont(-1) }.padding(horizontal = 8.dp).wrapContentHeight(),
-                )
-                LightText(
-                    text = progressLine.orEmpty(),
-                    variant = LightTextVariant.Detail,
-                    modifier = Modifier.weight(1f),
-                    align = TextAlign.Center,
-                    lighten = true,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                LightText(
-                    text = "A+",
-                    variant = LightTextVariant.Copy,
-                    modifier = Modifier.fillMaxHeight().lightClickable { viewModel.changeFont(+1) }.padding(horizontal = 8.dp).wrapContentHeight(),
-                )
+                FontButton("A−", -1, fontStep)
+                ProgressText(progressLine, Modifier.weight(1f))
+                FontButton("A+", +1, fontStep)
             }
         }
+    }
+
+    /**
+     * "A−" or "A+", changing the size by [delta]. Where that would do nothing (the smallest or largest size)
+     * it is drawn in secondary text, ignores taps, and a screen reader hears it as disabled.
+     */
+    @Composable
+    private fun FontButton(label: String, delta: Int, fontStep: Int) {
+        val enabled = canChangeFont(fontStep, delta)
+        LightText(
+            text = label,
+            variant = LightTextVariant.Copy,
+            modifier = Modifier
+                .fillMaxHeight()
+                .lightClickable(enabled = enabled, role = Role.Button) { viewModel.changeFont(delta) }
+                .padding(horizontal = 8.dp)
+                .wrapContentHeight(),
+            lighten = !enabled,
+        )
     }
 
     /** "The end." and "Back to Shelf", which leaves the Reader as system back does. Taps elsewhere turn as on a Page. */
@@ -198,8 +205,8 @@ class ReaderScreen(
     }
 
     /**
-     * A Book with no Page to show, which has no top line and so no Contents: [message], then "Back to Shelf"
-     * aligned with it (its tap padding hangs into the margin).
+     * A Book with no Page to show, still opening or unreadable, which has no top line and so no Contents:
+     * [message], then "Back to Shelf" aligned with it (its tap padding hangs into the margin).
      */
     @Composable
     private fun NoPage(message: String) {
@@ -218,6 +225,48 @@ class ReaderScreen(
             modifier = modifier.lightClickable { goBack() }.padding(8.dp),
             align = TextAlign.Center,
         )
+    }
+}
+
+/**
+ * Whether there is a size in [delta]'s direction from [step]: not for A− at the smallest size, nor A+ at the
+ * largest. A larger step than one is clamped by [ReaderViewModel.changeFont], so only its sign counts here.
+ */
+fun canChangeFont(step: Int, delta: Int): Boolean = step + delta.sign in FONT_SIZES.indices
+
+/** Which of a [ProgressLine]'s forms the footer shows. */
+enum class ProgressForm { Full, Short }
+
+/** The full form when its one line, [fullWidthPx] wide as drawn, fits in [availableWidthPx], else the short. */
+fun progressForm(fullWidthPx: Int, availableWidthPx: Int): ProgressForm =
+    if (fullWidthPx <= availableWidthPx) ProgressForm.Full else ProgressForm.Short
+
+/**
+ * The footer's Progress line, one line in Detail and secondary text, centred: [line]'s full form when it fits
+ * the width, measured as drawn at the system font scale, else its short form, ellipsised if even that
+ * doesn't fit. The form not shown isn't placed, so a screen reader hears only the one on screen. Its
+ * intrinsic sizes come from Compose's default (measuring at unbounded width), which gives the full form's
+ * width: fine for its one caller, a weighted Row slot, which never asks.
+ */
+@Composable
+private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
+    @Composable
+    fun Form(text: String) = LightText(
+        text = text,
+        variant = LightTextVariant.Detail,
+        align = TextAlign.Center,
+        lighten = true,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+    Layout(content = { Form(line?.full.orEmpty()); Form(line?.short.orEmpty()) }, modifier = modifier) { measurables, constraints ->
+        val full = measurables[0].measure(constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity))
+        val shown = when (progressForm(full.width, constraints.maxWidth)) {
+            ProgressForm.Full -> full
+            ProgressForm.Short -> measurables[1].measure(constraints.copy(minWidth = 0))
+        }
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else constraints.constrainWidth(shown.width)
+        layout(width, shown.height) { shown.place((width - shown.width) / 2, 0) }
     }
 }
 

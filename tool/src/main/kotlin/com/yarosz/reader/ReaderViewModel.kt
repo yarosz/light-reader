@@ -8,6 +8,7 @@ import com.thelightphone.sdk.LightViewModel
 import com.thelightphone.sdk.SimpleLightScreen
 import java.io.File
 import java.util.Locale
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -46,7 +47,7 @@ class ReaderViewModel(
     internal val saver = if (start == null) owner.saver else ReadingSaver(viewModelScope, io, SAVE_DEBOUNCE_MS, { }) { }
 
     val book = MutableStateFlow<OpenBook?>(null)
-    val status = MutableStateFlow("Opening…")
+    val status = MutableStateFlow(READING_OPENING)
 
     /** The Place: the top of the page being read. Relayouts never rewrite it, so font changes can't drift. */
     val spinePoint = MutableStateFlow(SpinePoint(0, 0))
@@ -68,7 +69,7 @@ class ReaderViewModel(
     val topLine = MutableStateFlow("")
 
     /** The footer's Progress line ([minutesLine]); null for none. */
-    val progressLine = MutableStateFlow<String?>(null)
+    val progressLine = MutableStateFlow<ProgressLine?>(null)
 
     /** The title the Shelf shows for the Book. */
     private var shelfTitle = ""
@@ -131,6 +132,8 @@ class ReaderViewModel(
                     publishLines()
                 }
                 .onFailure {
+                    // Leaving the Reader mid-open cancels it: that isn't a Book that couldn't be opened.
+                    if (it is CancellationException) throw it
                     Log.w(TAG, "couldn't open ${file.name}", it)
                     status.value = READING_COULDNT_OPEN
                 }
