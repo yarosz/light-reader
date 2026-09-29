@@ -1,5 +1,6 @@
 package com.yarosz.reader
 
+import android.view.KeyEvent
 import java.io.File
 import kotlin.io.path.createTempDirectory
 import kotlin.test.AfterTest
@@ -7,7 +8,9 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -64,6 +67,19 @@ class ReaderViewModelTest {
         assertEquals(book.spineItems[0].placeOf(0, place.updatedAt), place)
         assertEquals(Book(book.title, "alice.epub", place, finished = false, onShelf = true, author = "Lewis Carroll"), saved.copy(addedAt = null))
         assertEquals("Lewis Carroll", shelfRows(ReadingStore(dir).load(), setOf("alice.epub"), emptyMap()).single().detail)
+    }
+
+    @Test
+    fun `the volume keys are consumed on up and repeat as well as down, and other keys are left to LightOS`() {
+        val vm = reader()
+        for (key in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)) {
+            assertTrue(vm.onKeyUp(key, KeyEvent(KeyEvent.ACTION_UP, key)))
+            assertTrue(vm.onKeyMultiple(key, 2, KeyEvent(KeyEvent.ACTION_MULTIPLE, key)))
+        }
+        val wheelClick = 319
+        assertFalse(vm.onKeyDown(wheelClick, KeyEvent(KeyEvent.ACTION_DOWN, wheelClick)))
+        assertFalse(vm.onKeyUp(wheelClick, KeyEvent(KeyEvent.ACTION_UP, wheelClick)))
+        assertFalse(vm.onKeyMultiple(wheelClick, 2, KeyEvent(KeyEvent.ACTION_MULTIPLE, wheelClick)))
     }
 
     @Test

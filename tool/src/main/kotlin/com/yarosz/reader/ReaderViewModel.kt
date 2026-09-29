@@ -24,6 +24,8 @@ private const val PERF_TAG = "ReaderPerf"
 /** How long page turns and font changes settle before the reading data is saved. */
 const val SAVE_DEBOUNCE_MS = 1_000L
 
+private val PAGE_KEYS = setOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
+
 /**
  * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font step
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
@@ -137,6 +139,15 @@ class ReaderViewModel(
         KeyEvent.KEYCODE_VOLUME_UP -> true.also { previousPage() }
         else -> false
     }
+
+    /**
+     * A page key turns on key-down (a held key repeats there); its key-up is consumed too, or LightActivity
+     * forwards it to LightOS, as it does any Light Phone key a screen declines (the wheel's click lights the
+     * flashlight that way).
+     */
+    override fun onKeyUp(keyCode: Int, event: KeyEvent) = keyCode in PAGE_KEYS
+
+    override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent) = keyCode in PAGE_KEYS
 
     /** Activity.onPause: the last hook guaranteed to run before the process can be killed. */
     override fun onAppPause() = saver.flush()
