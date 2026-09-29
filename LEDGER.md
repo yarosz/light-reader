@@ -1,6 +1,6 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done; next is N5 (Reading controls)
+STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done, released as v0.1.0; next is N5 (Reading controls)
 LAST SESSION: 2026-09-29
 
 ## v1 user flow
@@ -35,6 +35,7 @@ Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 | D4 | Pre-N4 domain pass (#21) | Glossary: Download, Front matter, Chapter runs to the next one (leaf entries only), Finished set past the last Page, Page no longer leans on "reading session"; renames `DownloadState.Finished` → `Outcome`, stored-Book `entry` → `book`, `DevStart.offset` → `char`; `Download` moves to `Download.kt`. Kept as they are: `Reading`'s `offset` (a layout-internal string index; `open` agrees with `enter`), `RowTap.Download` (it starts a Download), "file" in row copy (the Book's file), `Pass.item` (KDoc added), `CataloguePage` (Page's own note). `scripts/domain-drift.sh` 0 unresolved; tag `domain-pass/n4` on the merge commit |
 | N4 | Chapters + Progress (#22–#32) | Chapters from the table of contents (leaf entries, ADR 0004); the top line names the Chapter the Page goes by, the footer the minutes left in it, the Shelf a percent; the end page comes before Back matter and sets Finished; Contents jumps to a Chapter and back to the Shelf; after a size change a Page starts on a whole word, never above the Place's Chapter (ADR 0007 clarified); div and table text, and Standard Ebooks' dedications, epigraphs and forewords, reach the Page; a QA walkthrough's fixes (#27–#32). 501 unit tests; `mise run ci` green on the emulator and the LP3 |
 | D5 | N4 closing domain pass (#33) | Glossary: Part (new), and a Page goes by one Chapter; amended Front matter (the table of contents decides, not the Book's marking; capitalised as a term), Back matter (a trailing run; a Place can open in it), Spine item (documents that aren't reading matter are left out), Place (the heading and Chapter rules, the Contents jump), Progress (the minutes follow the Page), Finished (what clears it). `contentsAt`'s `place` → `point`; Edition capitalised in comments; `Pass` KDoc says what its anchor is; AGENTS.md names closing-pass tags. ADR 0007's #30 edit is a clarification of the same decision; no new ADR. `scripts/domain-drift.sh` 0 unresolved; tag `domain-pass/n4-close` on the merge commit |
+| v0.1.0 | First release (#39) | Tag `v0.1.0` on the merge commit; `versionName` 0.1.0, `versionCode` 1, as committed (never published before); `light-sdk` at v0.1.2, Light's newest tag. Everything through N4, the User-Agent (#35) and the README screenshots (#36, #37). The GitHub Release carries notes only (RELEASING.md); Light's portal submission waits for the portal |
 
 Found while doing N1: Literata's descenders crossed line boundaries, leaking a sliver of the previous
 Page's last line onto the next Page (clipped-band drawing). Fixed with line height 1.4 and centred,
