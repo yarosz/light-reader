@@ -6,7 +6,8 @@ tagged commit on `main`, not an APK we build.
 
 ## Versioning
 
-- `tool/lighttool.toml` carries both numbers; bump them together in the release PR.
+- `tool/lighttool.toml` carries both numbers; bump them together in the release PR, with the version in
+  `USER_AGENT` (`Network.kt`; `ToolMetadataTest` fails until they match).
   - `versionName`: semver `X.Y.Z` (no pre-release suffixes; Light rejects them). `0.x` until v1.
   - `versionCode`: +1 every release. Light's build server rejects a `versionCode` that is not greater
     than the last published one, and Android refuses to install a lower one over a higher one.

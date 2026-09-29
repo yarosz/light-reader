@@ -28,6 +28,11 @@ class ToolMetadataTest {
     }
 
     @Test
+    fun `the User-Agent carries the committed version`() {
+        assertEquals("Reader/${value("versionName")} (+https://github.com/yarosz/light-reader)", USER_AGENT)
+    }
+
+    @Test
     fun `tool id never changes once published`() {
         assertEquals("com.yarosz.reader", value("id"))
     }
