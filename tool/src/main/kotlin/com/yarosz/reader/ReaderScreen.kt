@@ -77,8 +77,9 @@ class ReaderScreen(
                 val opened = book
                 Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
                     when {
+                        opened == null && status == READING_COULDNT_OPEN -> NoPage(READING_COULDNT_OPEN)
                         opened == null -> LightText(text = status, variant = LightTextVariant.Copy, lighten = true)
-                        opened.spineItems.isEmpty() -> LightText(text = READING_NO_TEXT, variant = LightTextVariant.Copy, lighten = true)
+                        opened.spineItems.isEmpty() -> NoPage(READING_NO_TEXT)
                         else -> Reader(measurer, source, topLineHeight)
                     }
                 }
@@ -95,10 +96,19 @@ class ReaderScreen(
         }
     }
 
-    /** Opens Contents over the Reader; a Chapter chosen there is jumped to, and back changes nothing. */
+    /**
+     * Opens Contents over the Reader; a Chapter chosen there is jumped to, "Shelf" leaves the Reader as system
+     * back does, and back changes nothing. Leaving pops the Reader as Contents' result arrives, before a frame
+     * shows the Page again.
+     */
     private fun openContents() {
         val contents = viewModel.openContents() ?: return
-        navigateTo({ ContentsScreen(it, contents) }) { chapter -> viewModel.jumpTo(chapter) }
+        navigateTo({ ContentsScreen(it, contents) }) { choice ->
+            when (choice) {
+                is ContentsChoice.Chapter -> viewModel.jumpTo(choice.index)
+                ContentsChoice.Shelf -> goBack()
+            }
+        }
     }
 
     /**
@@ -181,13 +191,28 @@ class ReaderScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             LightText(text = END_PAGE_TEXT, variant = LightTextVariant.Copy, align = TextAlign.Center)
-            LightText(
-                text = END_PAGE_BACK_TO_SHELF,
-                variant = LightTextVariant.Copy,
-                modifier = Modifier.lightClickable { goBack() }.padding(8.dp),
-                align = TextAlign.Center,
-            )
+            BackToShelf()
         }
+    }
+
+    /** A Book with no Page to show, which has no top line and so no Contents: [message], then "Back to Shelf". */
+    @Composable
+    private fun NoPage(message: String) {
+        Column {
+            LightText(text = message, variant = LightTextVariant.Copy, lighten = true)
+            BackToShelf(Modifier.padding(top = 8.dp))
+        }
+    }
+
+    /** "Back to Shelf", which leaves the Reader as system back does. */
+    @Composable
+    private fun BackToShelf(modifier: Modifier = Modifier) {
+        LightText(
+            text = BACK_TO_SHELF,
+            variant = LightTextVariant.Copy,
+            modifier = modifier.lightClickable { goBack() }.padding(8.dp),
+            align = TextAlign.Center,
+        )
     }
 }
 

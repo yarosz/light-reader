@@ -125,6 +125,27 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
   [ "$first" != "$before" ] || { echo " (A+ did not change the layout)"; return 1; }
   [ "$before" = "$after" ]
 }
+leave_check() {  # serial: from a Page, the top line opens Contents and its "Shelf" leaves the Reader: a
+                 # "shelf rows=" line logged after this run's marker. Contents is known by its title, a
+                 # "Contents" text node (a Page has only the "Contents: <title>" label), before "Shelf" is
+                 # tapped, since a Page's own text can hold "shelf". The Shelf cleared dev-start when it
+                 # opened the Book, so it stays on the Shelf.
+  local s=$1 mark="ci-leave-check-$$-$RANDOM-$(date +%s)" shown=""
+  "$adb" -s "$s" shell log -p i -t Reader "$mark" || { echo "could not write the logcat marker"; return 1; }
+  ANDROID_SERIAL=$s mise run ui tap "Contents:" >/dev/null 2>&1 || { echo "could not tap the top line"; return 1; }
+  for _ in $(seq 1 10); do
+    ANDROID_SERIAL=$s mise run ui 2>/dev/null | grep -qE '^ +"Contents"  \(' && { shown=1; break; }
+    sleep 1
+  done
+  [ -n "$shown" ] || { echo "the top line never opened Contents"; return 1; }
+  ANDROID_SERIAL=$s mise run ui tap "Shelf" >/dev/null 2>&1 || { echo "could not tap Shelf in Contents"; return 1; }
+  for _ in $(seq 1 15); do
+    "$adb" -s "$s" logcat -d -s Reader:I | sed -n "/$mark/,\$p" | grep -q 'shelf rows=' && return 0
+    sleep 1
+  done
+  echo "Shelf in Contents never showed the Shelf"
+  return 1
+}
 wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s for adb, and clear
           # the lock screen (a phone with no PIN only; with a PIN the round trip fails and says so)
   for _ in $(seq 1 15); do
@@ -230,6 +251,8 @@ else
   install_and_launch "$emu" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx emulator "install"
   line=$(roundtrip "$emu") || fail_ctx emulator "font round trip: $line"
   note "emulator font round trip (identical Page): $line"
+  why=$(leave_check "$emu") || fail_ctx emulator "$why"
+  note "emulator: the top line opens Contents, and its Shelf leaves for the Shelf"
   why=$(shelf_check "$emu") || fail_ctx emulator "$why"
   note "emulator: reading data byte-identical after the round trip; a plain launch renders the Shelf"
 fi
@@ -248,6 +271,8 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
+  why=$(leave_check "$lp3") || fail_ctx lp3 "$why"
+  note "LP3: the top line opens Contents, and its Shelf leaves for the Shelf"
   why=$(shelf_check "$lp3") || fail_ctx lp3 "$why"
   note "LP3: reading data byte-identical after the round trip; a plain launch renders the Shelf"
   lp3_ran=1
