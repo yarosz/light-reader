@@ -111,4 +111,15 @@ class WindowsTest {
             windows(SpineItem("spine", listOf(short, long, short)), maxChars = 100),
         )
     }
+
+    @Test
+    fun `a block starting at the page break starts a window, and the windows still tile`() = forAll { rnd ->
+        val spineItem = FakeSpineItem.random(rnd).spineItem
+        val pageBreak = spineItem.blockStarts.drop(1).randomOrNull(rnd) ?: return@forAll
+        val windows = windows(spineItem, randomMaxChars(rnd), pageBreak)
+        assertTrue(windows.any { it.start == pageBreak })
+        assertEquals(0, windows.first().start)
+        assertEquals(spineItem.text.length, windows.last().end)
+        windows.zipWithNext { a, b -> assertEquals(a.end, b.start) }
+    }
 }

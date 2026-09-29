@@ -1,7 +1,7 @@
 # Ledger
 
 STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, and the code renamed to the glossary; next is N4 (Chapters + Progress)
-LAST SESSION: 2026-09-28
+LAST SESSION: 2026-09-29
 
 ## v1 user flow
 
@@ -93,8 +93,10 @@ Ordered. Each item ends on its _done-when_.
     and the Shelf shows no percent for it until the next page turn.
   - Nested tables of contents: only leaf entries are Chapters (ADR 0004's nearest leaf), so a "Part
     One" page continues the Chapter before it, or is front matter.
-  - Back matter: listed back matter is its own Chapter, unlisted back matter continues the last one,
-    and Finished needs the last Page.
+  - Back matter: listed back matter is its own Chapter, and unmarked trailing material is text, part of
+    the last Chapter; Finished needs the last Page of the text. Back matter (`CONTEXT.md`) starts at
+    `OpenBook.textEnd`: Project Gutenberg's `pg-footer`, or a trailing run of Spine items marked
+    `backmatter`. The end page follows the last Page of the text, which ends exactly there.
   - Leaving the end page by system back or "Back to Shelf" sets Finished. The Place stays on the last
     Page (the end page is not a Page), so a Finished Book reopens there.
   - Reading-speed samples belong to the reader: the last 20 are kept in memory across Books, not saved.

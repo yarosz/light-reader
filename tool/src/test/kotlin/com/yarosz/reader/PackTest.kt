@@ -105,12 +105,12 @@ class PackTest {
     private data class Step(val measured: List<List<LineMetrics>?>, val packed: PackedPages)
 
     /** Packs after measuring each window in a random order, asserting that no page produced earlier changes; returns every step. */
-    private fun measureInRandomOrder(case: Case, anchor: Int, rnd: Random): List<Step> {
+    private fun measureInRandomOrder(case: Case, anchor: Int, rnd: Random, pageBreak: Int? = null): List<Step> {
         val measured = MutableList<List<LineMetrics>?>(case.windows.size) { null }
         var seen = emptyMap<Int, Page>()
         return case.windows.indices.shuffled(rnd).map { w ->
             measured[w] = case.cut[w]
-            val packed = pack(case.windows, measured, anchor, case.height)
+            val packed = pack(case.windows, measured, anchor, case.height, pageBreak)
             val now = packed.pages.associateBy { it.start }
             seen.forEach { (start, page) -> assertEquals(page, now[start], "page at $start changed after measuring window $w") }
             seen = now
@@ -385,5 +385,35 @@ class PackTest {
         )
         assertEquals(result(pages.take(2), pages.drop(2)), pack(windows, lines, 20, 100f))
         assertEquals(result(emptyList(), pages), pack(windows, lines, 0, 100f))
+    }
+
+    @Test
+    fun `no page spans the page break at any stage of measuring, a page ends there, and pages still tile`() = forAll { rnd ->
+        val spineItem = FakeSpineItem.random(rnd)
+        val pageBreak = spineItem.spineItem.blockStarts.drop(1).randomOrNull(rnd) ?: return@forAll
+        val lines = spineItem.layout(randomFont(rnd), rnd)
+        val windows = windows(spineItem.spineItem, rnd.nextInt(1, 6_000), pageBreak)
+        val case = Case(spineItem, lines, windows, spineItem.cut(lines, windows, rnd), randomPageHeight(rnd))
+        val steps = measureInRandomOrder(case, randomAnchor(rnd, case), rnd, pageBreak)
+        steps.flatMap { it.packed.pages }.forEach { assertTrue(pageBreak !in it.start + 1 until it.end, "page $it spans $pageBreak") }
+        val pages = steps.last().packed.pages
+        assertEquals(0, pages.first().start)
+        assertEquals(case.length, pages.last().end)
+        pages.zipWithNext { a, b -> assertEquals(a.end, b.start) }
+        assertTrue(pages.any { it.end == pageBreak })
+    }
+
+    @Test
+    fun `the page before the page break ends there however short, from either side, and isn't withheld at a window seam`() {
+        val (windows, lines) = windowed(5, 5)
+        val forward = pack(windows, lines, 0, 30f, pageBreak = 50)
+        assertEquals(listOf(0 to 30, 30 to 50, 50 to 80, 80 to 100), textRanges(forward.pages))
+        val backward = pack(windows, lines, 100, 30f, pageBreak = 50)
+        assertEquals(listOf(0 to 20, 20 to 50, 50 to 70, 70 to 100), textRanges(backward.pages))
+        val beforeSeam = pack(windows, listOf(lines[0], null), 0, 30f, pageBreak = 50)
+        assertEquals(result(emptyList(), listOf(Page(0, 30, listOf(Band(0, 0f, 30f))), Page(30, 50, listOf(Band(0, 30f, 50f)))), needAfter = 1), beforeSeam)
+        val afterSeam = pack(windows, listOf(null, lines[1]), 100, 30f, pageBreak = 50)
+        assertEquals(listOf(50 to 70, 70 to 100), textRanges(afterSeam.pages))
+        assertEquals(0, afterSeam.needBefore)
     }
 }

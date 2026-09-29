@@ -75,8 +75,12 @@ fun endsAtBreak(text: CharSequence, nextLineStart: Int): Boolean =
  * and [PackedPages.needAfter] names the window to measure. Each page depends only on lines on its own
  * side of the anchor, so re-packing with more windows measured, for the same anchor, only appends pages
  * at either end, and the caller may keep pages across calls.
+ *
+ * [pageBreak], when a line starts there, starts a Page whatever the rules above say: no Page holds lines
+ * on both sides of it, so the Page before it ends there however short. It is the Book's text end
+ * ([OpenBook.textEnd]) inside its Spine item, which [windows] also starts a window at.
  */
-fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pageHeight: Float): PackedPages {
+fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pageHeight: Float, pageBreak: Int? = null): PackedPages {
     require(lines.size == windows.size) { "${lines.size} line lists for ${windows.size} windows" }
     if (windows.isEmpty()) return PackedPages(emptyList(), emptyList(), needBefore = null, needAfter = null)
     val at = windowIndexFor(windows, anchor)
@@ -96,15 +100,18 @@ fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pa
         return Page(stacked[first].line.start, end, bands)
     }
 
+    fun startsPage(i: Int) = stacked[i].line.start == pageBreak
+
     val fromAnchor = mutableListOf<Page>()
     var first = from
     while (first < stacked.size) {
         val y = stacked[first].y
         var last = first
-        while (last < stacked.lastIndex && stacked[last + 1].yEnd - y <= pageHeight) last++
+        while (last < stacked.lastIndex && !startsPage(last + 1) && stacked[last + 1].yEnd - y <= pageHeight) last++
         val reachedEnd = last == stacked.lastIndex
-        if (reachedEnd && hi < windows.lastIndex) break // the next window may hold more fitting lines
-        val end = if (reachedEnd) last else (last downTo first).firstOrNull {
+        val broken = if (reachedEnd) runEnd == pageBreak else startsPage(last + 1)
+        if (reachedEnd && hi < windows.lastIndex && !broken) break // the next window may hold more fitting lines
+        val end = if (reachedEnd || broken) last else (last downTo first).firstOrNull {
             val line = stacked[it].line
             line.endsAtBreak && !line.heading && stacked[it].yEnd - y >= MIN_PAGE_FILL * pageHeight
         } ?: last
@@ -117,9 +124,10 @@ fun pack(windows: List<Window>, lines: List<List<LineMetrics>?>, anchor: Int, pa
     while (last >= 0) {
         val yEnd = stacked[last].yEnd
         var start = last
-        while (start > 0 && yEnd - stacked[start - 1].y <= pageHeight) start--
-        if (start == 0 && lo > 0) break // the window above may hold more fitting lines
-        val begin = (start..last).firstOrNull {
+        while (start > 0 && !startsPage(start) && yEnd - stacked[start - 1].y <= pageHeight) start--
+        val broken = startsPage(start)
+        if (start == 0 && lo > 0 && !broken) break // the window above may hold more fitting lines
+        val begin = if (broken) start else (start..last).firstOrNull {
             val above = if (it == 0) null else stacked[it - 1].line
             (above == null || above.endsAtBreak && !above.heading) && yEnd - stacked[it].y >= MIN_PAGE_FILL * pageHeight
         } ?: start

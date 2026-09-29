@@ -45,8 +45,10 @@ data class SpineItem(val spineId: String, val blocks: List<Block>) {
  * [identifier] keeps a Book the same Book across re-downloads, so it keeps its Place (ADR 0002); see
  * [bookIdentifier]. [author] is its package's `dc:creator`s, null when it names none. [chapters] are its
  * Chapters in reading order ([chaptersOf]); by default each Spine item is one. [textEnd] is where the
- * Book's reading ends: the end page follows the Page reaching it, and the last Chapter's minutes stop
- * there. It is the end of the last Spine item.
+ * Book's text ends and its Back matter starts ([textEndOf]), by default the end of the last Spine item: the
+ * last Page of the text ends there and the end page follows it, a Chapter starting at or after it is Back
+ * matter, and no Chapter's minutes run past it. At the start of a Spine item other than the first, it is
+ * written as the end of the Spine item before, so the Page ending that Spine item reaches it.
  */
 data class OpenBook(
     val identifier: String,
@@ -68,7 +70,8 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 
 /**
  * Reads an EPUB (2 or 3) into plain blocks: headings, paragraphs, verse, and image captions.
- * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does).
+ * Front and back matter are dropped when the book marks its body matter (Standard Ebooks does). Back matter
+ * kept, Project Gutenberg's license or Spine items marked as back matter, starts at [OpenBook.textEnd].
  * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
  * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
  * its Spine item doesn't have starts at that Spine item's start, or at the previous entry's start if that
@@ -79,7 +82,7 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
 fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): OpenBook = ZipFile(file).use { zip ->
     val pkg = readPackage(zip, fallbackTitle)
     val tables = readTablesOfContents(zip, pkg)
-    val fragments = tables.flatten().mapNotNullTo(HashSet()) { it.fragment }
+    val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
     val docs = pkg.spine.map { item -> item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) } }
     val body = docs.filter { it.second.isBodyMatter }.ifEmpty { docs }.filter { it.second.blocks.isNotEmpty() }
     val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
@@ -95,10 +98,33 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
         }
         resolved.ifEmpty { null }
     }.orEmpty()
+    val footer = body.withIndex().firstNotNullOfOrNull { (i, doc) -> doc.second.anchors[PG_FOOTER]?.let { SpinePoint(i, it) } }
+    val backMatter = body.indexOfLast { !it.second.isBackMatter } + 1
     OpenBook(
         pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems),
-        textEnd = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0),
+        textEndOf(spineItems, footer, SpinePoint(backMatter, 0).takeIf { backMatter < spineItems.size }),
     )
+}
+
+/** The id of the element holding Project Gutenberg's license, the start of a Gutenberg Book's Back matter. */
+private const val PG_FOOTER = "pg-footer"
+
+/**
+ * Where the text of a Book made of [spineItems] ends ([OpenBook.textEnd]): the earlier of [footer], where
+ * the element with the id `pg-footer` starts, and [backMatter], the start of the trailing run of Spine
+ * items marked `backmatter`. A [footer] inside a block moves to the next block's start, so no Page is
+ * cut mid-block. A point at the start of a Spine item other than the first is written as the end of the
+ * Spine item before. With neither, or with no text before the result, it is the end of the Book.
+ */
+internal fun textEndOf(spineItems: List<SpineItem>, footer: SpinePoint?, backMatter: SpinePoint?): SpinePoint {
+    val end = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0)
+    val snapped = footer?.let { (item, char) ->
+        val starts = spineItems[item].blockStarts
+        SpinePoint(item, starts.firstOrNull { it >= char } ?: spineItems[item].text.length)
+    }
+    val point = listOfNotNull(snapped, backMatter).minOrNull() ?: return end
+    if (point == SpinePoint(0, 0)) return end
+    return if (point.char == 0) SpinePoint(point.item - 1, spineItems[point.item - 1].text.length) else point
 }
 
 /** A Spine item's idref and the path of its document inside the zip. */
@@ -364,6 +390,7 @@ internal val TRIMMED = charArrayOf(' ', '\u00A0', '\n')
 private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler() {
     val blocks = mutableListOf<Block>()
     var isBodyMatter = false
+    var isBackMatter = false
     val anchors = mutableMapOf<String, Int>()
     private val ids = mutableListOf<String>() // the document's ids in [fragments], in document order
     private var pending = 0 // ids from this index on wait for text
@@ -399,7 +426,10 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
         }
         attrs.getValue("id")?.takeIf { it in fragments }?.let { ids += it }
         when {
-            name == "body" -> isBodyMatter = "bodymatter" in markers
+            name == "body" -> {
+                isBodyMatter = "bodymatter" in markers
+                isBackMatter = "backmatter" in markers
+            }
             name == "hgroup" -> {
                 hgroupParts = mutableListOf()
                 hgroupLength = 0
