@@ -213,3 +213,6 @@ HTTP ${it.status}$at
 
 # Where a stored Place's snippet matches a Spine item's text, as resolve ranks the candidates.
 Match
+
+# What the Reader's open hands from the io thread to the main one (ReaderViewModel.openBook).
+Opened

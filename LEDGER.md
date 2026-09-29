@@ -146,12 +146,15 @@ Ordered. Each item ends on its _done-when_.
     dedication, epigraph, foreword and other front matter: only the title page, half-title, imprint and
     table of contents are dropped. Listed ones are Chapters, and the Book opens at its start, the first of
     them (Alice on its epigraph; `scripts/ci.sh`'s dev start moves to Chapter I, the text it opened on).
-    Existing Places are re-found by their text (ADR 0002): where the most of the snippet still matches,
-    passing over the line breaks and whole blocks the parser now adds inside it (a list item's paragraphs
-    that ran together, a caption now read between two blocks). A Place still lands at its block's start
-    when its text is gone (text the parser now skips, or a new edition's), and where two spots match its
-    snippet equally (list items that open alike) only the stale block index tells them apart, so it can
-    land on the other. The Shelf percent can shift slightly on the next page turn, as the Book has more
+    Existing Places are re-found by their text (ADR 0002), nearest their stale block and offset: the
+    snippet anywhere in the Spine item, else, within a window of 4 blocks before to 128 blocks or 32,000
+    characters after, the snippet passing over the line breaks and whole blocks the parser now adds inside
+    it (a list item's paragraphs that ran together, a caption now read between two blocks), else the
+    nearest spot matching 20 or more of its characters, or a heading whose next paragraph changed. A Place
+    lands at its block's start when its text is gone (text the parser now skips, or a new edition's) or
+    has moved past the window, and where two spots match its snippet alike (list items that open alike)
+    only the stale spot tells them apart, so it can land on the other. The search runs off the main
+    thread. The Shelf percent can shift slightly on the next page turn, as the Book has more
     characters. Pride and Prejudice keeps 63 Chapters in both Gutenberg editions, War and Peace 385 with
     one license row. The images EPUB 3 has 8 Spine items, the last Gutenberg's cover wrapper page, whose
     "back" link shows after the license: Gutenberg doesn't mark it `linear="no"`, so it stays (drop it
