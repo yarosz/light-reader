@@ -10,8 +10,8 @@ data class Chapter(val title: String, val start: SpinePoint)
 /**
  * The Chapters of a Book made of [spineItems], from [listed]: the leaf entries of its table of contents
  * that name one of its Spine items, in table-of-contents order, each titled by its label. A usable table
- * of contents lists at least two, in reading order; text before the first is front matter. Otherwise each
- * Spine item is a Chapter from its start, and there is no front matter. Back matter always starts a Chapter:
+ * of contents lists at least two, in reading order; text before the first is Front matter. Otherwise each
+ * Spine item is a Chapter from its start, and there is no Front matter. Back matter always starts a Chapter:
  * when the Book has Back matter ([textEnd] is before the Book's end) and no Chapter starts where it does
  * (a point at the end of a Spine item being the next one's start), the first Chapter after that point moves
  * back to start there when no heading comes between them (Gutenberg's end-of-book lines before the license
@@ -53,7 +53,7 @@ fun chaptersOf(
 }
 
 /**
- * The index in [OpenBook.chapters] of the Chapter holding [point], or null in front matter. Of two
+ * The index in [OpenBook.chapters] of the Chapter holding [point], or null in Front matter. Of two
  * Chapters starting at the same point, the later holds it. A binary search, cheap on every page turn.
  */
 fun OpenBook.chapterAt(point: SpinePoint): Int? =
@@ -65,7 +65,7 @@ fun OpenBook.chapterAt(point: SpinePoint): Int? =
  * the headings right before it start (`<h2>II</h2><p id="two">`: a table of contents pointing past a
  * Chapter's heading, which is still that Chapter's), stopping below a heading another Chapter starts in (a
  * Part's heading right above its first Chapter's). 0 when that Chapter starts in an earlier Spine item,
- * or [char] is in front matter.
+ * or [char] is in Front matter.
  */
 fun pageFloor(chapterStarts: List<SpinePoint>, spineItem: SpineItem, item: Int, char: Int): Int {
     val start = chapterStarts.lastOrNull { it <= SpinePoint(item, char) }?.takeIf { it.item == item }?.char ?: return 0
@@ -79,15 +79,15 @@ fun pageFloor(chapterStarts: List<SpinePoint>, spineItem: SpineItem, item: Int, 
 data class Contents(val titles: List<String>, val current: Int?)
 
 /**
- * Contents for a reader at [place], the point the Page being read goes by (its start, or a Chapter starting
+ * Contents for a reader at [point], the point the Page being read goes by (its start, or a Chapter starting
  * later in its first line, or in the first line under the headings it opens on), or on the end page when
- * [atEnd]. The current row is the Chapter holding [place] ([chapterAt]), in text or Back matter, and on
- * the end page the last Chapter of the text, the last starting before [OpenBook.textEnd]; in front matter
+ * [atEnd]. The current row is the Chapter holding [point] ([chapterAt]), in text or Back matter, and on
+ * the end page the last Chapter of the text, the last starting before [OpenBook.textEnd]; in Front matter
  * no row is current.
  */
-fun OpenBook.contentsAt(place: SpinePoint, atEnd: Boolean): Contents = Contents(
+fun OpenBook.contentsAt(point: SpinePoint, atEnd: Boolean): Contents = Contents(
     chapters.map { it.title },
-    if (atEnd) chapters.indexOfLast { it.start < textEnd }.takeIf { it >= 0 } else chapterAt(place),
+    if (atEnd) chapters.indexOfLast { it.start < textEnd }.takeIf { it >= 0 } else chapterAt(point),
 )
 
 /**

@@ -67,7 +67,7 @@ sealed interface DetailAction {
 }
 
 /**
- * The detail page of the Book whose editions are [entries] (one entry, or a Gutenberg Book page's
+ * The detail page of the Book whose Editions are [entries] (one entry, or a Gutenberg Book page's
  * several), given the Shelf. [failure] is how this page's last download failed, when the Shelf
  * didn't keep it (a permanent failure of a download from a Catalogue adds nothing to the Shelf).
  * [shipped] picks the certificate copy (see [feedFailureCopy]).

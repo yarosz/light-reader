@@ -82,7 +82,7 @@ flush, judged on block kinds, never on window boundaries.
   an element directly in it, has the `epub:type` `titlepage`, `halftitlepage`, `imprint` or `toc`.
   Everything else is kept, so the reader can read the dedication, epigraph, foreword, introduction or
   preface Standard Ebooks marks `frontmatter`. Those the table of contents lists are Chapters, in Contents
-  before the first of the text; one it doesn't list is front matter. A newly added Book opens at its
+  before the first of the text; one it doesn't list is Front matter. A newly added Book opens at its
   start, as every Book does: for Standard Ebooks the first of those (Alice opens on its epigraph), as a
   Gutenberg Book opens on its title page, rather than skipping to Chapter I. A trailing run of
   `backmatter` items (colophon, uncopyright, endnotes) is Back matter, listed at the end of Contents. A
@@ -144,7 +144,7 @@ own goes by the Part's first Chapter. It is one Detail line high:
 the style's line height at the system font scale, so the large-text setting grows it and nothing clips,
 but no title changes it (a script drawn in a fallback font with a taller line would otherwise re-pack
 the Pages at a Chapter change). It has 4 dp below it.
-In front matter, and on the end page, it shows the Book's title as the Shelf shows it. Tapping it opens
+In Front matter, and on the end page, it shows the Book's title as the Shelf shows it. Tapping it opens
 Contents; to a screen reader it is a button, "Contents: " and the title. Its tap target is the full
 width of the screen's top 48 dp, or the top line's full height when that is taller, so it takes the top
 of the Page; the rest of the Page turns Pages. The footer is 48 dp:
@@ -167,7 +167,7 @@ thread, when the Book opens, so a turn counts them without reading any text. On 
 | 1 to under 15 | "about ⌈m⌉ min left in this chapter" | "about ⌈m⌉ min left" |
 | 15 and over | "about ⌈m/5⌉×5 min left in this chapter" | "about ⌈m/5⌉×5 min left" |
 
-"chapter" stays lowercase (see "Copy"). There is no line in front matter, on the end page, or in a
+"chapter" stays lowercase (see "Copy"). There is no line in Front matter, on the end page, or in a
 Chapter whose whole text reads in under a minute at the current speed.
 
 **Reading speed.** 230 words a minute until there are 5 samples, then the median of the newest 20 or
@@ -187,20 +187,20 @@ up) returns to the last Page. The end page is not a Page, so the Place stays on 
 last Page of the text ends where Back matter starts, however short that leaves it, so Back matter never
 shares a Page with the text.
 
-**Back matter.** Reached only through Contents, never by turning past the end page. Inside it, turns work
+**Back matter.** From the text, reached only through Contents, never by turning past the end page. Inside it, turns work
 as anywhere else: the top line shows its Chapter's title, the footer has no Progress line, forward on the
 Book's last Page does nothing, and no second end page shows. A Place saved there opens there. Back
 matter's first row starts where Back matter does: the first Chapter listed in it moves back there when no
 Chapter starts there and no heading comes between (Gutenberg's `*** END OF THE PROJECT GUTENBERG EBOOK
 … ***` lines before its license), else an untitled row takes its first heading.
 
-**Contents.** Tapping the top line opens it, from a Page, the end page, front matter or Back matter, and
+**Contents.** Tapping the top line opens it, from a Page, the end page, Front matter or Back matter, and
 drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
 with the bar's back on the left and "Shelf" on the right, and one row per Chapter in order, each the
 Chapter's title verbatim at full strength; Back matter's rows follow the text's with no divider. The
 current row alone has the detail line "you're here": the Chapter the Page goes by, as the top line
 names it (of two starting at one point, the later), or on the end page the last Chapter of the text.
-In front matter no row is current. The list opens with the row before the current one at the top, so the current row is second, or
+In Front matter no row is current. The list opens with the row before the current one at the top, so the current row is second, or
 with the current row at the top when it is first; with no current row it opens at the top. Tapping a row
 goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
 Page (Back matter's first row may open on Back matter's opening lines instead), even for the current
@@ -223,8 +223,8 @@ reopening the Book and leaving at once. At
 another font size a Finished Book's Place may land before the last Page, and forward turns reach the
 end page without clearing it.
 
-**Stored.** Every Place write stores `progress` (additive, ADR 0002): the share (0–1) of the Book's
-text characters before the Place, front and back matter included, to 4 decimals. The Shelf's percent
+**Stored.** Every Place write stores `progress` (additive, ADR 0002): the share (0–1) of all the
+Book's characters before the Place, Front matter and Back matter included, to 4 decimals. The Shelf's percent
 comes from it (see "Shelf"). The minutes left in a Chapter are never stored.
 
 ## Shelf
@@ -303,7 +303,7 @@ offline, "download failed while offline · tap to retry", which stays true once 
 **Missing file.** A Book whose file is gone reads "file missing · tap to download again", and the tap
 downloads it again from the Book's source, keeping its Place. If the download declares a different
 `dc:identifier` (Calibre mints a new one on every conversion), the Book keeps its row: its Place,
-date added and title move to the new identifier, and the Place resolves as well as the new edition
+date added and title move to the new identifier, and the Place resolves as well as the new Edition
 allows. If a Book with the new identifier is already on the Shelf, the two rows become that one: it
 keeps its own title and date added, takes whichever Place is newer, and the old row leaves the
 Shelf. A Book with no known source (a future

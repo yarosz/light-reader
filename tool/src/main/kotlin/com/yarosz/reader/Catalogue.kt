@@ -67,17 +67,17 @@ private val EPUB3 = Regex("epub ?3")
 private val NO_IMAGES = Regex("no[ -]?images")
 
 /**
- * Whether an edition with images beats one without. False until the Reader draws images (v1.x): it
- * shows an image only as its alt text, so the images edition is a larger download for the same
+ * Whether an Edition with images beats one without. False until the Reader draws images (v1.x): it
+ * shows an image only as its alt text, so the images Edition is a larger download for the same
  * reading (Pride and Prejudice: 25 MB against 558 KB). Flip it when images ship.
  */
 const val PREFER_IMAGES_EDITION = false
 
 /**
- * The one link to download among [links]: EPUB over kepub, then the preferred edition (without images
+ * The one link to download among [links]: EPUB over kepub, then the preferred Edition (without images
  * or unmarked over with images, per [preferImages]), then EPUB3 over EPUB2. Feeds mark these only in
  * the link's file name and title, as Gutenberg does ("1342.epub3.images", "EPUB (older e-readers, no
- * images)"); Gutenberg offers its no-images edition only as EPUB2 ("1342.epub.noimages"). A tie keeps
+ * images)"); Gutenberg offers its no-images Edition only as EPUB2 ("1342.epub.noimages"). A tie keeps
  * feed order, which puts a feed's own recommendation first (Standard Ebooks lists its compatible epub
  * before the advanced one). Null when no link is an EPUB.
  */
@@ -89,17 +89,17 @@ fun bestAcquisition(links: List<Acquisition>, preferImages: Boolean = PREFER_IMA
     )
 
 /**
- * The one link "Add to Shelf" downloads for a Book's own page, whose entries are that Book's editions
- * (Gutenberg lists its no-images and images editions separately): the best of all their links. Null
+ * The one link "Add to Shelf" downloads for a Book's own page, whose entries are that Book's Editions
+ * (Gutenberg lists its no-images and images Editions separately): the best of all their links. Null
  * unless every entry has the same title, because then the page is a list of different Books (Standard
  * Ebooks' new releases), and one download for all of them would add an arbitrary one. The title is
- * the test because it is what the page shows as one Book: entry ids differ per edition
- * (Gutenberg's `urn:gutenberg:1342:2` and `…:3`), so they can't tell editions from other Books.
+ * the test because it is what the page shows as one Book: entry ids differ per Edition
+ * (Gutenberg's `urn:gutenberg:1342:2` and `…:3`), so they can't tell Editions from other Books.
  */
 fun bestDownload(entries: List<CatalogueEntry>): Acquisition? =
     if (entries.map { it.title }.distinct().size == 1) bestAcquisition(entries.flatMap { it.acquisitions }) else null
 
-/** 0 for the preferred edition; without [preferImages], "no images" and unmarked tie. */
+/** 0 for the preferred Edition; without [preferImages], "no images" and unmarked tie. */
 private fun Acquisition.editionRank(preferImages: Boolean): Int {
     val markers = markers()
     val images = when {

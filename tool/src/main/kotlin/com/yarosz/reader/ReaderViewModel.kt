@@ -70,7 +70,7 @@ class ReaderViewModel(
 
     /**
      * The top line: the title of the Chapter the Page goes by ([pagePoint]), Back matter's included, else
-     * (front matter, the end page) the Book's Shelf title.
+     * (Front matter, the end page) the Book's Shelf title.
      */
     val topLine = MutableStateFlow("")
 

@@ -282,7 +282,7 @@ fun isCopyProtected(zip: ZipFile): Boolean {
  * content: each Spine document's CRC-32 and length, one pair per line in reading order. The zip's
  * central directory records both for every entry, so this reads no document, yet any change to the
  * text changes it. Two different books never share it just because they share a title and generic
- * idrefs. It is stable across re-downloads and repackaging of the same text, not across editions.
+ * idrefs. It is stable across re-downloads and re-zips of the same documents, not across Editions.
  */
 fun bookIdentifier(identifiers: List<Pair<String?, String>>, uniqueIdentifier: String?, spine: List<ZipEntry>): String {
     val usable = identifiers.filter { it.second.isNotEmpty() }

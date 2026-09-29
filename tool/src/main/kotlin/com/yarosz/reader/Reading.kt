@@ -17,7 +17,8 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  * is unique within one [Reading] only, so compare passes by identity. [item] is [spineItem]'s index in
  * the Book's Spine items. A Page never spans [pageBreak] (see [pack]). With [exact], as for a Chapter
  * jump, the first Page starts on [anchor]'s own line, even one that starts mid-word ([pack]); without it,
- * no higher than [floor] ([pageFloor]).
+ * no higher than [floor] ([pageFloor]). [anchor] is where the pass packs from: the Place on opening or a
+ * font or layout change, a Chapter's start on a jump, or the Spine item's start or end when a turn crosses into it.
  */
 class Pass<M>(
     val id: Int,
