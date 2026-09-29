@@ -326,16 +326,25 @@ class ReaderViewModel(
 
     /**
      * The point the Page on screen goes by for its Chapter and minutes: its start, or the start of a Chapter
-     * starting later in its first line (a table of contents may point mid-line), so a jump there names the
-     * Chapter chosen; on a Page opening on headings, in the first line under them ([Pass.leadEnd]), as a
+     * starting later in its first line (a table of contents may point mid-line, or at a Part's heading
+     * above its first Chapter's), so a jump there names the Chapter chosen. With no Chapter starting in
+     * its first line, a Page opening on headings goes by the first line under them ([Pass.leadEnd]), as a
      * relayout may start the Page on the heading of a Chapter anchored at the paragraph below it
-     * ([pageFloor]). Before a view binds, the Place.
+     * ([pageFloor]); a Page of only headings goes by the Chapter starting at its end, the headings being
+     * that Chapter's, unless Back matter starts there. Before a view binds, the Place.
      */
     private val pagePoint: SpinePoint get() {
         val (pass, page) = frame.value ?: return spinePoint.value
         val start = SpinePoint(pass.item, page.start)
         val opened = book.value ?: return start
-        return opened.chapterAt(SpinePoint(pass.item, pass.leadEnd(page) - 1))?.let { opened.chapters[it].start }?.takeIf { it > start } ?: start
+        val end = SpinePoint(pass.item, page.end)
+        val inFirst = opened.chapterAt(SpinePoint(pass.item, pass.firstLineEnd(page) - 1))?.takeIf { opened.chapters[it].start >= start }
+        val lead = pass.leadEnd(page)
+        val under = if (lead != null) opened.chapterAt(SpinePoint(pass.item, lead - 1)) else {
+            opened.chapterAt(end)?.takeIf { opened.chapters[it].start == end && end < opened.textEnd }
+                ?: opened.chapterAt(SpinePoint(pass.item, page.end - 1))
+        }
+        return (inFirst ?: under)?.let { opened.chapters[it].start }?.takeIf { it > start } ?: start
     }
 
     private fun publishLines() {

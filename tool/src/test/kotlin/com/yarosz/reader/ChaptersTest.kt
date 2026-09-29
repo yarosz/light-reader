@@ -500,6 +500,7 @@ class ChaptersTest {
         assertEquals(33, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 33)), item, 1, 35), "a paragraph before: no heading")
         assertEquals(27, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 27)), item, 1, 35), "mid-block: the start itself")
         assertEquals(0, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 24)), item, 1, 20), "the first Chapter")
+        assertEquals(21, pageFloor(listOf(SpinePoint(1, 0), SpinePoint(1, 13), SpinePoint(1, 21)), item, 1, 24), "a heading another Chapter starts in stays its own")
     }
 
     @Test

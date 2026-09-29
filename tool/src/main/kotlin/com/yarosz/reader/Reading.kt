@@ -60,16 +60,16 @@ class Pass<M>(
 
     /**
      * Where [page]'s lead ends: the end of its first line that isn't a heading, capped at the Page's end,
-     * so a Page opening on a Chapter's heading reaches the Chapter's start below it ([pageFloor]). Only
-     * [page]'s first window is read: windows are cut before headings, and one cut right after a heading
-     * ends the lead there.
+     * so a Page opening on a Chapter's heading reaches the Chapter's start below it ([pageFloor]); null
+     * when [page] holds only headings. Only [page]'s first window is read: windows are cut before headings,
+     * and one cut right after a heading ends the lead there.
      */
-    fun leadEnd(page: Page): Int {
+    fun leadEnd(page: Page): Int? {
         val window = page.bands.first().window
         val lines = measured[window]?.let(linesOf).orEmpty()
-        val lead = lines.indexOfFirst { it.start >= page.start && !it.heading }
-        val next = lines.getOrNull(lead + 1)?.start?.takeIf { lead >= 0 } ?: windows[window].end
-        return minOf(next, page.end)
+        val lead = lines.indexOfFirst { it.start >= page.start && it.start < page.end && !it.heading }
+        if (lead < 0) return windows[window].end.takeIf { it < page.end }
+        return minOf(lines.getOrNull(lead + 1)?.start ?: windows[window].end, page.end)
     }
 
     /** The Page holding [offset], the last Page for offsets past the end, or null while it isn't packed yet. */

@@ -56,13 +56,15 @@ fun OpenBook.chapterAt(point: SpinePoint): Int? =
  * The highest a Page packed at [char] in [spineItem], Spine item [item], may start ([pack]'s floor): where
  * the Chapter holding [char] starts, of [chapterStarts] in order, or, when that is a block's start, where
  * the headings right before it start (`<h2>II</h2><p id="two">`: a table of contents pointing past a
- * Chapter's heading, which is still that Chapter's). 0 when that Chapter starts in an earlier Spine item,
+ * Chapter's heading, which is still that Chapter's), stopping below a heading another Chapter starts in (a
+ * Part's heading right above its first Chapter's). 0 when that Chapter starts in an earlier Spine item,
  * or [char] is in front matter.
  */
 fun pageFloor(chapterStarts: List<SpinePoint>, spineItem: SpineItem, item: Int, char: Int): Int {
     val start = chapterStarts.lastOrNull { it <= SpinePoint(item, char) }?.takeIf { it.item == item }?.char ?: return 0
     var block = spineItem.blockStarts.binarySearch(start).takeIf { it >= 0 } ?: return start
-    while (block > 0 && spineItem.keepsWithNext(spineItem.blockStarts[block - 1])) block--
+    fun startsChapter(b: Int) = chapterStarts.any { it.item == item && it.char in spineItem.blockStarts[b] until spineItem.blockStarts[b + 1] }
+    while (block > 0 && spineItem.keepsWithNext(spineItem.blockStarts[block - 1]) && !startsChapter(block - 1)) block--
     return spineItem.blockStarts[block]
 }
 

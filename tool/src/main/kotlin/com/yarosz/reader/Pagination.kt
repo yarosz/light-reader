@@ -167,16 +167,17 @@ fun pack(
  * The line a page anchored on line [line] starts on: the nearest line at or above it whose predecessor is
  * a legal end (a break that isn't a heading), so a Place from another layout that falls on the tail of a
  * hyphenated word ("hor-/rors") shows the whole word, a heading above it comes along, and the page above
- * ends legally. The walk never takes a line starting before [floor], so when [line] holds [floor] it
- * stays put. Only when that line is more than 1 − [MIN_PAGE_FILL] of a page up (a long cascade), or
- * would push [line] off the page, does [line] itself start the page. A window's first line starts a
- * block (windows are cut at blocks), so the walk stops there and never depends on the window above: the
- * packer stays deterministic, as [floor] depends only on the anchor.
+ * ends legally. The walk never goes above the line holding [floor] (a Chapter may start mid-line, and
+ * that line is still its own), so when [line] holds [floor] it stays put. Only when that line is more
+ * than 1 − [MIN_PAGE_FILL] of a page up (a long cascade), or would push [line] off the page, does [line]
+ * itself start the page. A window's first line starts a block (windows are cut at blocks), so the walk
+ * stops there and never depends on the window above: the packer stays deterministic, as [floor] depends
+ * only on the anchor.
  */
 private fun wordStart(stacked: List<Stacked>, line: Int, pageHeight: Float, floor: Int): Int {
     var start = line
     fun legalEndAbove(s: Int) = stacked[s - 1].line.let { it.endsAtBreak && !it.heading }
-    fun walks(s: Int) = s > 0 && stacked[s - 1].window == stacked[s].window && stacked[s - 1].line.start >= floor && !legalEndAbove(s)
+    fun walks(s: Int) = s > 0 && stacked[s - 1].window == stacked[s].window && stacked[s].line.start > floor && !legalEndAbove(s)
     while (walks(start)) start--
     val fits = stacked[line].y - stacked[start].y <= (1 - MIN_PAGE_FILL) * pageHeight && stacked[line].yEnd - stacked[start].y <= pageHeight
     return if (fits) start else line

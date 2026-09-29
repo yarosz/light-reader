@@ -114,10 +114,16 @@ class PaginationTest {
     }
 
     @Test
-    fun `a Place under a cascade reaches up to its Chapter's start and no further`() {
+    fun `a Place under a cascade reaches up to the line holding its Chapter's start and no further`() {
         assertEquals(0..9 to 10, around(lines(midWord = setOf(10, 11)), 125, floor = 100))
-        assertEquals(1..10 to 11, around(lines(midWord = setOf(10, 11)), 125, floor = 105))
+        assertEquals(0..9 to 10, around(lines(midWord = setOf(10, 11)), 125, floor = 105))
         assertEquals(1..10 to 11, around(lines(midWord = setOf(10, 11)), 125, floor = 110))
+    }
+
+    /** A Chapter starting mid-line on line 11, which ends "hor-": a Place on the tail line below still gets the whole word. */
+    @Test
+    fun `a Place under the line holding its Chapter's start mid-line starts its Page on that line`() {
+        assertEquals(1..10 to 11, around(lines(midWord = setOf(11)), 123, floor = 113))
     }
 
     @Test

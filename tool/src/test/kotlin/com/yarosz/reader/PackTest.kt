@@ -39,14 +39,15 @@ class PackTest {
     /**
      * The line the anchor's Page starts on: the nearest line at or above the anchor's that follows a legal
      * end (a break, not a heading) or starts a window, when that is at most 30% of a Page higher and keeps
-     * the anchor's line on the Page; otherwise the anchor's own line. No line starting before [floor] is
-     * taken above the anchor's.
+     * the anchor's line on the Page; otherwise the anchor's own line. No line above the one holding [floor]
+     * is taken.
      */
     private fun startLineAbove(case: Case, anchorLine: Int, floor: Int = 0): Int {
         val lines = case.lines
         val windowStarts = case.windows.map { it.start }.toSet()
+        val floorLine = lines.indexContaining(floor) { it.start }
         var s = anchorLine
-        while (s > 0 && lines[s].start !in windowStarts && lines[s - 1].start >= floor && !lines[s - 1].legal()) s--
+        while (s > floorLine && lines[s].start !in windowStarts && !lines[s - 1].legal()) s--
         val height = case.height
         val fits = lines[anchorLine].top - lines[s].top <= (1 - MIN_PAGE_FILL) * height && lines[anchorLine].bottom - lines[s].top <= height
         return if (fits) s else anchorLine
@@ -295,11 +296,11 @@ class PackTest {
 
     /**
      * A floor (the start of the anchor's Chapter) anywhere at or above the anchor, a line start or mid-line:
-     * the anchor's Page starts where the oracle says, never on a line starting before the floor unless that
-     * line holds the anchor, and measuring windows in any order changes no Page once shown.
+     * the anchor's Page starts where the oracle says, never above the line holding the floor, and measuring
+     * windows in any order changes no Page once shown.
      */
     @Test
-    fun `with a floor, the anchor's Page never starts above the floor's line, nor above the anchor's line when it holds the floor`() = forAll { rnd ->
+    fun `with a floor, the anchor's Page never starts above the line holding the floor`() = forAll { rnd ->
         val case = randomCase(rnd)
         val anchor = rnd.nextInt(0, case.length)
         val floor = if (rnd.nextBoolean()) case.lines[rnd.nextInt(anchorLine(case, anchor) + 1)].start else rnd.nextInt(0, anchor + 1)
@@ -314,7 +315,7 @@ class PackTest {
         val page = pack(case.windows, case.cut, anchor, case.height, floor = floor).anchorPage!!
         val line = anchorLine(case, anchor)
         assertEquals(case.lines[startLineAbove(case, line, floor)].start, page.start)
-        assertTrue(page.start >= floor || page.start == case.lines[line].start, "page $page starts above floor $floor")
+        assertTrue(page.start >= case.lines[case.lines.indexContaining(floor) { it.start }].start, "page $page starts above the line holding floor $floor")
     }
 
     /**

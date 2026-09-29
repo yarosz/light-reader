@@ -57,10 +57,13 @@ the Place sits a few lines (at most 30% of a Page) down its Page. Place guard: i
 30% of a Page above the Place's line (a long cascade), or the Place's line wouldn't then fit, the Place's
 own line starts the Page and the Page above ends where it must. The walk also stops at the first line of
 a layout window, so a window cut right after a heading keeps the Place's line, and it never goes above
-the start of the Place's Chapter, so the Page can't open in the Chapter before and go by it: when the
-Place's line holds the Chapter's start, that line starts the Page. A heading, or run of headings, right
-before a Chapter's start with no text between counts as the Chapter's (a table of contents may point at
-the paragraph after it), so the walk still takes it and the heading stays with its text. The Place
+the line holding the Place's Chapter's start, so the Page can't open in the Chapter before and go by it:
+when the Place's line holds the Chapter's start, that line starts the Page, and a Place on the line
+under it (a Chapter starting mid-line on a line ending "hor-") still gets the whole word. A heading, or
+run of headings, right before a Chapter's start with no text between counts as the Chapter's (a table
+of contents may point at the paragraph after it), so the walk still takes it and the heading stays with
+its text; a heading another Chapter starts in (a Part's, right above its first Chapter's) stays that
+Chapter's own. The Place
 itself doesn't move, so repeated font changes can't drift it. A Chapter jump is exempt: its Page starts
 on the Chapter start's own line (Contents).
 
@@ -89,9 +92,12 @@ there is no Page, and on a Page the top line, then "Shelf" in Contents.
 **Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
 goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
 centred. A Page goes by its start, or, when a Chapter starts later in its first line (a table of contents
-may point mid-line), by the last Chapter starting there, so a jump names the Chapter chosen. A Page
-that opens on headings goes by its first line under them instead, so a Page opening on a Chapter's
-heading, with the Chapter's start on the next line, goes by that Chapter. It is one Detail line high:
+may point mid-line, or at a Part's heading right above its first Chapter's), by the last Chapter
+starting there, so a jump names the Chapter chosen. A Page that opens on headings, with no Chapter
+starting in its first line, goes by its first line under them, so a Page opening on a Chapter's
+heading, with the Chapter's start on the next line, goes by that Chapter. A Page of only headings goes
+by the Chapter starting where it ends, whose headings they are, unless Back matter starts there. It is
+one Detail line high:
 the style's line height at the system font scale, so the large-text setting grows it and nothing clips,
 but no title changes it (a script drawn in a fallback font with a taller line would otherwise re-pack
 the Pages at a Chapter change). It has 4 dp below it.

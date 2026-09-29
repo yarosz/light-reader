@@ -124,7 +124,10 @@ Ordered. Each item ends on its _done-when_.
     the heading (30% guard), the Place unmoved (`pack`). Chapter jumps are exempt (`exact`). The walk
     never goes above the Place's Chapter's start, or the headings right before it (`pageFloor`), so a
     font change after a jump keeps the top line, Contents and minutes on that Chapter; a Page opening on
-    a Chapter's heading goes by the line under it (`leadEnd`).
+    a Chapter's heading goes by the line under it (`leadEnd`). The walk may take the line holding a
+    mid-line Chapter start, so a word hyphenated across it stays whole; a Page opening on a Part's
+    heading right above its first Chapter's goes by the Part, as a jump there chose; a Page of only a
+    Chapter's headings goes by that Chapter, never by Back matter.
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
