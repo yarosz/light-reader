@@ -23,8 +23,9 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
   <img src="docs/screenshots/contents.png" width="30%" alt="Contents: the book's chapters in order, the first marked 'you're here', with Shelf at the top right">
 </p>
 
-<sub>On a Light Phone III, from an early build. Book text is set in Literata; illustrations appear as their
-descriptions for now.</sub>
+<sub>Top row: on a Light Phone III, from an early build (its page counter is now the minutes left in the
+chapter). Bottom row: on the emulator at the LP3's size. Book text is set in Literata; illustrations
+appear as their descriptions for now.</sub>
 
 ## Where to find DRM-free books
 
