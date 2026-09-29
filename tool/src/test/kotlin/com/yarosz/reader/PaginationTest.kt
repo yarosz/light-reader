@@ -58,8 +58,8 @@ class PaginationTest {
     }
 
     /** Packed from [anchor]: the line range of the Page above the anchor's Page, and the anchor's Page's first line. */
-    private fun around(lines: List<LineMetrics>, anchor: Int, pageHeight: Float = 100f): Pair<IntRange?, Int> {
-        val packed = pack(listOf(wholeWindow(150)), listOf(lines), anchor, pageHeight)
+    private fun around(lines: List<LineMetrics>, anchor: Int, pageHeight: Float = 100f, floor: Int = 0): Pair<IntRange?, Int> {
+        val packed = pack(listOf(wholeWindow(150)), listOf(lines), anchor, pageHeight, floor = floor)
         return lineRanges(lines, packed.before).lastOrNull() to lineRanges(lines, packed.fromAnchor).first().first
     }
 
@@ -104,6 +104,25 @@ class PaginationTest {
     @Test
     fun `a Place under a heading and a hyphenated line starts its Page on the heading, keeping it with its text`() {
         assertEquals(0..9 to 10, around(lines(midWord = setOf(11), headings = setOf(10)), 120))
+    }
+
+    /** A Chapter starting on the tail's own line (line 12), at its start or inside it: the Page stays on that line. */
+    @Test
+    fun `a Place on the line holding its Chapter's start keeps that line though it starts mid-word`() {
+        assertEquals(2..11 to 12, around(lines(midWord = setOf(11)), 120, floor = 120))
+        assertEquals(2..11 to 12, around(lines(midWord = setOf(11)), 123, floor = 121))
+    }
+
+    @Test
+    fun `a Place under a cascade reaches up to its Chapter's start and no further`() {
+        assertEquals(0..9 to 10, around(lines(midWord = setOf(10, 11)), 125, floor = 100))
+        assertEquals(1..10 to 11, around(lines(midWord = setOf(10, 11)), 125, floor = 105))
+        assertEquals(1..10 to 11, around(lines(midWord = setOf(10, 11)), 125, floor = 110))
+    }
+
+    @Test
+    fun `a Place under a heading its Chapter starts at still starts its Page on the heading`() {
+        assertEquals(0..9 to 10, around(lines(midWord = setOf(11), headings = setOf(10)), 120, floor = 100))
     }
 
     @Test

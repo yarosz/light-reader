@@ -163,6 +163,7 @@ class ReaderViewModel(
         reading = Reading(
             spineItems, measure = { pass, window -> measure(measurer, pass, window, sync = true) }, linesOf = { it.lines },
             windowChars = windowChars, textEnd = book.value?.textEnd,
+            chapterStarts = book.value?.chapters?.map { it.start }.orEmpty(),
         )
         open(if (frame.value == null) "open" else "relayout")
     }
@@ -326,13 +327,15 @@ class ReaderViewModel(
     /**
      * The point the Page on screen goes by for its Chapter and minutes: its start, or the start of a Chapter
      * starting later in its first line (a table of contents may point mid-line), so a jump there names the
-     * Chapter chosen. Before a view binds, the Place.
+     * Chapter chosen; on a Page opening on headings, in the first line under them ([Pass.leadEnd]), as a
+     * relayout may start the Page on the heading of a Chapter anchored at the paragraph below it
+     * ([pageFloor]). Before a view binds, the Place.
      */
     private val pagePoint: SpinePoint get() {
         val (pass, page) = frame.value ?: return spinePoint.value
         val start = SpinePoint(pass.item, page.start)
         val opened = book.value ?: return start
-        return opened.chapterAt(SpinePoint(pass.item, pass.firstLineEnd(page) - 1))?.let { opened.chapters[it].start }?.takeIf { it > start } ?: start
+        return opened.chapterAt(SpinePoint(pass.item, pass.leadEnd(page) - 1))?.let { opened.chapters[it].start }?.takeIf { it > start } ?: start
     }
 
     private fun publishLines() {

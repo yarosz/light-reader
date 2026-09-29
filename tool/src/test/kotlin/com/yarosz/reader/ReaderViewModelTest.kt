@@ -67,17 +67,26 @@ class ReaderViewModelTest {
 
     /**
      * Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a
-     * Page. With [tailAt] (a Spine item's id and an offset in it), the line holding that offset starts mid-word instead.
+     * Page. With [tailAt] (a Spine item's id and an offset in it), the line holding that offset starts mid-word instead. With
+     * [byBlock], lines restart at every block, and a heading's lines are headings, as the real layout's are.
      */
-    private data class LineMeasurer(private val pageHeightPx: Int = 300, private val tailAt: Pair<String, Int>? = null) : WindowMeasurer {
+    private data class LineMeasurer(
+        private val pageHeightPx: Int = 300,
+        private val tailAt: Pair<String, Int>? = null,
+        private val byBlock: Boolean = false,
+    ) : WindowMeasurer {
         override fun key(fontStep: Int) = LayoutKey(fontStep, 1_000, pageHeightPx)
 
         override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
-            val starts = (window.start until window.end step 1_000 / (fontStep + 1)).toList()
+            val step = 1_000 / (fontStep + 1)
+            val starts = if (!byBlock) (window.start until window.end step step).toList() else (window.firstBlock..window.lastBlock).flatMap { b ->
+                val start = spineItem.blockStarts[b]
+                (start until start + maxOf(spineItem.blocks[b].text.length, 1) step step).toList()
+            }
             val tail = tailAt?.takeIf { (id, char) -> id == spineItem.spineId && char in window.start until window.end }
                 ?.let { (_, char) -> starts.indexContaining(char) { it } }
             val lines = starts.mapIndexed { i, start ->
-                LineMetrics(start, i * 30f, (i + 1) * 30f, endsAtBreak = tail == null || i != tail - 1, heading = false)
+                LineMetrics(start, i * 30f, (i + 1) * 30f, endsAtBreak = tail == null || i != tail - 1, heading = byBlock && spineItem.keepsWithNext(start))
             }
             return WindowLayout(lines) { }
         }
@@ -714,6 +723,67 @@ class ReaderViewModelTest {
         assertEquals("Two", vm.topLine.value)
         assertEquals(1, vm.openContents()!!.current)
         assertEquals(vm.pageStart, vm.spinePoint.value)
+    }
+
+    /**
+     * After that jump a font change re-packs at the Place, the Chapter's start, on a line that starts
+     * mid-word again. The walk up to a whole word stops at the line holding the Chapter's start, so the
+     * Page doesn't open in the Chapter before: the top line, Contents and the Place stay the Chapter's.
+     */
+    @Test
+    fun `a font change after a jump to a Chapter keeps its Page, top line and Contents on that Chapter`() {
+        val bodies = listOf(
+            "<h1>One</h1><p>First.</p>",
+            "<p>${"word ".repeat(400)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
+        )
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        val two = opened.chapters[1].start
+        vm.bind(LineMeasurer(tailAt = opened.spineItems[two.item].spineId to two.char))
+        settle()
+        vm.jumpTo(1)
+        assertEquals(two, vm.pageStart)
+        assertEquals("Two", vm.topLine.value)
+        vm.changeFont(+1)
+        settle()
+        val shown = vm.frame.value!!
+        assertTrue(vm.pageStart <= two && two.char < shown.pass.firstLineEnd(shown.page), "the Page's first line holds $two")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        assertEquals(two, vm.spinePoint.value)
+    }
+
+    /**
+     * A table of contents pointing at the paragraph after a Chapter's heading: the heading is the
+     * Chapter's. A jump starts the Page on the paragraph; a font change at that Place starts it on the
+     * heading, keeping it with its text, and the Page still goes by the Chapter, as its first line under
+     * the heading holds the Chapter's start.
+     */
+    @Test
+    fun `a font change at a Chapter pointed at past its heading starts the Page on the heading and names the Chapter`() {
+        val body = "<h1>One</h1><p>${"word ".repeat(400)}</p><h2>II</h2><p id=\"two\">${"word ".repeat(400)}</p>"
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf(body), ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c0.xhtml#two"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        val two = opened.chapters[1].start
+        val heading = opened.spineItems[0].blockStarts[2]
+        assertEquals(opened.spineItems[0].blockStarts[3], two.char)
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpTo(1)
+        assertEquals(two, vm.pageStart)
+        assertEquals("Two", vm.topLine.value)
+        vm.changeFont(+1)
+        settle()
+        assertEquals(SpinePoint(0, heading), vm.pageStart)
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        assertEquals(two, vm.spinePoint.value)
     }
 
     @Test

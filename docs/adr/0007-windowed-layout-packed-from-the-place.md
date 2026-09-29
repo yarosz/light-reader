@@ -4,10 +4,12 @@ A Spine item is laid out in windows, not all at once. Windows are cut at block (
 preferring table-of-contents Chapter starts, and a Chapter longer than ~10 K characters is split. The
 window holding the Place is laid out synchronously; neighbouring windows are laid out in the background.
 Pages are packed outward from the Place: the line holding the Place starts a Page (or, when that line
-starts mid-word, the nearest line above it that starts a word, within 30% of a Page; DESIGN.md
-"Page-break rules"), packing runs forward into later windows and backward into earlier ones as they
-finish measuring, and a Page may span two windows (drawn as up to two clipped bands). Line breaking
-restarts at every paragraph, so block-boundary seams are exact and spanning costs no reflow.
+starts mid-word or sits under a heading, the nearest line above it that starts a word and doesn't follow
+a heading, within 30% of a Page and not above the Place's Chapter's start; a Chapter jump starts on the
+Chapter's own line; DESIGN.md "Page-break rules"), packing runs forward into later windows and
+backward into earlier ones as they finish measuring, and a Page may span two windows (drawn as up to two
+clipped bands). Line breaking restarts at every paragraph, so block-boundary seams are exact and
+spanning costs no reflow.
 
 Measured on LP3 hardware (SM4450, Pride and Prejudice): laying out a whole 112–165 K-character Spine
 item takes 475–650 ms warm and up to 1,356 ms cold (~3–4 ms per 1,000 characters in that prototype;

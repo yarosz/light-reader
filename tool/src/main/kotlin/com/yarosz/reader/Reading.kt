@@ -16,7 +16,8 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  * packed never changes (see [pack]), so turning back shows the Page just read. [id] is for logs: it
  * is unique within one [Reading] only, so compare passes by identity. [item] is [spineItem]'s index in
  * the Book's Spine items. A Page never spans [pageBreak] (see [pack]). With [exact], as for a Chapter
- * jump, the first Page starts on [anchor]'s own line, even one that starts mid-word ([pack]).
+ * jump, the first Page starts on [anchor]'s own line, even one that starts mid-word ([pack]); without it,
+ * no higher than [floor] ([pageFloor]).
  */
 class Pass<M>(
     val id: Int,
@@ -27,6 +28,7 @@ class Pass<M>(
     val anchor: Int,
     private val pageBreak: Int? = null,
     private val exact: Boolean = false,
+    private val floor: Int = 0,
     private val linesOf: (M) -> List<LineMetrics>,
 ) {
     private val measured = MutableList<M?>(windows.size) { null }
@@ -47,12 +49,26 @@ class Pass<M>(
         packed = repack()
     }
 
-    private fun repack() = pack(windows, measured.map { it?.let(linesOf) }, anchor, key.pageHeightPx.toFloat(), pageBreak, exact)
+    private fun repack() = pack(windows, measured.map { it?.let(linesOf) }, anchor, key.pageHeightPx.toFloat(), pageBreak, exact, floor)
 
     /** Where [page]'s first line ends: the next line's start, capped at the Page's end. [page] is one of [pages], so its first window is measured. */
     fun firstLineEnd(page: Page): Int {
         val window = page.bands.first().window
         val next = measured[window]?.let(linesOf)?.firstOrNull { it.start > page.start }?.start ?: windows[window].end
+        return minOf(next, page.end)
+    }
+
+    /**
+     * Where [page]'s lead ends: the end of its first line that isn't a heading, capped at the Page's end,
+     * so a Page opening on a Chapter's heading reaches the Chapter's start below it ([pageFloor]). Only
+     * [page]'s first window is read: windows are cut before headings, and one cut right after a heading
+     * ends the lead there.
+     */
+    fun leadEnd(page: Page): Int {
+        val window = page.bands.first().window
+        val lines = measured[window]?.let(linesOf).orEmpty()
+        val lead = lines.indexOfFirst { it.start >= page.start && !it.heading }
+        val next = lines.getOrNull(lead + 1)?.start?.takeIf { lead >= 0 } ?: windows[window].end
         return minOf(next, page.end)
     }
 
@@ -110,7 +126,8 @@ fun backwardLanding(cached: Pass<*>?, key: LayoutKey, length: Int): Landing {
  * pure: [measure] runs synchronously when a Page can't show without it, and [prefetchTarget] names the
  * window worth measuring in the background. Passes are cached per Spine item, most recently shown last,
  * and dropped on a key change or beyond [CACHED_PASSES]. A Page never spans [textEnd] ([OpenBook.textEnd]):
- * the last Page of the text ends there, and Back matter starts on a Page of its own.
+ * the last Page of the text ends there, and Back matter starts on a Page of its own. [chapterStarts] are
+ * the Book's Chapters' starts, in order: a Page at the Place never starts above its Chapter ([pageFloor]).
  */
 class Reading<M>(
     private val spineItems: List<SpineItem>,
@@ -118,6 +135,7 @@ class Reading<M>(
     private val linesOf: (M) -> List<LineMetrics>,
     private val windowChars: Int = WINDOW_CHARS,
     private val textEnd: SpinePoint? = null,
+    private val chapterStarts: List<SpinePoint> = emptyList(),
 ) {
     private val passes = LinkedHashMap<Int, Pass<M>>()
     /** Passes this Reading has started; also the next pass's id. */
@@ -177,7 +195,8 @@ class Reading<M>(
         val spineItem = spineItems[item]
         val pageBreak = textEnd?.takeIf { it.item == item }?.char
         val pass = passes.remove(item)?.takeIf { cached -> cached.pageAt(offset)?.let { !exact || offset < cached.firstLineEnd(it) } == true }
-            ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, exact, linesOf)
+            ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, exact,
+                pageFloor(chapterStarts, spineItem, item, offset), linesOf)
         passes[item] = pass
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())
         return turnTo(pass, offset)
