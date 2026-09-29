@@ -718,6 +718,11 @@ private class XhtmlHandler(private val fragments: Set<String>) : DefaultHandler(
                 endRow()
                 if (loose) finishBlock() else if (text.isNotEmpty() && text.last() != '\n') text.append('\n')
             } else if (emphasisOf(name) != null) {
+                // An element that opened in an earlier block of a table cut at a row closes its outer emphasis too.
+                if (seeded > 0 && openEmphasis.size <= seeded) {
+                    seeded--
+                    outerEmphasis.removeLastOrNull()
+                }
                 closeEmphasis()
             }
             return

@@ -125,6 +125,21 @@ class LooseTextTest {
     }
 
     @Test
+    fun `emphasis around a long table's rows ends where it closes, in whichever of the table's blocks that is`() {
+        fun rows(range: IntRange) = range.joinToString("") { "<tr><td>Row $it</td><td>${"x".repeat(60)}</td></tr>" }
+        val whole = blocksOf("<table><tbody><i>${rows(1..300)}</i></tbody></table><p>After.</p>")
+        assertTrue(whole.size > 2)
+        assertTrue(whole.dropLast(1).all { it.spans == listOf(Span(0, it.text.length, Emphasis.Italic)) })
+        assertEquals(Block(BlockKind.Paragraph, "After."), whole.last())
+
+        val part = blocksOf("<table><tbody><i>${rows(1..200)}</i>${rows(201..300)}</tbody></table><p>After.</p>")
+        val closing = part.indexOfFirst { "Row 200 ·" in it.text }
+        assertTrue(closing > 0)
+        assertEquals(listOf(Span(0, part[closing].text.indexOf("Row 201") - 1, Emphasis.Italic)), part[closing].spans)
+        assertTrue(part.drop(closing + 1).all { it.spans.isEmpty() })
+    }
+
+    @Test
     fun `a table inside a known block adds a line per row and separates its cells`() {
         assertEquals(
             listOf(Block(BlockKind.Paragraph, "x\na · b\nc\ny"), Block(BlockKind.Paragraph, "a · b")),
