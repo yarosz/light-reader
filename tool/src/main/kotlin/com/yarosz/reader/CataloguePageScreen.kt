@@ -133,18 +133,23 @@ class CataloguePageScreen(
         }
     }
 
+    /** Opens another page of this Catalogue, which hands a Book opened there on down ([OpenFromShelf]). */
+    private fun openPage(source: PageSource) {
+        navigateTo({ CataloguePageScreen(it, catalogue, source) }, ::goBack)
+    }
+
     @Composable
     private fun Listing(listing: PageState.Listing) {
         listing.search?.let { search ->
             SearchField(searchPlaceholder(catalogue)) {
                 navigateTo({ TextEntryScreen(it, SEARCH, "", SEARCH) }) { terms ->
-                    if (terms.isNotBlank()) navigateTo({ CataloguePageScreen(it, catalogue, PageSource.Search(search, terms.trim())) }, ::goBack)
+                    if (terms.isNotBlank()) openPage(PageSource.Search(search, terms.trim()))
                 }
             }
         }
         listing.entries.forEach { entry ->
             val target = entryTarget(entry)
-            ListRow(entry.title, entry.byline, onClick = target?.let { { navigateTo({ CataloguePageScreen(it, catalogue, target) }, ::goBack) } })
+            ListRow(entry.title, entry.byline, onClick = target?.let { { openPage(target) } })
         }
         if (listing.next != null) {
             when (val more = listing.more) {
