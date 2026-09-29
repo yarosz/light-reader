@@ -66,17 +66,21 @@ The reading view until N5 moves its chrome into an overlay. Product rulings from
 2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book that can't be opened reads "Couldn't
 open this Book." (the reason goes to the log), and one with no text reads "This Book has no text."
 
-**Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter holding the
-Page's start, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the
-end and centred. It is one Detail line high: the style's line height at the system font scale, so the
+**Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
+goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
+centred. A Page goes by its start, or, when a Chapter starts later in its first line (a table of contents
+may point mid-line), by the last Chapter starting there, so a jump names the Chapter chosen. It is one Detail line high: the style's line height at the system font scale, so the
 large-text setting grows it and nothing clips, but no title changes it (a script drawn in a fallback
 font with a taller line would otherwise re-pack the Pages at a Chapter change). It has 4 dp below it.
-In front matter, and on the end page, it shows the Book's title as the Shelf shows it. It isn't
-tappable: only the Page turns Pages. The footer is 48 dp: "A−" and "A+" at its ends, each with 8 dp of
-padding at the sides, each filling the footer's height as its tap target, and the Progress line between them.
+In front matter, and on the end page, it shows the Book's title as the Shelf shows it. Tapping it opens
+Contents; to a screen reader it is a button, "Contents: " and the title. Its tap target is the full
+width of the screen's top 48 dp, or the top line's full height when that is taller, so it takes the top
+of the Page; the rest of the Page turns Pages. The footer is 48 dp:
+"A−" and "A+" at its ends, each with 8 dp of padding at the sides, each filling the footer's height as
+its tap target, and the Progress line between them.
 The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.
 
-**Progress line.** The minutes left in the Chapter: the words from the Page's start to the Chapter's
+**Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
 end (the next Chapter's start, or the end of the Book's text if that comes first), divided by the
 reading speed. A word is a whitespace-separated run of text. The words are indexed once, off the main
 thread, when the Book opens, so a turn counts them without reading any text. On the raw minutes m:
@@ -93,12 +97,12 @@ Chapter whose whole text reads in under a minute at the current speed.
 **Reading speed.** 230 words a minute until there are 5 samples, then the median of the newest 20 or
 fewer. A sample is the words on a Page divided by the time on it. It counts only when the Page was
 reached by a forward turn of one Page and left by one, holds at least 20 words, and was on screen for
-2 s to 3 min. A back turn, a font change or relayout, a Chapter jump, reopening the Book, or the Tool
-pausing drops the running timing. Samples belong to the reader: they are shared across Books, kept in
-memory for as long as the Tool runs, and never saved.
+2 s to 3 min. A back turn, a font change or relayout, opening Contents, a Chapter jump, reopening the
+Book, or the Tool pausing drops the running timing. Samples belong to the reader: they are shared
+across Books, kept in memory for as long as the Tool runs, and never saved.
 
-**End page.** A forward turn (a tap outside the left third, or volume down) from the Page that reaches
-the end of the Book's text shows the end page: "The end." centred, and under it "Back to Shelf", which
+**End page.** A forward turn (a tap outside the left third and below the top line's target, or volume
+down) from the Page that reaches the end of the Book's text shows the end page: "The end." centred, and under it "Back to Shelf", which
 leaves the Reader as system back does. The top line shows the Book's title, and the footer keeps "A−"
 and "A+" with nothing between them. Forward does nothing there; back (a tap in the left third, or volume
 up) returns to the last Page. The end page is not a Page, so the Place stays on the last Page. The
@@ -109,12 +113,27 @@ shares a Page with the text.
 as anywhere else: the top line shows its Chapter's title, the footer has no Progress line, forward on the
 Book's last Page does nothing, and no second end page shows. A Place saved there opens there.
 
+**Contents.** Tapping the top line opens it, from a Page, the end page, front matter or Back matter, and
+drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
+with the bar's back, and one row per Chapter in order, each the Chapter's title verbatim at full
+strength; Back matter's rows follow the text's with no divider. The current row alone has the detail
+line "you're here": the Chapter holding the Place (of two starting at one point, the later), or on the
+end page the last Chapter of the text. In front matter no row is current. The list opens with the row
+before the current one at the top, so the current row is second, or with the current row at the top
+when it is first; with no current row it opens at the top. Tapping a row goes to the Page that starts
+at that Chapter's start, laid out afresh from there so its heading tops the Page, even for the current
+Chapter; the Pages before it may tile differently, as after a font change. That Page is the Place, it
+is untimed, and the jump leaves the end page. Back, from the bar or the system, changes nothing else. The
+volume keys stay LightOS's on this screen.
+
 **Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
 either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so
 a merge with an older copy of the file keeps the change. A Finished Book opens at its Place, the last
-Page of the text. The first back turn clears Finished, as a Contents jump to a Page of the text will, and a forward
-turn shows the end page again. A back turn inside Back matter keeps Finished; the one onto the last Page
-of the text clears it. A font change keeps Finished, and so does reopening the Book and leaving at once. At
+Page of the text. The first back turn clears Finished, and a forward turn shows the end page again. A
+Contents jump to a Chapter of the text clears it too, even to the last Chapter, whose first Page it
+lands on; a jump into Back matter keeps Finished and never sets it. A back turn inside Back matter keeps
+Finished; the one onto the last Page of the text clears it. A font change keeps Finished, and so does
+reopening the Book and leaving at once. At
 another font size a Finished Book's Place may land before the last Page, and forward turns reach the
 end page without clearing it.
 

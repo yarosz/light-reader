@@ -47,6 +47,13 @@ class Pass<M>(
 
     private fun repack() = pack(windows, measured.map { it?.let(linesOf) }, anchor, key.pageHeightPx.toFloat(), pageBreak)
 
+    /** Where [page]'s first line ends: the next line's start, capped at the Page's end. [page] is one of [pages], so its first window is measured. */
+    fun firstLineEnd(page: Page): Int {
+        val window = page.bands.first().window
+        val next = measured[window]?.let(linesOf)?.firstOrNull { it.start > page.start }?.start ?: windows[window].end
+        return minOf(next, page.end)
+    }
+
     /** The Page holding [offset], the last Page for offsets past the end, or null while it isn't packed yet. */
     fun pageAt(offset: Int): Page? = when {
         pages.isEmpty() || offset < pages.first().start -> null
@@ -122,6 +129,18 @@ class Reading<M>(
         return enter(item, offset, key)
     }
 
+    /**
+     * Shows the Page whose first line holds [offset] in Spine item [item] at [key], as a jump to a Chapter
+     * needs: from a cached pass only when it has such a Page, else a new pass anchored there, whose first Page
+     * starts on [offset]'s line ([pack]). At a line start, as Chapters mostly are, that Page starts exactly at
+     * [offset]. An [offset] at the end of a Spine item jumps to the next one's start.
+     */
+    fun jump(item: Int, offset: Int, key: LayoutKey): Shown<M> {
+        passes.values.removeAll { it.key != key }
+        if (offset == spineItems[item].text.length && item < spineItems.lastIndex) return enter(item + 1, 0, key, exact = true)
+        return enter(item, offset, key, exact = true)
+    }
+
     /** The Page after the shown one, the next Spine item's first past a Spine item's end; null at the book's end. */
     fun next(): Shown<M>? {
         val (pass, page) = shown ?: return null
@@ -150,10 +169,11 @@ class Reading<M>(
         return pass.prefetchFor(page.start, PREFETCH_WINDOWS)?.let { pass to it }
     }
 
-    private fun enter(item: Int, offset: Int, key: LayoutKey): Shown<M> {
+    /** Shows the Page holding [offset], or with [exact] the Page whose first line holds it, from Spine item [item]'s cached pass when it has that Page, else a new pass anchored there. */
+    private fun enter(item: Int, offset: Int, key: LayoutKey, exact: Boolean = false): Shown<M> {
         val spineItem = spineItems[item]
         val pageBreak = textEnd?.takeIf { it.item == item }?.char
-        val pass = passes.remove(item)?.takeIf { it.pageAt(offset) != null }
+        val pass = passes.remove(item)?.takeIf { cached -> cached.pageAt(offset)?.let { !exact || offset < cached.firstLineEnd(it) } == true }
             ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, linesOf)
         passes[item] = pass
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())

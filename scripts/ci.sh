@@ -74,19 +74,18 @@ fail_ctx() {  # context, step description
 # can never pass as "unchanged".
 state() {  # serial -> "title|first 40 chars|length", or return 1
   # The Page's text holds newlines, so its "   ~" node spans lines up to the one ending in "(x,y)";
-  # it is by far the longest label on screen. The top line is the line dumped right before it, which
-  # must be a text node ('   "title"  (x,y)'); a "|" in it becomes "/" so the fields still split.
-  # C locale: the counts only have to agree between reads.
+  # it is by far the longest label on screen. The top line is read from the tap target over it, the
+  # button labelled "Contents: <title>" (' * ~Contents: title  (x,y)'); a "|" in it becomes "/" so the
+  # fields still split. C locale: the counts only have to agree between reads.
   ANDROID_SERIAL="$1" mise run ui 2>/dev/null | LC_ALL=C awk '
     inb { blk = blk "\n" $0 }
-    !inb && /^   ~/ { inb = 1; blk = substr($0, 5); above = text }
+    !inb && /^ \* ~Contents: .*  \([0-9]+,[0-9]+\)$/ { title = $0; sub(/^ \* ~Contents: /, "", title); sub(/  \([0-9]+,[0-9]+\)$/, "", title); next }
+    !inb && /^   ~/ { inb = 1; blk = substr($0, 5) }
     inb && /  \([0-9]+,[0-9]+\)$/ {
       inb = 0; sub(/  \([0-9]+,[0-9]+\)$/, "", blk)
-      if (length(blk) > length(page)) { page = blk; title = above }
+      if (length(blk) > length(page)) page = blk
       next
     }
-    !inb && /^.. ".*"  \([0-9]+,[0-9]+\)$/ { text = $0; sub(/^.. "/, "", text); sub(/"  \([0-9]+,[0-9]+\)$/, "", text); next }
-    !inb { text = "" }
     END {
       if (title == "" || page == "") exit 1
       gsub(/\|/, "/", title)

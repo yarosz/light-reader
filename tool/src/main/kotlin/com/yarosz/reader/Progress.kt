@@ -10,6 +10,8 @@ const val READING_COULDNT_OPEN = "Couldn't open this Book."
 const val END_PAGE_TEXT = "The end."
 const val END_PAGE_BACK_TO_SHELF = "Back to Shelf"
 const val MINUTES_ALMOST_DONE = "almost done with this chapter"
+const val CONTENTS_TITLE = "Contents"
+const val CONTENTS_HERE = "you're here"
 
 /** The reading speed, in words per minute, until the reader has given [MEASURED_AFTER] samples. */
 const val PRIOR_WPM = 230.0

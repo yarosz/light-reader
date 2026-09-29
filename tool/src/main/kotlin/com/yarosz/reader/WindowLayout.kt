@@ -20,6 +20,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
@@ -42,6 +44,9 @@ interface WindowMeasurer {
     fun key(fontStep: Int): LayoutKey
 
     fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout
+
+    /** Whether this lays every window out as [other] does, so Pages laid out by [other] still stand. */
+    fun laysOutLike(other: WindowMeasurer): Boolean = this == other
 }
 
 /**
@@ -64,14 +69,31 @@ fun readingStyle(fontStep: Int): TextStyle {
 }
 
 /**
+ * What a composition's TextMeasurer is made from: two measurers made from equal sources lay text out alike.
+ * The bold-text setting, for one, changes [fonts].
+ */
+data class MeasurerSource(val density: Density, val fonts: FontFamily.Resolver, val direction: LayoutDirection)
+
+/**
  * Measures windows at one column width and page height, for the passes. Usable from any thread: the
  * measurer wraps the composition's font resolver, which Compose documents for "creating Paragraph
  * objects on background thread" and whose typeface caches are lock-guarded; with no layout cache the
  * measurer holds no state of its own, and the platform layout it returns is immutable once built.
+ * [source] is what [measurer] was made from; two Typesetters that agree on it, the caption colour and the
+ * column lay out alike, whatever their measurer instances.
  */
-class Typesetter(private val measurer: TextMeasurer, private val captionColor: Color, val widthPx: Int, val pageHeightPx: Int) : WindowMeasurer {
+class Typesetter(
+    private val measurer: TextMeasurer,
+    private val captionColor: Color,
+    val widthPx: Int,
+    val pageHeightPx: Int,
+    private val source: MeasurerSource,
+) : WindowMeasurer {
 
     override fun key(fontStep: Int) = LayoutKey(fontStep, widthPx, pageHeightPx)
+
+    override fun laysOutLike(other: WindowMeasurer) = other is Typesetter && captionColor == other.captionColor &&
+        widthPx == other.widthPx && pageHeightPx == other.pageHeightPx && source == other.source
 
     override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
         val style = readingStyle(fontStep)

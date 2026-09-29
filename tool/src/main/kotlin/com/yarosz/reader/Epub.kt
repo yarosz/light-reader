@@ -99,10 +99,8 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
         resolved.ifEmpty { null }
     }.orEmpty()
     val footer = body.withIndex().firstNotNullOfOrNull { (i, doc) -> doc.second.anchors[PG_FOOTER]?.let { SpinePoint(i, it) } }
-    OpenBook(
-        pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems),
-        textEndOf(spineItems, footer, backMatter = body.indexOfLast { !it.second.isBackMatter } + 1),
-    )
+    val textEnd = textEndOf(spineItems, footer, backMatter = body.indexOfLast { !it.second.isBackMatter } + 1)
+    OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems, textEnd), textEnd)
 }
 
 /** The id of the element holding Project Gutenberg's license, the start of a Gutenberg Book's Back matter. */

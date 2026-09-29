@@ -11,6 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -65,7 +66,7 @@ class ReaderViewModelTest {
     }
 
     /** Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a Page. */
-    private class LineMeasurer(private val pageHeightPx: Int = 300) : WindowMeasurer {
+    private data class LineMeasurer(private val pageHeightPx: Int = 300) : WindowMeasurer {
         override fun key(fontStep: Int) = LayoutKey(fontStep, 1_000, pageHeightPx)
 
         override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
@@ -466,10 +467,10 @@ class ReaderViewModelTest {
 
     /**
      * A reader open on [BackMatterTest]'s Gutenberg-shaped Book, in Alice's file, its license mid-way through
-     * its last Spine item. [place] stores a Place first, with [finished].
+     * its last Spine item, its Chapters from [ncx]. [place] stores a Place first, with [finished].
      */
-    private fun gutenberg(finished: Boolean = false, place: ((OpenBook) -> SpinePoint)? = null): ReaderViewModel {
-        val file = File(dir, "alice.epub").writeEpub(tocEpubFiles(BackMatterTest.gutenbergBodies(paragraphs = 150), ncx = BackMatterTest.gutenbergNcx()))
+    private fun gutenberg(finished: Boolean = false, ncx: String = BackMatterTest.gutenbergNcx(), place: ((OpenBook) -> SpinePoint)? = null): ReaderViewModel {
+        val file = File(dir, "alice.epub").writeEpub(tocEpubFiles(BackMatterTest.gutenbergBodies(paragraphs = 150), ncx = ncx))
         if (place != null) {
             val book = parseEpub(file)
             ReadingStore(dir).save {
@@ -573,5 +574,169 @@ class ReaderViewModelTest {
         vm.nextPage()
         assertTrue(vm.atEnd.value)
         assertTrue(stored(vm).finished)
+    }
+
+    private fun ReaderViewModel.storedPlace(): SpinePoint? = stored(this).place?.let(book.value!!::resolve)
+
+    @Test
+    fun `a jump from the end page leaves it for the Page starting the Chapter, stamped as the Place, and clears Finished`() {
+        val vm = gutenberg()
+        val book = vm.book.value!!
+        vm.toLastPage()
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        assertTrue(stored(vm).finished)
+        vm.jumpTo(1)
+        assertFalse(vm.atEnd.value)
+        assertEquals(book.chapters[1].start, vm.pageStart)
+        assertEquals(vm.pageStart, vm.spinePoint.value)
+        assertEquals("Chapter I.", vm.topLine.value)
+        assertNotNull(vm.progressLine.value)
+        assertFalse(stored(vm).finished)
+        assertEquals(vm.pageStart, vm.storedPlace())
+    }
+
+    @Test
+    fun `a jump to the last Chapter of the text clears Finished and lands on its first Page, not the end page`() {
+        val vm = gutenberg(finished = true) { SpinePoint(1, 500) }
+        val book = vm.book.value!!
+        assertTrue(stored(vm).finished)
+        vm.jumpTo(2)
+        assertFalse(vm.atEnd.value)
+        assertEquals(book.chapters[2].start, vm.pageStart)
+        assertFalse(stored(vm).finished)
+        assertEquals(vm.pageStart, vm.storedPlace())
+    }
+
+    /** Jumps from a Place in Chapter I. into Back matter, and checks it lands there, stamped, with Finished still [finished]. */
+    private fun assertJumpIntoBackMatter(finished: Boolean) {
+        val vm = gutenberg(finished) { SpinePoint(1, 500) }
+        val book = vm.book.value!!
+        vm.jumpTo(3)
+        assertFalse(vm.atEnd.value)
+        assertEquals(book.textEnd, vm.pageStart)
+        vm.assertBackMatterLines()
+        assertEquals(finished, stored(vm).finished)
+        assertEquals(book.textEnd, vm.storedPlace())
+    }
+
+    @Test
+    fun `a jump into Back matter keeps Finished`() = assertJumpIntoBackMatter(finished = true)
+
+    @Test
+    fun `a jump into Back matter never sets Finished`() = assertJumpIntoBackMatter(finished = false)
+
+    @Test
+    fun `a jump to the current Chapter goes to its start`() {
+        val vm = gutenberg()
+        val book = vm.book.value!!
+        vm.jumpTo(1)
+        repeat(3) { vm.nextPage() }
+        assertTrue(vm.pageStart > book.chapters[1].start)
+        assertEquals(1, vm.openContents()!!.current)
+        vm.jumpTo(1)
+        assertEquals(book.chapters[1].start, vm.pageStart)
+        assertEquals(vm.pageStart, vm.storedPlace())
+    }
+
+    @Test
+    fun `a jump drops the running timing, and the Page it lands on gives no sample`() {
+        val vm = reading()
+        vm.fourSamples()
+        clock += 20_000
+        vm.jumpTo(3)
+        assertEquals(vm.book.value!!.chapters[3].start, vm.pageStart)
+        vm.readThenTurn()
+        assertEquals(PRIOR_WPM, speed.wpm)
+        vm.readThenTurn()
+        assertNotEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    @Test
+    fun `opening Contents drops the running timing, though back returns without a jump`() {
+        val vm = reading()
+        vm.fourSamples()
+        clock += 20_000
+        assertNotNull(vm.openContents())
+        vm.readThenTurn()
+        assertEquals(PRIOR_WPM, speed.wpm)
+        vm.readThenTurn()
+        assertNotEquals(PRIOR_WPM, speed.wpm)
+    }
+
+    @Test
+    fun `a jump to a Chapter starting mid-line lands on the Page holding that line and names the Chapter chosen`() {
+        val bodies = listOf(
+            "<h1>One</h1><p>First.</p>",
+            "<p>${"word ".repeat(301)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
+        )
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
+        val vm = reading()
+        val two = vm.book.value!!.chapters[1].start
+        vm.jumpTo(1)
+        val shown = vm.frame.value!!
+        assertTrue(vm.pageStart < two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        val landed = vm.frame.value!!
+        vm.jumpTo(1)
+        assertSame(landed.pass, vm.frame.value!!.pass)
+    }
+
+    @Test
+    fun `coming back from Contents to a measurer that lays out alike keeps the Pages shown and cached`() {
+        val vm = reading()
+        repeat(3) { vm.nextPage() }
+        val before = vm.frame.value!!
+        vm.nextPage()
+        val shown = vm.frame.value!!
+        vm.openContents()
+        vm.bind(LineMeasurer())
+        assertSame(shown, vm.frame.value)
+        vm.previousPage()
+        assertEquals(before.page, vm.frame.value!!.page)
+        vm.jumpTo(3)
+        val landed = vm.frame.value
+        vm.bind(LineMeasurer())
+        assertSame(landed, vm.frame.value)
+        vm.bind(LineMeasurer(pageHeightPx = 301))
+        assertNotSame(landed, vm.frame.value)
+        assertEquals(landed!!.page.start, vm.frame.value!!.page.start)
+    }
+
+    @Test
+    fun `Contents lists the Chapters, and its current row follows the Place, the end page and Back matter`() {
+        val vm = gutenberg()
+        val contents = vm.openContents()!!
+        assertEquals(listOf("Title", "Chapter I.", "Chapter II.", BackMatterTest.LICENSE_HEADING), contents.titles)
+        assertEquals(0, contents.current)
+        vm.toLastPage()
+        assertEquals(2, vm.openContents()!!.current)
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        assertEquals(2, vm.openContents()!!.current)
+        vm.jumpTo(3)
+        assertEquals(3, vm.openContents()!!.current)
+    }
+
+    @Test
+    fun `of two Chapters starting at one point the later is current, and a jump to either lands on the same Page`() {
+        val ncx = ncx(
+            navPoint("Title", "text/c0.xhtml"),
+            navPoint("Part One", "text/c1.xhtml"),
+            navPoint("Chapter I.", "text/c1.xhtml#ch1"),
+            navPoint("Chapter II.", "text/c2.xhtml#ch2"),
+        )
+        val vm = gutenberg(ncx = ncx)
+        val book = vm.book.value!!
+        assertEquals(book.chapters[1].start, book.chapters[2].start)
+        vm.jumpTo(1)
+        val first = vm.frame.value!!.page
+        assertEquals(2, vm.openContents()!!.current)
+        assertEquals("Chapter I.", vm.topLine.value)
+        vm.jumpTo(3)
+        vm.jumpTo(2)
+        assertEquals(first, vm.frame.value!!.page)
+        assertEquals(2, vm.openContents()!!.current)
     }
 }

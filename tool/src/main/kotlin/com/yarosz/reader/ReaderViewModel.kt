@@ -62,8 +62,8 @@ class ReaderViewModel(
     val atEnd = MutableStateFlow(false)
 
     /**
-     * The top line: the title of the Chapter holding the Page's start, Back matter's included, else (front
-     * matter, the end page) the Book's Shelf title.
+     * The top line: the title of the Chapter the Page goes by ([pagePoint]), Back matter's included, else
+     * (front matter, the end page) the Book's Shelf title.
      */
     val topLine = MutableStateFlow("")
 
@@ -146,9 +146,14 @@ class ReaderViewModel(
         }
     }
 
-    /** The view's column and measurer ([Typesetter]). Each binding lays the book out afresh at the Place. */
+    /**
+     * The view's column and measurer ([Typesetter]). A binding lays the book out afresh at the Place, unless
+     * [measurer] lays out like the bound one, as when the Reader comes back from Contents: then the Pages
+     * shown and cached stand, so turning back shows the Pages just read.
+     */
     fun bind(measurer: WindowMeasurer) {
         val spineItems = book.value?.spineItems ?: return
+        if (reading != null && this.measurer?.let(measurer::laysOutLike) == true) return
         this.measurer = measurer
         prefetching?.cancel()
         timer.discard()
@@ -207,6 +212,30 @@ class ReaderViewModel(
             return
         }
         turn(back = true) { it.previous() }
+    }
+
+    /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
+    fun openContents(): Contents? {
+        timer.discard()
+        return book.value?.contentsAt(pagePoint, atEnd.value)
+    }
+
+    /**
+     * A jump from Contents to Chapter [chapter]: leaves the end page and shows the Page starting at the
+     * Chapter's start ([Reading.jump]), even the Chapter already current, recording it as the Place, stamped.
+     * It clears Finished when the Chapter is text, keeps it when the Chapter is Back matter, and never sets
+     * it. The running timing is dropped and the landed Page is untimed, so it gives no sample.
+     */
+    fun jumpTo(chapter: Int) {
+        val opened = book.value ?: return
+        val measurer = measurer ?: return
+        val start = opened.chapters.getOrNull(chapter)?.start ?: return
+        timer.discard()
+        atEnd.value = false
+        val shown = show("jump") { it.jump(start.item, start.char, measurer.key(fontStep.value)) } ?: return
+        spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
+        val clears = start < opened.textEnd && saver.data.books[opened.identifier]?.finished == true
+        stamp(finished = if (clears) false else null)
     }
 
     /** The page turn a key makes: volume down forward, volume up back; null for any other key. */
@@ -291,9 +320,21 @@ class ReaderViewModel(
         }
     }
 
+    /**
+     * The point the Page on screen goes by for its Chapter and minutes: its start, or the start of a Chapter
+     * starting later in its first line (a table of contents may point mid-line), so a jump there names the
+     * Chapter chosen. Before a view binds, the Place.
+     */
+    private val pagePoint: SpinePoint get() {
+        val (pass, page) = frame.value ?: return spinePoint.value
+        val start = SpinePoint(pass.item, page.start)
+        val opened = book.value ?: return start
+        return opened.chapterAt(SpinePoint(pass.item, pass.firstLineEnd(page) - 1))?.let { opened.chapters[it].start }?.takeIf { it > start } ?: start
+    }
+
     private fun publishLines() {
         val opened = book.value ?: return
-        val point = frame.value?.let { SpinePoint(it.pass.item, it.page.start) } ?: spinePoint.value
+        val point = pagePoint
         val chapter = opened.chapterAt(point).takeUnless { atEnd.value }
         topLine.value = chapter?.let { opened.chapters[it].title } ?: shelfTitle
         progressLine.value = words?.takeUnless { atEnd.value }?.let { opened.minutesLine(it, point, owner.speed.wpm) }

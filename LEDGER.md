@@ -70,7 +70,7 @@ Ordered. Each item ends on its _done-when_.
   a same-id Spine item can hold other text entirely. (Done in N3's pure core: a Book with no
   `dc:identifier` is hashed over its Spine documents' CRC-32 and length, pinned by a test; with no
   `dc:title` it takes its file name, or a download its Catalogue entry's title.) With N4: the end page's
-  "Back to Shelf" sets Finished, and turning back or jumping away from the end clears it. At the
+  "Back to Shelf" sets Finished, and turning back from the end, or jumping to a Chapter of the text, clears it. At the
   first release after N2: the upgrade-path test (release N over N-1 with a populated store).
 - **N3 follow-ups.** `ci.sh` checks the size of the alice fixture it pushed, since a host-side cut
   can still install a truncated file. Images: flip `PREFER_IMAGES_EDITION` in `Catalogue.kt` when
@@ -83,8 +83,8 @@ Ordered. Each item ends on its _done-when_.
   Chapter title; "Contents" lists Chapters; "about N min left in this chapter" (230 wpm prior, median of
   the last 20 page-turn samples, 2 s–3 min filter, whole minutes under 15, 5-minute buckets above,
   "almost done" under one); percent on the Shelf: a fraction stored with each Place, additive under
-  ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back or jumping away from
-  the end clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
+  ADR 0002; end page "The end." + "Back to Shelf" sets Finished, and turning back from
+  the end, or jumping to a Chapter of the text, clears it. With a usable table of contents, a Chapter runs to the next Chapter, so an unlisted
   Spine item or a Part heading continues the Chapter before it; with none, each Spine item is a Chapter
   labelled by its first heading, else "Chapter N", never "Section N". Front matter shows the Book title
   and no minutes line. Settled in the pre-N4 domain pass (the N4 review may revisit):
@@ -93,7 +93,7 @@ Ordered. Each item ends on its _done-when_.
     and the Shelf shows no percent for it until the next page turn.
   - Nested tables of contents: only leaf entries are Chapters (ADR 0004's nearest leaf), so a "Part
     One" page continues the Chapter before it, or is front matter.
-  - Back matter: listed Back matter is its own Chapter. Unmarked trailing material is text: listed, it
+  - Back matter: Back matter always starts a Chapter, listed or not (N4 (c)). Unmarked trailing material is text: listed, it
     is its own Chapter; unlisted, it continues the last one. Finished needs the last Page of the text. Back matter (`CONTEXT.md`) starts at
     `OpenBook.textEnd`: Project Gutenberg's `pg-footer`, or a trailing run of Spine items marked
     `backmatter`. The end page follows the last Page of the text, which ends exactly there.
@@ -109,6 +109,11 @@ Ordered. Each item ends on its _done-when_.
     listed title page).
   - A label that ends with its Chapter's first heading, after a caption, is titled by the heading
     ("CHAPTER III.").
+  - N4 (c), Contents: tapping the top line opens it (the screen's top 48 dp, so the top of the Page no
+    longer turns). One row per Chapter, the current one marked "you're here" (on the end page, the last
+    Chapter of the text); a jump lands on a Page starting exactly at the Chapter, laid out afresh, as the
+    Place, untimed; it clears Finished in the text and keeps it in Back matter. Opening Contents drops
+    the Page's timing. The volume keys stay LightOS's there until N5.
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's

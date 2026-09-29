@@ -11,16 +11,29 @@ data class Chapter(val title: String, val start: SpinePoint)
  * The Chapters of a Book made of [spineItems], from [listed]: the leaf entries of its table of contents
  * that name one of its Spine items, in table-of-contents order, each titled by its label. A usable table
  * of contents lists at least two, in reading order; text before the first is front matter. Otherwise each
- * Spine item is a Chapter from its start, and there is no front matter. A Chapter with no title takes its
- * first heading, else "Chapter N", N counting Chapters from 1. A Chapter's first heading is the first
- * Heading block holding or after its start and before the next Chapter's start. When a Chapter starts in a
- * Caption block (a Gutenberg Chapter's illustration caption) and its label, whitespace-collapsed, ends with
- * a space and then its first heading's text, whitespace-collapsed, the Chapter's title is that heading's
- * text. Case and punctuation are the Book's own.
+ * Spine item is a Chapter from its start, and there is no front matter. Back matter always starts a Chapter:
+ * when the Book has Back matter ([textEnd] is before the Book's end) and no Chapter starts where it does
+ * (a point at the end of a Spine item being the next one's start), one with no title is added there. A
+ * Chapter with no title takes its first heading, else "Chapter N", N counting Chapters from 1. A Chapter's
+ * first heading is the first Heading block holding or after its start and before the next Chapter's start.
+ * When a Chapter starts in a Caption block (a Gutenberg Chapter's illustration caption) and its label,
+ * whitespace-collapsed, ends with a space and then its first heading's text, whitespace-collapsed, the
+ * Chapter's title is that heading's text. Case and punctuation are the Book's own.
  */
-fun chaptersOf(listed: List<Chapter>, spineItems: List<SpineItem>): List<Chapter> {
+fun chaptersOf(
+    listed: List<Chapter>,
+    spineItems: List<SpineItem>,
+    textEnd: SpinePoint = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0),
+): List<Chapter> {
     val usable = listed.size > 1 && listed.zipWithNext().none { (a, b) -> b.start < a.start }
-    val chapters = if (usable) listed else spineItems.indices.map { Chapter("", SpinePoint(it, 0)) }
+    val found = if (usable) listed else spineItems.indices.map { Chapter("", SpinePoint(it, 0)) }
+    fun normal(point: SpinePoint) =
+        if (point.item < spineItems.lastIndex && point.char == spineItems[point.item].text.length) SpinePoint(point.item + 1, 0) else point
+    val backMatter = normal(textEnd).takeIf { it.char < spineItems.getOrNull(it.item)?.text?.length ?: 0 }
+    val chapters = if (backMatter == null || found.any { normal(it.start) == backMatter }) found else {
+        val at = found.indexOfFirst { it.start > backMatter }.takeIf { it >= 0 } ?: found.size
+        found.subList(0, at) + Chapter("", backMatter) + found.subList(at, found.size)
+    }
     return chapters.mapIndexed { i, chapter ->
         val heading = firstHeading(spineItems, chapter.start, chapters.getOrNull(i + 1)?.start)
         val atCaption = spineItems[chapter.start.item].kindAt(chapter.start.char) == BlockKind.Caption
@@ -38,6 +51,20 @@ fun chaptersOf(listed: List<Chapter>, spineItems: List<SpineItem>): List<Chapter
  */
 fun OpenBook.chapterAt(point: SpinePoint): Int? =
     (-chapters.binarySearch { if (it.start <= point) -1 else 1 } - 2).takeIf { it >= 0 }
+
+/** What Contents lists: every Chapter's title, in order, and [current], the row marked "you're here", or null for none. */
+data class Contents(val titles: List<String>, val current: Int?)
+
+/**
+ * Contents for a reader at [place], the point the Page being read goes by (its start, or a Chapter starting
+ * later in its first line), or on the end page when [atEnd]. The
+ * current row is the Chapter holding [place] ([chapterAt]), in text or Back matter, and on the end page the
+ * last Chapter of the text, the last starting before [OpenBook.textEnd]; in front matter no row is current.
+ */
+fun OpenBook.contentsAt(place: SpinePoint, atEnd: Boolean): Contents = Contents(
+    chapters.map { it.title },
+    if (atEnd) chapters.indexOfLast { it.start < textEnd }.takeIf { it >= 0 } else chapterAt(place),
+)
 
 /**
  * The text of the first heading holding or after [from] and before [until] (the end of the Book when null),
