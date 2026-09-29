@@ -12,20 +12,19 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
 > Not yet signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>
-  <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: the heading 'I: Down the Rabbit-Hole' above the first paragraph, white serif text on black">
-  <img src="docs/screenshots/italics.png" width="30%" alt="A page beginning 'Down, down, down.' with the word 'never' set in Literata's true italic">
+  <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: the chapter's name on the top line, its heading above the first paragraph, and the minutes left in the chapter at the bottom">
+  <img src="docs/screenshots/italics.png" width="30%" alt="A page with 'Down, down, down.' and the word 'never' set in Literata's true italic">
   <img src="docs/screenshots/caption.png" width="30%" alt="An illustration's description shown as a grey italic caption, followed by the story text">
 </p>
 
 <p>
   <img src="docs/screenshots/shelf.png" width="30%" alt="The Shelf: a list of four books, with War and Peace at 99%">
   <img src="docs/screenshots/catalogue-page.png" width="30%" alt="Standard Ebooks' new releases: a search field above a list of titles and authors">
-  <img src="docs/screenshots/contents.png" width="30%" alt="Contents: the book's chapters in order, the first marked 'you're here', with Shelf at the top right">
+  <img src="docs/screenshots/contents.png" width="30%" alt="Contents: Alice's chapters in order, Chapter I marked 'you're here', with Shelf at the top right">
 </p>
 
-<sub>Top row: on a Light Phone III, from an early build (its page counter is now the minutes left in the
-chapter). Bottom row: on the emulator at the LP3's size. Book text is set in Literata; illustrations
-appear as their descriptions for now.</sub>
+<sub>Reading and Contents on a Light Phone III; the Shelf and a Catalogue on the emulator at the LP3's
+size. Book text is set in Literata; illustrations appear as their descriptions for now.</sub>
 
 ## Where to find DRM-free books
 
