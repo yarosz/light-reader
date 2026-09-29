@@ -34,7 +34,8 @@ const val SAMPLE_MAX_MS = 180_000L
 
 /**
  * A Page read faster than this gives no sample: it was skimmed, or turned past while hunting for a passage,
- * and a few minutes of that would otherwise drag the median, and every minutes line, down for the session.
+ * and a few minutes of that would otherwise drag the median, and the Progress line, down for as long as
+ * the Tool runs.
  */
 const val SAMPLE_MAX_WPM = 600.0
 

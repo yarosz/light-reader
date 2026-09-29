@@ -39,6 +39,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thelightphone.sdk.LightScreen
@@ -244,8 +245,8 @@ fun progressForm(fullWidthPx: Int, availableWidthPx: Int): ProgressForm =
  * The footer's Progress line, one line in Detail and secondary text, centred: [line]'s full form when it fits
  * the width, measured as drawn at the system font scale, else its short form, ellipsised if even that
  * doesn't fit. The form not shown isn't placed, so a screen reader hears only the one on screen. Its
- * measure policy is a lambda, so it doesn't support intrinsic measurement: don't put it where a parent
- * asks for intrinsics.
+ * intrinsic sizes come from Compose's default (measuring at unbounded width), which gives the full form's
+ * width: fine for its one caller, a weighted Row slot, which never asks.
  */
 @Composable
 private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
@@ -264,7 +265,7 @@ private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
             ProgressForm.Full -> full
             ProgressForm.Short -> measurables[1].measure(constraints.copy(minWidth = 0))
         }
-        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else shown.width
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else constraints.constrainWidth(shown.width)
         layout(width, shown.height) { shown.place((width - shown.width) / 2, 0) }
     }
 }
