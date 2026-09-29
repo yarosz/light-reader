@@ -449,9 +449,9 @@ NoSuchHost keeps Retry for the same reason: the phone reporting a connection mea
 network claims internet. A Wi-Fi with a dead upstream, DNS failing for a moment, or a redirect to a
 host that is down fails a correctly typed address the same way, and trying again can fix those.
 
-Every request, a Catalogue fetch or a download, sends the User-Agent "Reader/<versionName>
-(+https://github.com/yarosz/light-reader)", so a Catalogue's logs can tell the Tool apart; it names
-the Tool and its version, nothing about the reader or the phone.
+Every request (a Catalogue page, "More", a search, a download, and each redirect hop) sends the
+User-Agent "Reader/<versionName> (+https://github.com/yarosz/light-reader)", so a server's logs can tell
+the Tool apart; it names the Tool and its version, nothing about the reader or the phone.
 
 Every failed Catalogue fetch (a page, "More", a search description) logs one line under the `Reader`
 tag: the URL, the HTTP status (with where redirects ended) or the exception, and the failure it

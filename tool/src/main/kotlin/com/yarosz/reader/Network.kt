@@ -137,7 +137,7 @@ fun interface Transport {
 class InsecureRedirectException(location: String) : IOException("redirected to $location")
 
 /**
- * Sent on every request, so a Catalogue's logs can tell the Tool apart and find its source. The
+ * Sent on every request, so a server's logs can tell the Tool apart and link to its code. The
  * version is `versionName` in lighttool.toml (a test keeps them equal).
  */
 const val USER_AGENT = "Reader/0.1.0 (+https://github.com/yarosz/light-reader)"
