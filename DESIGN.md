@@ -73,7 +73,7 @@ large-text setting grows it and nothing clips, but no title changes it (a script
 font with a taller line would otherwise re-pack the Pages at a Chapter change). It has 4 dp below it.
 In front matter, and on the end page, it shows the Book's title as the Shelf shows it. It isn't
 tappable: only the Page turns Pages. The footer is 48 dp: "A−" and "A+" at its ends, each with 8 dp of
-padding at the sides (the footer gives them their tap height), and the Progress line between them.
+padding at the sides, each filling the footer's height as its tap target, and the Progress line between them.
 The Page takes the height that is left, so Pages re-pack at the Place, which a layout change never moves.
 
 **Progress line.** The minutes left in the Chapter: the words from the Page's start to the Chapter's

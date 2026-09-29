@@ -8,10 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -131,7 +133,7 @@ class ReaderScreen(
                 LightText(
                     text = "A−",
                     variant = LightTextVariant.Copy,
-                    modifier = Modifier.lightClickable { viewModel.changeFont(-1) }.padding(horizontal = 8.dp),
+                    modifier = Modifier.fillMaxHeight().lightClickable { viewModel.changeFont(-1) }.padding(horizontal = 8.dp).wrapContentHeight(),
                 )
                 LightText(
                     text = progressLine.orEmpty(),
@@ -145,7 +147,7 @@ class ReaderScreen(
                 LightText(
                     text = "A+",
                     variant = LightTextVariant.Copy,
-                    modifier = Modifier.lightClickable { viewModel.changeFont(+1) }.padding(horizontal = 8.dp),
+                    modifier = Modifier.fillMaxHeight().lightClickable { viewModel.changeFont(+1) }.padding(horizontal = 8.dp).wrapContentHeight(),
                 )
             }
         }
