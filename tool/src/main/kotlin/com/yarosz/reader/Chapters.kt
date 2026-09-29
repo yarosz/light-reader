@@ -13,7 +13,9 @@ data class Chapter(val title: String, val start: SpinePoint)
  * of contents lists at least two, in reading order; text before the first is front matter. Otherwise each
  * Spine item is a Chapter from its start, and there is no front matter. Back matter always starts a Chapter:
  * when the Book has Back matter ([textEnd] is before the Book's end) and no Chapter starts where it does
- * (a point at the end of a Spine item being the next one's start), one with no title is added there. A
+ * (a point at the end of a Spine item being the next one's start), the first Chapter after that point moves
+ * back to start there when no heading comes between them (Gutenberg's end-of-book lines before the license
+ * its table of contents lists), else one with no title is added there. A
  * Chapter with no title takes its first heading, else "Chapter N", N counting Chapters from 1. A Chapter's
  * first heading is the first Heading block holding or after its start and before the next Chapter's start.
  * When a Chapter starts in a Caption block (a Gutenberg Chapter's illustration caption) and its label,
@@ -32,7 +34,12 @@ fun chaptersOf(
     val backMatter = normal(textEnd).takeIf { it.char < spineItems.getOrNull(it.item)?.text?.length ?: 0 }
     val chapters = if (backMatter == null || found.any { normal(it.start) == backMatter }) found else {
         val at = found.indexOfFirst { it.start > backMatter }.takeIf { it >= 0 } ?: found.size
-        found.subList(0, at) + Chapter("", backMatter) + found.subList(at, found.size)
+        val next = found.getOrNull(at)
+        if (next != null && firstHeading(spineItems, backMatter, next.start) == null) {
+            found.subList(0, at) + next.copy(start = backMatter) + found.subList(at + 1, found.size)
+        } else {
+            found.subList(0, at) + Chapter("", backMatter) + found.subList(at, found.size)
+        }
     }
     return chapters.mapIndexed { i, chapter ->
         val heading = firstHeading(spineItems, chapter.start, chapters.getOrNull(i + 1)?.start)

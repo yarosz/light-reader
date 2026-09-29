@@ -134,6 +134,32 @@ Ordered. Each item ends on its _done-when_.
   - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
     opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
     the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
+  - Text outside the known blocks (loose `<div>` text, tables, `<pre>` line breaks) reaches a Page
+    (`DESIGN.md` "What a Book shows"): Gutenberg's HTML contents table, War and Peace's cipher table, the
+    whole license. A table of inline text is one block (split at rows past a window, and at a row where
+    the license starts); one whose cells hold blocks is read block by block. Each paragraph in a list
+    item is its own block; hidden, `<svg>` and `<math>` text is skipped; Spine items marked `linear="no"`
+    are skipped unless a table of contents lists them. Gutenberg's end-of-book lines now sit between
+    `textEnd` and the listed license, so the first Chapter after Back matter's start moves back to it when
+    no Chapter already starts there and no heading comes between (no second, "Chapter N" row). Standard
+    Ebooks Books keep their `backmatter` Spine items (colophon, uncopyright) as Back matter, and their
+    dedication, epigraph, foreword and other front matter: only the title page, half-title, imprint and
+    table of contents are dropped. Listed ones are Chapters, and the Book opens at its start, the first of
+    them (Alice on its epigraph; `scripts/ci.sh`'s dev start moves to Chapter I, the text it opened on).
+    Existing Places are re-found by their text (ADR 0002), nearest their stale block and offset: the
+    snippet anywhere in the Spine item, else, within a window of 4 blocks before to 128 blocks or 32,000
+    characters after, the snippet passing over the line breaks and whole blocks the parser now adds inside
+    it (a list item's paragraphs that ran together, a caption now read between two blocks), else the
+    nearest spot matching 20 or more of its characters, or a heading whose next paragraph changed. A Place
+    lands at its block's start when its text is gone (text the parser now skips, or a new edition's) or
+    has moved past the window, and where two spots match its snippet alike (list items that open alike)
+    only the stale spot tells them apart, so it can land on the other. The search runs off the main
+    thread. The Shelf percent can shift slightly on the next page turn, as the Book has more
+    characters. Pride and Prejudice keeps 63 Chapters in both Gutenberg editions, War and Peace 385 with
+    one license row. The images EPUB 3 has 8 Spine items, the last Gutenberg's cover wrapper page, whose
+    "back" link shows after the license: Gutenberg doesn't mark it `linear="no"`, so it stays (drop it
+    before the images flip, with the drop caps). _Decided:_ the owner wants dedications, epigraphs and
+    forewords readable, so a listed one is a Chapter, as `CONTEXT.md` says of a listed preface.
   - QA fixes, Catalogue and Shelf: failed Catalogue fetches log their URL (no query, user info or
     fragment) and cause under `Reader`; a typed host that doesn't resolve on a connected phone reads
     "Couldn't find that address. Check the spelling.", still with Retry; a download that fails
@@ -152,7 +178,7 @@ Ordered. Each item ends on its _done-when_.
   _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's
   no-images EPUB 2) shows its 61 novel Chapters, "Chapter I." to "CHAPTER LXI.", plus the title page and
   license its table of contents lists, across 15 Spine items; the images EPUB 3 gives the same 63
-  Chapters across 7.
+  Chapters across 8.
 - **N5 · Reading chrome.** Hidden while reading; centre tap reveals an overlay (text never moves): top
   bar (back to Shelf + Chapter title), Progress line, bottom row "A−  A+  Light  Contents". Asymmetric
   tap zones (back 30% / chrome 25% / forward 45%); the five font steps and margins from `DESIGN.md`
@@ -162,6 +188,13 @@ Ordered. Each item ends on its _done-when_.
   ADR 0003 no-network sentence). The detail page's CopyProtected line then points to About's list.
   _Done when:_ verified with `mise run ui`, including CopyProtected's pointer to About's DRM-free
   list.
+  From the N4 QA walkthrough, for N5 to settle: long Books' Contents (War and Peace: 385 rows,
+  "CHAPTER I" ×17 with no Part named on the row or the top line, ~70 flings end to end; show the
+  enclosing Part where titles repeat, and a way to the start or end); and the top line doesn't read as
+  a control (the overlay's top bar replaces its job, or a cue until then). Parked: identical rows in
+  search results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3, different
+  Editions) want a telling detail; Catalogue author forms keep titles of nobility ("graf Leo Tolstoy"),
+  which could be dropped as life dates are.
 - **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
   Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the

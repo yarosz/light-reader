@@ -160,8 +160,9 @@ wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s
 data_hash() {  # serial -> sha256 of files/reading-data.json, or "none" when there is no such file
   "$adb" -s "$1" shell run-as $pkg sh -c "'sha256sum files/reading-data.json 2>/dev/null || echo none'" | tr -d '\r' | awk '{print $1}'
 }
-install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at Spine item 1 and the
-                        # default font, and saves nothing, so A+ A+ A- A- always cycles and the device's
+install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at Chapter I (Spine
+                        # item 3, after the epigraph and frontispiece) and the default font, and saves
+                        # nothing, so A+ A+ A- A- always cycles and the device's
                         # reading data is left as it was (data_before, checked by shelf_check). A device
                         # with no alice.epub gets the test fixture, removed again on exit. The fixture is
                         # pushed under a temp name and renamed, and the device recorded before the push,
@@ -169,7 +170,7 @@ install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the 
   dev_started="$dev_started $1"
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
     && data_before=$(data_hash "$1") && [ -n "$data_before" ] \
-    && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 0 > files/dev-start'" \
+    && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 2 > files/dev-start'" \
     && { "$adb" -s "$1" shell run-as $pkg test -f files/alice.epub \
       || { pushed_alice="$pushed_alice $1" \
         && "$adb" -s "$1" shell run-as $pkg sh -c "'cat > files/alice.epub.ci && mv files/alice.epub.ci files/alice.epub'" \
@@ -195,7 +196,7 @@ shelf_check() {  # serial: after the round trip, the reading data must be byte-i
   echo "the Shelf never rendered"
   return 1
 }
-clear_starts() {  # on any exit: a dev-start left behind would open every later launch at Spine item 1, and
+clear_starts() {  # on any exit: a dev-start left behind would open every later launch at Alice's Chapter I, and
                   # the Reader it launched saves nothing, so stop it before anyone reads in it. The Alice
                   # fixture goes only from devices this run pushed it to.
   for s in $dev_started; do

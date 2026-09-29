@@ -211,6 +211,74 @@ class ReadingDataTest {
     }
 
     @Test
+    fun `a Place at a repeated heading whose next paragraph a new edition changed returns to the same heading`() {
+        val books = 1..17
+        fun book(k: Int, edition: Int) = buildList {
+            if (edition == 2) add(Block(BlockKind.Caption, "Plate $k."))
+            add(Block(BlockKind.Heading, "BOOK $k"))
+            add(Block(BlockKind.Heading, "CHAPTER I"))
+            add(Block(BlockKind.Paragraph, (if (edition == 1) "“" else "\"") + "Well, in Book $k the story opens once more."))
+            repeat(12) { add(Block(BlockKind.Paragraph, "Book $k goes on, paragraph $it, in words of its own.")) }
+            add(Block(BlockKind.Heading, "CHAPTER II"))
+            repeat(12) { add(Block(BlockKind.Paragraph, "Later in Book $k, paragraph $it, the story goes on.")) }
+        }
+        fun item(edition: Int) = SpineItem("c", listOf(Block(BlockKind.Heading, "CONTENTS")) +
+            books.flatMap { listOf(Block(BlockKind.Paragraph, "BOOK $it"), Block(BlockKind.Paragraph, "CHAPTER I"), Block(BlockKind.Paragraph, "CHAPTER II")) } +
+            books.flatMap { book(it, edition) })
+        val old = item(1)
+        val new = item(2)
+        val book = OpenBook("id", "", listOf(new))
+        val headings = { spineItem: SpineItem -> spineItem.blocks.indices.filter { spineItem.blocks[it].kind == BlockKind.Heading && spineItem.blocks[it].text == "CHAPTER I" } }
+        for ((oldBlock, newBlock) in headings(old).zip(headings(new))) {
+            val place = old.placeOf(old.blockStarts[oldBlock], 0)
+            assertEquals(SpinePoint(0, new.blockStarts[newBlock]), book.resolve(place), "the heading at old block $oldBlock")
+        }
+    }
+
+    @Test
+    fun `a Place whose text a new edition rewrote lands at its block's start, not on a far spot sharing its first words`() {
+        val filler = List(20_000) { Block(BlockKind.Paragraph, "Filler paragraph $it, which says nothing much at all.") }
+        val old = SpineItem("c", listOf(Block(BlockKind.Heading, "One"), Block(BlockKind.Paragraph, "The quick brown fox jumps over the lazy dog.")) + filler)
+        val new = SpineItem("c", listOf(
+            Block(BlockKind.Heading, "One"),
+            Block(BlockKind.Paragraph, "A slow grey cat sleeps under the table."),
+            Block(BlockKind.Paragraph, "The quick rustle of leaves."),
+        ) + filler + Block(BlockKind.Paragraph, "The quick brown fox jumps over the fence."))
+        val place = old.placeOf(old.blockStarts[1], 0)
+        assertEquals(SpinePoint(0, new.blockStarts[1]), OpenBook("id", "", listOf(new)).resolve(place))
+        assertTrue(new.blockStarts.last() > 1_000_000)
+    }
+
+    @Test
+    fun `a Place at a refrain is re-found at its own copy, not the nearer one before it`() {
+        val refrain = "Nevermore, quoth the Raven, nevermore, nevermore."
+        val stanza = listOf(Block(BlockKind.Paragraph, refrain), Block(BlockKind.Paragraph, "A line of its own ${"z".repeat(40)}"))
+        val lead = List(5) { Block(BlockKind.Paragraph, "Opening paragraph $it, before the poem begins.") }
+        val old = SpineItem("c", lead + List(6) { stanza }.flatten())
+        val place = old.placeOf(old.blockStarts[5 + 6], 0)
+        for (inserted in listOf(10, 60, 150)) {
+            val new = SpineItem("c", lead + Block(BlockKind.Caption, "y".repeat(inserted)) + List(6) { stanza }.flatten())
+            assertEquals(SpinePoint(0, new.blockStarts[6 + 6]), OpenBook("id", "", listOf(new)).resolve(place), "inserted $inserted")
+        }
+    }
+
+    @Test
+    fun `a partial match is looked for only near the Place, so a large Spine item costs no more than a small one`() {
+        val blocks = List(20_000) { Block(BlockKind.Paragraph, "Paragraph $it of a very long Spine item, " + "words ".repeat(20)) }
+        val large = SpineItem("c", blocks)
+        assertTrue(large.text.length > 3_000_000)
+        for (block in listOf(0, 777, 10_000, 19_999, 25_000)) {
+            val window = large.partialWindow(block, large.blockStarts.getOrElse(block) { 0 })
+            assertTrue(window.last - window.first < 64_000, "window at block $block spans ${window.last - window.first}")
+        }
+        val place = large.placeOf(large.blockStarts[500], 0)
+        val moved = SpineItem("c", blocks.take(500) + List(3000) { Block(BlockKind.Caption, "Plate $it.") } + blocks.drop(500).map { Block(it.kind, it.text.replaceFirst(",", ";")) })
+        assertEquals(SpinePoint(0, moved.blockStarts[500]), OpenBook("id", "", listOf(moved)).resolve(place))
+        val near = SpineItem("c", blocks.take(500) + List(30) { Block(BlockKind.Caption, "Plate $it.") } + blocks.drop(500).map { Block(it.kind, it.text.replaceFirst(",", ";")) })
+        assertEquals(SpinePoint(0, near.blockStarts[530]), OpenBook("id", "", listOf(near)).resolve(place))
+    }
+
+    @Test
     fun `a Place in a Spine item the Book no longer has resolves to nothing`() {
         val book = randomBook(Random(1))
         assertNull(book.resolve(Place("gone.xhtml", 0, 0, "", 0)))

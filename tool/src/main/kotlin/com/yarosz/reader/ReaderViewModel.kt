@@ -24,6 +24,9 @@ private const val PERF_TAG = "ReaderPerf"
 
 private const val TAG = "Reader"
 
+/** A parsed Book, its word index and the time it took, and its stored Place with where [resolve] found it. */
+private data class Opened(val book: OpenBook, val words: WordIndex, val wordsNs: Long, val found: Pair<Place, SpinePoint?>?)
+
 /** How long page turns and font changes settle before the reading data is saved. */
 const val SAVE_DEBOUNCE_MS = 1_000L
 
@@ -101,10 +104,13 @@ class ReaderViewModel(
                     val opened = parseEpub(file, stored.storedTitle(file.name) ?: file.nameWithoutExtension)
                     val wordsStart = System.nanoTime()
                     val index = WordIndex(opened.spineItems)
-                    Triple(opened, index, System.nanoTime() - wordsStart)
+                    val wordsNs = System.nanoTime() - wordsStart
+                    // Re-finding a Place by its text scans its Spine item, so it runs here, off the main thread.
+                    val found = stored.books[opened.identifier]?.place?.let { it to opened.resolve(it) }
+                    Opened(opened, index, wordsNs, found)
                 }
             }
-                .onSuccess { (opened, index, wordsNs) ->
+                .onSuccess { (opened, index, wordsNs, found) ->
                     val parseMs = ms(System.nanoTime() - parseStart - wordsNs)
                     val largest = opened.spineItems.indices.maxByOrNull { opened.spineItems[it].text.length }
                     if (largest != null) {
@@ -125,7 +131,7 @@ class ReaderViewModel(
                         Log.i(PERF_TAG, "windows item=$item windowChars=$windowChars ends=$ends")
                     } else {
                         val place = saver.data.books[opened.identifier]?.place
-                        place?.let(opened::resolve)?.let { spinePoint.value = it }
+                        (found?.takeIf { it.first == place }?.second ?: place?.let(opened::resolve))?.let { spinePoint.value = it }
                         // Opening counts as reading: the first Page starts at the Place, so a Book opened but never paged sorts as in progress.
                         if (place == null && opened.spineItems.isNotEmpty()) {
                             saver.change { it.withPlace(opened.identifier, opened.placeAt(spinePoint.value, openedAt)) }
