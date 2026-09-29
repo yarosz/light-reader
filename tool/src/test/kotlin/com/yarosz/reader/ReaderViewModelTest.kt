@@ -74,13 +74,28 @@ class ReaderViewModelTest {
         return ReaderViewModel(File(dir, "alice.epub"), owner, start, io) { clock }
     }
 
-    /** Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a Page. */
-    private data class LineMeasurer(private val pageHeightPx: Int = 300) : WindowMeasurer {
+    /**
+     * Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a
+     * Page. With [tailAt] (a Spine item's id and an offset in it), the line holding that offset starts mid-word instead. With
+     * [byBlock], lines restart at every block, and a heading's lines are headings, as the real layout's are.
+     */
+    private data class LineMeasurer(
+        private val pageHeightPx: Int = 300,
+        private val tailAt: Pair<String, Int>? = null,
+        private val byBlock: Boolean = false,
+    ) : WindowMeasurer {
         override fun key(fontStep: Int) = LayoutKey(fontStep, 1_000, pageHeightPx)
 
         override fun measure(spineItem: SpineItem, window: Window, fontStep: Int): WindowLayout {
-            val lines = (window.start until window.end step 1_000 / (fontStep + 1)).mapIndexed { i, start ->
-                LineMetrics(start, i * 30f, (i + 1) * 30f, endsAtBreak = true, heading = false)
+            val step = 1_000 / (fontStep + 1)
+            val starts = if (!byBlock) (window.start until window.end step step).toList() else (window.firstBlock..window.lastBlock).flatMap { b ->
+                val start = spineItem.blockStarts[b]
+                (start until start + maxOf(spineItem.blocks[b].text.length, 1) step step).toList()
+            }
+            val tail = tailAt?.takeIf { (id, char) -> id == spineItem.spineId && char in window.start until window.end }
+                ?.let { (_, char) -> starts.indexContaining(char) { it } }
+            val lines = starts.mapIndexed { i, start ->
+                LineMetrics(start, i * 30f, (i + 1) * 30f, endsAtBreak = tail == null || i != tail - 1, heading = byBlock && spineItem.keepsWithNext(start))
             }
             return WindowLayout(lines) { }
         }
@@ -726,6 +741,94 @@ class ReaderViewModelTest {
         assertSame(landed.pass, vm.frame.value!!.pass)
     }
 
+    /**
+     * The same Chapter, its line now starting mid-word (the tail of a hyphenated word): a jump is exempt
+     * from moving a Page's start up to a whole word, so the Page still starts on the Chapter's line, the
+     * top line and Contents name the Chapter, and the Place is that line.
+     */
+    @Test
+    fun `a jump to a Chapter whose line starts mid-word still lands on the Page starting on that line`() {
+        val bodies = listOf(
+            "<h1>One</h1><p>First.</p>",
+            "<p>${"word ".repeat(301)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
+        )
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        val two = opened.chapters[1].start
+        vm.bind(LineMeasurer(tailAt = opened.spineItems[two.item].spineId to two.char))
+        settle()
+        vm.jumpTo(1)
+        val shown = vm.frame.value!!
+        assertTrue(vm.pageStart <= two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        assertEquals(vm.pageStart, vm.spinePoint.value)
+    }
+
+    /**
+     * After that jump a font change re-packs at the Place, the Chapter's start, on a line that starts
+     * mid-word again. The walk up to a whole word stops at the line holding the Chapter's start, so the
+     * Page doesn't open in the Chapter before: the top line, Contents and the Place stay the Chapter's.
+     */
+    @Test
+    fun `a font change after a jump to a Chapter keeps its Page, top line and Contents on that Chapter`() {
+        val bodies = listOf(
+            "<h1>One</h1><p>First.</p>",
+            "<p>${"word ".repeat(400)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
+        )
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        val two = opened.chapters[1].start
+        vm.bind(LineMeasurer(tailAt = opened.spineItems[two.item].spineId to two.char))
+        settle()
+        vm.jumpTo(1)
+        assertEquals(two, vm.pageStart)
+        assertEquals("Two", vm.topLine.value)
+        vm.changeFont(+1)
+        settle()
+        val shown = vm.frame.value!!
+        assertTrue(vm.pageStart <= two && two.char < shown.pass.firstLineEnd(shown.page), "the Page's first line holds $two")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        assertEquals(two, vm.spinePoint.value)
+    }
+
+    /**
+     * A table of contents pointing at the paragraph after a Chapter's heading: the heading is the
+     * Chapter's. A jump starts the Page on the paragraph; a font change at that Place starts it on the
+     * heading, keeping it with its text, and the Page still goes by the Chapter, as its first line under
+     * the heading holds the Chapter's start.
+     */
+    @Test
+    fun `a font change at a Chapter pointed at past its heading starts the Page on the heading and names the Chapter`() {
+        val body = "<h1>One</h1><p>${"word ".repeat(400)}</p><h2>II</h2><p id=\"two\">${"word ".repeat(400)}</p>"
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf(body), ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c0.xhtml#two"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        val two = opened.chapters[1].start
+        val heading = opened.spineItems[0].blockStarts[2]
+        assertEquals(opened.spineItems[0].blockStarts[3], two.char)
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpTo(1)
+        assertEquals(two, vm.pageStart)
+        assertEquals("Two", vm.topLine.value)
+        vm.changeFont(+1)
+        settle()
+        assertEquals(SpinePoint(0, heading), vm.pageStart)
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        assertEquals(two, vm.spinePoint.value)
+    }
+
     @Test
     fun `coming back from Contents to a measurer that lays out alike keeps the Pages shown and cached`() {
         val vm = reading()
@@ -781,5 +884,131 @@ class ReaderViewModelTest {
         vm.jumpTo(2)
         assertEquals(first, vm.frame.value!!.page)
         assertEquals(2, vm.openContents()!!.current)
+    }
+
+    /**
+     * A flat table of contents listing a Part and then its first Chapter, whose headings sit one above the
+     * other: a jump to the Part starts the Page on the Part's heading, and the Page goes by the Part, the
+     * Chapter starting in its first line, not by the Chapter under both headings.
+     */
+    @Test
+    fun `a jump to a Part heading right above its first Chapter's heading names the Part`() {
+        val body = "<h1>One</h1><p>${"word ".repeat(400)}</p><h2 id=\"b1\">BOOK ONE</h2><h2 id=\"c1\">CHAPTER I</h2><p>${"word ".repeat(400)}</p>"
+        val ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Book One", "text/c0.xhtml#b1"), navPoint("Chapter I", "text/c0.xhtml#c1"))
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf(body), ncx = ncx))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpTo(1)
+        assertEquals(opened.chapters[1].start, vm.pageStart)
+        assertEquals("Book One", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+        vm.jumpTo(2)
+        assertEquals("Chapter I", vm.topLine.value)
+        assertEquals(2, vm.openContents()!!.current)
+    }
+
+    /**
+     * An unlisted heading above a Part's heading and its first Chapter's: after a jump to the Part, a larger
+     * font packs the Page from the unlisted heading ([pageFloor] walks up the headings), so no Chapter starts
+     * in its first line. The Page goes by the first Chapter starting in its headings, the Part, not by the
+     * Chapter under them.
+     */
+    @Test
+    fun `after a font change a Page opening on an unlisted heading above a Part's still names the Part`() {
+        partUnderUnlistedHeading("<h2>VOLUME I</h2><h2 id=\"b1\">BOOK ONE</h2>")
+    }
+
+    /** The same with a heading's illustration caption above the Part's heading, kept with it like a heading. */
+    @Test
+    fun `after a font change a Page opening on a caption above a Part's heading still names the Part`() {
+        partUnderUnlistedHeading("<h2><span class=\"caption\">The Emperor</span><span id=\"b1\">BOOK ONE</span></h2>")
+    }
+
+    private fun partUnderUnlistedHeading(above: String) {
+        val body = "<h1>One</h1><p>${"word ".repeat(400)}</p>$above<h2 id=\"c1\">CHAPTER I</h2><p>${"word ".repeat(400)}</p>"
+        val ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Book One", "text/c0.xhtml#b1"), navPoint("Chapter I", "text/c0.xhtml#c1"))
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf(body), ncx = ncx))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpTo(1)
+        assertEquals("Book One", vm.topLine.value)
+        vm.changeFont(+1)
+        settle()
+        assertTrue(vm.pageStart < opened.chapters[1].start, "the Page opens on the heading above the Part's")
+        assertEquals("Book One", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+    }
+
+    /**
+     * A Part's title page as a Spine item of its own, only its heading and unlisted, before the Spine item
+     * its first Chapter starts: that Page ends at its Spine item's end, the Chapter's start, and goes by it.
+     */
+    @Test
+    fun `a Part's title page of its own Spine item goes by the Chapter after it`() {
+        val bodies = listOf("<h1>One</h1><p>${"word ".repeat(40)}</p>", "<h1>PART TWO</h1>", "<h2>Two</h2><p>${"word ".repeat(400)}</p>")
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c2.xhtml"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpTo(0)
+        vm.nextPage()
+        assertEquals(SpinePoint(1, 0), vm.pageStart, "the Page is the Part's title page")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+    }
+
+    /**
+     * Three-line Pages: Chapter Two's three headings fill a Page of their own and its first paragraph, where
+     * the table of contents points, opens the next. The headings are Two's, so that Page goes by Two.
+     */
+    @Test
+    fun `a Page of only headings goes by the Chapter starting right after them`() {
+        val short = "<p>${"word ".repeat(40)}</p>"
+        val body = "<h1>One</h1>$short$short<h2>II</h2><h3>The Second</h3><h3>Part</h3><p id=\"two\">${"word ".repeat(400)}</p>"
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf(body), ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c0.xhtml#two"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val two = vm.book.value!!.chapters[1].start
+        vm.bind(LineMeasurer(pageHeightPx = 90, byBlock = true))
+        settle()
+        vm.nextPage()
+        assertEquals(two, vm.pageEnd, "the Page holds only Two's headings")
+        assertEquals("Two", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+    }
+
+    /**
+     * The same shape at the end of the text: the last Page of the text holds only headings and ends where
+     * Back matter starts, and it still goes by its own Chapter.
+     */
+    @Test
+    fun `a last Page of the text of only headings never goes by the Back matter after it`() {
+        val footer = """<div class="pg-boilerplate pgheader footer" id="pg-footer"><h2>${BackMatterTest.LICENSE_HEADING}</h2><p>${BackMatterTest.LICENSE_TERMS}</p></div>"""
+        val short = "<p>${"word ".repeat(40)}</p>"
+        val bodies = listOf("<h1>Title</h1>", "<h1>One</h1>$short$short<h2>THE END</h2><h3>Finis</h3><h3>Fin</h3>$footer")
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("Title", "text/c0.xhtml"))))
+        val vm = reader()
+        vm.openBook()
+        settle()
+        val opened = vm.book.value!!
+        assertEquals(listOf("Title", "One", BackMatterTest.LICENSE_HEADING), opened.chapters.map { it.title })
+        vm.bind(LineMeasurer(pageHeightPx = 90, byBlock = true))
+        settle()
+        vm.jumpTo(1)
+        vm.nextPage()
+        assertEquals(opened.textEnd, vm.pageEnd, "the last Page of the text holds only headings")
+        assertEquals("One", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
     }
 }

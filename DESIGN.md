@@ -44,9 +44,30 @@ to match (a three-button bar leaves 341 × 360 dp and pillarboxes Reader).
 
 The rules hold in both directions. A Page packed backward (reached by turning back past the Place of
 the current pass) ends where the Page below it starts, so its start is chosen so that the line above
-it is a legal end, with the same 70% guard: every Page end is legal unless the guard fired. What
-remains asymmetric: a backward pass may tile a stretch differently (but as legally) from a forward
-one, and a cold backward crossing may leave a short first Page in the Spine item (ADR 0007).
+it is a legal end, with the same 70% guard: every Page end is legal unless the guard fired, or the
+Place guard (below). What remains asymmetric: a backward pass may tile a stretch differently (but as
+legally) from a forward one, and a cold backward crossing may leave a short first Page in the Spine
+item (ADR 0007).
+
+At the Place the break and heading rules hold for the Page above, within a guard of their own. After a
+font change the Place can fall on a line that starts mid-word (the tail of "hor-/rors") or right under
+a heading; the Page then starts on the nearest line above whose predecessor is a legal end (a break that
+isn't a heading), so the word is whole, a heading comes with its text, and the Page before ends legally;
+the Place sits a few lines (at most 30% of a Page) down its Page. Place guard: if that line is more than
+30% of a Page above the Place's line (a long cascade), or the Place's line wouldn't then fit, the Place's
+own line starts the Page and the Page above ends where it must. The walk also stops at the first line of
+a layout window, so a window cut right after a heading keeps the Place's line, and it never goes above
+the line holding the Place's Chapter's start, so the Page can't open in the Chapter before and go by it
+(one exception: a jump to a Chapter starting mid-line stores the Page's start as the Place, inside the
+Chapter before, so a later font change can name that Chapter):
+when the Place's line holds the Chapter's start, that line starts the Page, and a Place on the line
+under it (a Chapter starting mid-line on a line ending "hor-") still gets the whole word. A heading, or
+run of headings, right before a Chapter's start with no text between counts as the Chapter's (a table
+of contents may point at the paragraph after it), so the walk still takes it and the heading stays with
+its text; a heading another Chapter starts in (a Part's, right above its first Chapter's) stays that
+Chapter's own. The Place
+itself doesn't move, so repeated font changes can't drift it. A Chapter jump is exempt: its Page starts
+on the Chapter start's own line (Contents).
 
 ## Paragraph indent
 
@@ -74,9 +95,18 @@ visible way to the Shelf: "Back to Shelf" where there is no Page, and on a Page 
 **Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
 goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
 centred. A Page goes by its start, or, when a Chapter starts later in its first line (a table of contents
-may point mid-line), by the last Chapter starting there, so a jump names the Chapter chosen. It is one Detail line high: the style's line height at the system font scale, so the
-large-text setting grows it and nothing clips, but no title changes it (a script drawn in a fallback
-font with a taller line would otherwise re-pack the Pages at a Chapter change). It has 4 dp below it.
+may point mid-line, or at a Part's heading right above its first Chapter's), by the last Chapter
+starting there, so a jump names the Chapter chosen. A Page that opens on headings, with no Chapter
+starting in its first line, goes by the first Chapter starting in them (of two starting at one point,
+the later), else by its first line under them: a Page opening on an unlisted heading ("VOLUME I", or an
+illustration's caption) above a Part's heading goes by the Part, and a Page opening on a Chapter's
+heading, with the Chapter's start on the next line, goes by that Chapter. A Page of only headings goes
+by the Chapter starting where it ends, whose headings they are, unless Back matter starts there; the
+end of a Spine item counts as the next one's start, so a Part's title page that is a Spine item of its
+own goes by the Part's first Chapter. It is one Detail line high:
+the style's line height at the system font scale, so the large-text setting grows it and nothing clips,
+but no title changes it (a script drawn in a fallback font with a taller line would otherwise re-pack
+the Pages at a Chapter change). It has 4 dp below it.
 In front matter, and on the end page, it shows the Book's title as the Shelf shows it. Tapping it opens
 Contents; to a screen reader it is a button, "Contents: " and the title. Its tap target is the full
 width of the screen's top 48 dp, or the top line's full height when that is taller, so it takes the top
@@ -128,14 +158,15 @@ Book's last Page does nothing, and no second end page shows. A Place saved there
 drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
 with the bar's back on the left and "Shelf" on the right, and one row per Chapter in order, each the
 Chapter's title verbatim at full strength; Back matter's rows follow the text's with no divider. The
-current row alone has the detail line "you're here": the Chapter holding the Place (of two starting at
-one point, the later), or on the end page the last Chapter of the text. In front matter no row is
-current. The list opens with the row before the current one at the top, so the current row is second, or
+current row alone has the detail line "you're here": the Chapter the Page goes by, as the top line
+names it (of two starting at one point, the later), or on the end page the last Chapter of the text.
+In front matter no row is current. The list opens with the row before the current one at the top, so the current row is second, or
 with the current row at the top when it is first; with no current row it opens at the top. Tapping a row
 goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
-Page, even for the current Chapter; the Pages before it may tile differently, as after a font change.
-That Page is the Place, it is untimed, and the jump leaves the end page. Back, from the bar or the
-system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
+Page, even for the current Chapter, and even when that line starts mid-word (a Chapter anchored inside a
+paragraph): a jump never moves the start up to a whole word as a font change does. The Pages before it
+may tile differently, as after a font change. That Page is the Place, it is untimed, and the jump leaves
+the end page. Back, from the bar or the system, changes nothing else. "Shelf" leaves the Reader as system back does, straight to the Shelf with
 no frame of the reading view, and keeps the Place and Finished as they were. For half a second after
 Contents opens, "Shelf" does nothing, so a double tap on the top line stays in Contents. The volume keys
 stay LightOS's on this screen.

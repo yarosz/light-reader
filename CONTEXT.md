@@ -90,7 +90,8 @@ _Avoid_: file, chapter
 **Place**:
 Where the reader is in a Book: the spot in the text at the top of the Page being read. A Book gets its
 Place when it is first opened; until then it hasn't been started. Font or layout changes never move
-it. The reader never sees it as a number; the Book simply opens there.
+it, though after one it may sit a few lines down its Page, so the Page doesn't start mid-word. The
+reader never sees it as a number; the Book simply opens there.
 _Avoid_: position, anchor, offset, location
 
 **Page**:
