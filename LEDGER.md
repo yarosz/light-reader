@@ -119,6 +119,9 @@ Ordered. Each item ends on its _done-when_.
     double tap on the top line stays in Contents); "Couldn't open this Book." and "This Book has no
     text." have "Back to Shelf" under them, as the end page does. `scripts/ci.sh` checks that Contents'
     Shelf reaches the Shelf on the emulator and the LP3.
+  - Reading from a Catalogue: "Read" on a Book's detail page closes the Catalogue's pages and list and
+    opens the Reader over the Shelf, so every way out of a Book lands on the Shelf. Checked by hand on
+    the emulator; `scripts/ci.sh` doesn't cover it (it needs a live Catalogue).
   A copy fix rides on this first reading-view change (or any earlier one): `ReaderScreen.kt`'s "This
   book has no text." becomes "This Book has no text." (`DESIGN.md` "Copy"), and its line in
   `docs/domain-ignore.txt` goes. _Done when:_ Pride and Prejudice as the Tool downloads it (Gutenberg's

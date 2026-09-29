@@ -191,3 +191,7 @@ End page
 # N4 (c): the Contents screen. The *Screen name follows the SDK's LightScreen, as in N3c.
 ContentsScreen
 ContentsChoice
+
+# "Read" on a Book's detail page hands the Book back to the Shelf (DESIGN.md "Catalogues"). Named to
+# avoid "read", which CONTEXT.md lists under Finished's _Avoid_.
+OpenFromShelf

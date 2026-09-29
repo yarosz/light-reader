@@ -89,8 +89,9 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
         navigateTo({ ReaderScreen(it, file, start) })
     }
 
+    /** Opens the Catalogues; a Book opened from one comes back here, and the Reader opens over the Shelf. */
     private fun openCatalogues() {
-        navigateTo({ CatalogueListScreen(it) })
+        navigateTo({ CatalogueListScreen(it) }) { opened -> open(File(lightContext.filesDir, opened.file)) }
     }
 
     private fun tap(tap: RowTap) {

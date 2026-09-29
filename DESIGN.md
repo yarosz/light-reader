@@ -66,9 +66,9 @@ The reading view until N5 moves its chrome into an overlay. Product rulings from
 2026-09-29); copy is verbatim, and `Progress.kt` holds it. A Book that can't be opened reads "Couldn't
 open this Book." (the reason goes to the log), and one with no text reads "This Book has no text." Under
 either is "Back to Shelf", as on the end page. System back (the LP3's back gesture) leaves the Reader
-from anywhere, but a Tool can't show it, so every Reader state but the brief "Opening…" has a visible way
-to the Shelf: "Back to Shelf" where there is no Page, and on a Page the top line, then "Shelf" in
-Contents.
+from anywhere, to the Shelf, which the Reader always opens over (see "Catalogues"), but a Tool can't show
+it, so every Reader state but the brief "Opening…" has a visible way to the Shelf: "Back to Shelf" where
+there is no Page, and on a Page the top line, then "Shelf" in Contents.
 
 **Layout.** A top line, the Page, then the footer. The top line is the title of the Chapter the Page
 goes by, verbatim, in the SDK's Detail size and secondary text, on one line, ellipsised at the end and
@@ -307,7 +307,10 @@ download merges into the Book by `dc:identifier`.
 | Removed | "Add to Shelf", keeping the Place | the size |
 | A download running | "downloading…" in secondary text | |
 
-The page stays while a download runs and follows it: "downloading…", then "Read" when it lands.
+"Read" closes the Catalogue's pages and "Add a Book", and opens the Reader over the Shelf with no frame
+of them between, so leaving the Reader (system back, "Shelf" in Contents, "Back to Shelf") always lands
+on the Shelf. Where the reader was in the Catalogue (a search, say) isn't kept: "Add" opens the list
+afresh. The page stays while a download runs and follows it: "downloading…", then "Read" when it lands.
 The download belongs to the Shelf, so leaving the page doesn't stop it, and the Shelf shows it as a
 row meanwhile. A failure shows its copy above the action: a retryable one turns the action into
 "Retry", and a permanent one (CopyProtected, NotAnEpub, NoHttps) removes it and adds nothing to the
