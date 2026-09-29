@@ -24,8 +24,6 @@ private const val PERF_TAG = "ReaderPerf"
 /** How long page turns and font changes settle before the reading data is saved. */
 const val SAVE_DEBOUNCE_MS = 1_000L
 
-private val PAGE_KEYS = setOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)
-
 /**
  * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font step
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
@@ -134,20 +132,24 @@ class ReaderViewModel(
 
     fun previousPage() = turn { it.previous() }
 
-    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = when (keyCode) {
-        KeyEvent.KEYCODE_VOLUME_DOWN -> true.also { nextPage() }
-        KeyEvent.KEYCODE_VOLUME_UP -> true.also { previousPage() }
-        else -> false
+    /** The page turn a key makes: volume down forward, volume up back; null for any other key. */
+    private fun turnFor(keyCode: Int): (() -> Unit)? = when (keyCode) {
+        KeyEvent.KEYCODE_VOLUME_DOWN -> { { nextPage() } }
+        KeyEvent.KEYCODE_VOLUME_UP -> { { previousPage() } }
+        else -> null
     }
 
     /**
-     * A page key turns on key-down (a held key repeats there); its key-up is consumed too, or LightActivity
-     * forwards it to LightOS, as it does any Light Phone key a screen declines (the wheel's click lights the
-     * flashlight that way).
+     * A page key turns on key-down (a held key repeats there) and is consumed on key-up and key-multiple too,
+     * or LightActivity forwards it to LightOS, as it does any Light Phone key a screen declines (the wheel's
+     * click lights the flashlight that way). Any other key is declined everywhere and stays LightOS's.
      */
-    override fun onKeyUp(keyCode: Int, event: KeyEvent) = keyCode in PAGE_KEYS
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = turnFor(keyCode)?.let { it(); true } ?: false
 
-    override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent) = keyCode in PAGE_KEYS
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = turnFor(keyCode) != null
+
+    override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent): Boolean =
+        turnFor(keyCode)?.let { turn -> repeat(repeatCount) { turn() }; true } ?: false
 
     /** Activity.onPause: the last hook guaranteed to run before the process can be killed. */
     override fun onAppPause() = saver.flush()

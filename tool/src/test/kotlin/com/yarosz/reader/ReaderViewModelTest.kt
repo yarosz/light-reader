@@ -70,13 +70,14 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `the volume keys are consumed on up and repeat as well as down, and other keys are left to LightOS`() {
+    fun `the volume keys are consumed on down, up and repeat, and other keys are left to LightOS`() {
         val vm = reader()
         for (key in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)) {
+            assertTrue(vm.onKeyDown(key, KeyEvent(KeyEvent.ACTION_DOWN, key)))
             assertTrue(vm.onKeyUp(key, KeyEvent(KeyEvent.ACTION_UP, key)))
             assertTrue(vm.onKeyMultiple(key, 2, KeyEvent(KeyEvent.ACTION_MULTIPLE, key)))
         }
-        val wheelClick = 319
+        val wheelClick = 319 // the SDK's LightDeviceKeys.RotaryButtonPress: LightOS lights the flashlight on it
         assertFalse(vm.onKeyDown(wheelClick, KeyEvent(KeyEvent.ACTION_DOWN, wheelClick)))
         assertFalse(vm.onKeyUp(wheelClick, KeyEvent(KeyEvent.ACTION_UP, wheelClick)))
         assertFalse(vm.onKeyMultiple(wheelClick, 2, KeyEvent(KeyEvent.ACTION_MULTIPLE, wheelClick)))
