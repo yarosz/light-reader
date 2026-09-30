@@ -83,9 +83,11 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
  * the Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
  * its Spine item doesn't have starts at that Spine item's start, or at the previous Chapter's start if that
  * is later in the same Spine item. An entry with entries nested under it is a Part over the Chapters among
- * them when it has a label and no href or one naming a Spine item the Book keeps (so not Standard Ebooks'
- * half title, named for the Book), its heading where its href names, else at its first Chapter's start; one
- * over no Chapter is dropped.
+ * them, starting where its href names, or at its first Chapter's start when that is earlier, its href names
+ * no Spine item kept, or its fragment isn't there. It is no Part when it has no label, is named for the Book
+ * (whitespace-collapsed, case aside), or names a Spine item dropped as not reading matter: Standard Ebooks
+ * nests every Book under its half title. One over no Chapter is dropped, and a Chapter keeps only the
+ * innermost [MAX_PART_DEPTH] Parts nesting it.
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
@@ -93,11 +95,12 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     val pkg = readPackage(zip, fallbackTitle)
     val tables = readTablesOfContents(zip, pkg)
     val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
-    val listedPaths = tables.flatten().mapNotNullTo(hashSetOf()) { it.path }
+    val listedPaths = tables.flatMap { entries -> entries.filterIndexed { i, entry -> !entries.nests(i) } }.mapNotNullTo(hashSetOf()) { it.path }
     val docs = pkg.spine.filter { it.linear || it.path in listedPaths }.ifEmpty { pkg.spine }.map { item ->
         item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) }
     }
     val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.types.none(NOT_READING::contains) } else docs
+    val notReading = (docs - kept.toSet()).mapTo(hashSetOf()) { it.first.path }
     val body = kept.filter { it.second.blocks.isNotEmpty() }
     val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
     val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
@@ -113,9 +116,12 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
             }
             while (open.lastOrNull()?.let { it.depth >= entry.depth } == true) open.removeLast()
             when {
-                (entries.getOrNull(i + 1)?.depth ?: -1) > entry.depth ->
-                    open += ListedPart(entry.depth, entry.label.takeIf { it.isNotEmpty() && (entry.path == null || start != null) }, start)
-                start != null -> resolved += Chapter(entry.label, start, open.mapNotNull { it.over(start) })
+                entries.nests(i) -> {
+                    val part = entry.label.takeIf { it.isNotEmpty() && entry.path !in notReading && !it.sameTitle(pkg.title) }
+                    val heading = start?.takeIf { entry.fragment == null || entry.fragment in body[it.item].second.anchors }
+                    open += ListedPart(entry.depth, part, heading)
+                }
+                start != null -> resolved += Chapter(entry.label, start, open.takeLast(MAX_PART_DEPTH).mapNotNull { it.over(start) })
             }
         }
         resolved.ifEmpty { null }
@@ -125,12 +131,24 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems, textEnd), textEnd)
 }
 
-/** A table of contents entry with entries nested under it, [depth] deep: the Part [label] names, or none when null, made at its first Chapter. */
-private class ListedPart(val depth: Int, private val label: String?, private val start: SpinePoint?) {
+/** Whether entries are nested under the [i]th: the next is deeper. */
+private fun List<TableOfContentsEntry>.nests(i: Int) = (getOrNull(i + 1)?.depth ?: -1) > this[i].depth
+
+private fun String.sameTitle(other: String) = replace(WHITESPACE_RUN, " ").trim().equals(other.replace(WHITESPACE_RUN, " ").trim(), ignoreCase = true)
+
+/** The most Parts a Chapter falls under: a table of contents nested deeper keeps the innermost, so a crafted one opens quickly. */
+const val MAX_PART_DEPTH = 8
+
+/**
+ * A table of contents entry with entries nested under it, [depth] deep: the Part [title] names, or none when
+ * null, made at its first Chapter, its heading at [heading] unless that is later.
+ */
+private class ListedPart(val depth: Int, private val title: String?, private val heading: SpinePoint?) {
     private var part: Part? = null
 
     /** The Part, for a Chapter under it starting at [chapter]. */
-    fun over(chapter: SpinePoint): Part? = part ?: label?.let { Part(it, start ?: chapter) }?.also { part = it }
+    fun over(chapter: SpinePoint): Part? =
+        part ?: title?.let { Part(it, heading?.takeIf { h -> h <= chapter } ?: chapter) }?.also { part = it }
 }
 
 /** The id of the element holding Project Gutenberg's license, the start of a Gutenberg Book's Back matter. */

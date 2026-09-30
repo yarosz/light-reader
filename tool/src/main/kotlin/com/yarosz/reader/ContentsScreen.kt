@@ -9,6 +9,7 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.SimpleLightScreen
 import com.thelightphone.sdk.ui.LightBarButton
@@ -16,7 +17,7 @@ import com.thelightphone.sdk.ui.LightText
 import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.lightClickable
 
-/** What Contents hands the Reader: a row's start to jump to, a Chapter's or a Part's heading, or leaving the Book for the Shelf. */
+/** What Contents hands the Reader: a row's start to jump to, a Chapter's start or a Part's, or leaving the Book for the Shelf. */
 sealed interface ContentsChoice {
     data class Row(val start: SpinePoint) : ContentsChoice
     data object Shelf : ContentsChoice
@@ -59,9 +60,9 @@ class ContentsScreen(
                 }
                 val choose = { goBack(ContentsChoice.Row(row.start)) }
                 Box(placed) {
-                    if (row.part) {
+                    if (row.isPart) {
                         Box(Modifier.lightClickable(onClick = choose).then(rowPadding()).semantics { heading() }) {
-                            LightText(text = row.title, variant = LightTextVariant.Heading)
+                            LightText(text = row.title, variant = LightTextVariant.Heading, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
                     } else {
                         ListRow(row.title, CONTENTS_HERE.takeIf { i == contents.current }, onClick = choose)

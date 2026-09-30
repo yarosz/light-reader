@@ -64,8 +64,8 @@ class ContentsTest {
         val rows = nested.contentsAt(SpinePoint(1, 0), atEnd = false).rows
         assertEquals(
             listOf(
-                ContentsRow("Part One", SpinePoint(1, 0), part = true), ContentsRow("One", SpinePoint(1, 0)),
-                ContentsRow("Book A", SpinePoint(2, 0), part = true), ContentsRow("Two", SpinePoint(2, 0)), ContentsRow("License", SpinePoint(3, 0)),
+                ContentsRow("Part One", SpinePoint(1, 0), isPart = true), ContentsRow("One", SpinePoint(1, 0)),
+                ContentsRow("Book A", SpinePoint(2, 0), isPart = true), ContentsRow("Two", SpinePoint(2, 0)), ContentsRow("License", SpinePoint(3, 0)),
             ),
             rows,
         )
@@ -77,14 +77,5 @@ class ContentsTest {
         assertEquals(3, nested.contentsAt(SpinePoint(2, 50), atEnd = false).current)
         assertEquals(3, nested.contentsAt(SpinePoint(2, 60), atEnd = true).current)
         assertEquals(4, nested.contentsAt(SpinePoint(3, 0), atEnd = false).current)
-    }
-
-    @Test
-    fun `a Part listed beside its Chapters is one row, its Chapter's, current like any other`() {
-        val bookOne = Part("BOOK ONE", SpinePoint(1, 0), isChapter = true)
-        val flat = book.copy(chapters = listOf(Chapter("BOOK ONE", SpinePoint(1, 0)), Chapter("I", SpinePoint(2, 0), listOf(bookOne))))
-        val contents = flat.contentsAt(SpinePoint(1, 0), atEnd = false)
-        assertEquals(listOf(ContentsRow("BOOK ONE", SpinePoint(1, 0)), ContentsRow("I", SpinePoint(2, 0))), contents.rows)
-        assertEquals(0, contents.current)
     }
 }

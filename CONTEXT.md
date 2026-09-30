@@ -73,10 +73,11 @@ _Avoid_: section
 A division of a Book that groups Chapters, such as "BOOK ONE" or "PART II". When the table of contents
 nests Chapters under it, it is not a Chapter, and a Page opening on its heading goes by its first Chapter
 when only headings come between them. When the table of contents lists it beside its Chapters, it is a
-Chapter too. A Part is never a Book, whatever its heading says. A Chapter falls under every Part the table of
-contents nests it in, and the nearest of them is its Part. When Parts are listed beside their Chapters,
-a Chapter that is not itself a Part falls under the Part listed last before it. A Chapter before the
-first Part, and every Chapter of Back matter, falls under none.
+Chapter too. A Part is never a Book, whatever its heading says, and the Book's own title nesting its
+Chapters is no Part. A Chapter falls under every Part the table of contents nests it in, and the nearest
+of them is its Part. When Parts are listed beside their Chapters, a Chapter that is not itself a Part
+falls under the Part listed last before it. A Chapter before the first Part, and every Chapter of Back
+matter, falls under none.
 _Avoid_: section, volume, book (for a Part)
 
 **Front matter**:
@@ -107,8 +108,8 @@ Where the reader is in a Book: the spot in the text at the top of the Page being
 Place when it is first opened; until then it hasn't been started. Font or layout changes never move it,
 though after one it may sit a few lines down its Page, so the Page doesn't start mid-word or part a
 heading from its text, and never goes by a Chapter before the Place's own. Going to a Chapter or a Part
-from Contents puts the Place at the top of the Page the Chapter, or the Part's heading, starts on. The reader never sees it as a
-number; the Book simply opens there.
+from Contents puts the Place at the top of the Page the Chapter, or the Part's heading, starts on. The
+reader never sees it as a number; the Book simply opens there.
 _Avoid_: position, anchor, offset, location
 
 **Page**:
@@ -136,8 +137,9 @@ _Avoid_: table of contents (that is the Book's own list, which Contents is built
 A Book the reader has read to the end of its text, the last Page before any Back matter. It becomes
 Finished when the end page shows, which also saves its Place on that last Page, and stays Finished when
 the reader leaves. Finished Books sit at the bottom of the Shelf. Opening one again opens at its Place.
-Turning back onto a Page of the text (from the end page too), or going to a Chapter of the text from
-Contents, makes it in progress again; a forward turn, a font change, or reading its Back matter does not.
+Turning back onto a Page of the text (from the end page too), or going to a Chapter or Part of the text
+from Contents, makes it in progress again; a forward turn, a font change, or reading its Back matter does
+not.
 _Avoid_: read, done, completed
 
 **Bookmark**:

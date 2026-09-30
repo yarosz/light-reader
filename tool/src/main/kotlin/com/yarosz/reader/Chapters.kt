@@ -1,21 +1,17 @@
 package com.yarosz.reader
 
-import java.util.Locale
 import java.util.zip.ZipFile
 import org.xml.sax.Attributes
 import org.xml.sax.helpers.DefaultHandler
 
 /**
- * A Chapter (ADR 0004): its title, where its text starts, and [parts], the Parts it falls under, outermost
- * first, the last being its Part. It runs to the next Chapter's start, or the end of the Book.
+ * A Chapter (ADR 0004): its title, where its text starts, and [parts], the Parts its table of contents nests
+ * it in, outermost first, the last being its Part. It runs to the next Chapter's start, or the end of the Book.
  */
 data class Chapter(val title: String, val start: SpinePoint, val parts: List<Part> = emptyList())
 
-/**
- * A Part: its title and where its heading starts. [isChapter] when the table of contents lists it beside its
- * Chapters, so it is a Chapter too; otherwise it nests its Chapters, and Contents gives it a heading row.
- */
-data class Part(val title: String, val start: SpinePoint, val isChapter: Boolean = false)
+/** A Part the table of contents nests Chapters under: its title and where its heading starts, else its first Chapter's start. */
+data class Part(val title: String, val start: SpinePoint)
 
 /**
  * The Chapters of a Book made of [spineItems], from [listed]: the leaf entries of its table of contents
@@ -30,9 +26,8 @@ data class Part(val title: String, val start: SpinePoint, val isChapter: Boolean
  * first heading is the first Heading block holding or after its start and before the next Chapter's start.
  * When a Chapter starts in a Caption block (a Gutenberg Chapter's illustration caption) and its label,
  * whitespace-collapsed, ends with a space and then its first heading's text, whitespace-collapsed, the
- * Chapter's title is that heading's text. Case and punctuation are the Book's own. A Chapter falls under the
- * Parts [listed] gives it, those its table of contents nests it in, and under Parts listed beside their
- * Chapters as [withListedParts] finds them; a Chapter of Back matter falls under none.
+ * Chapter's title is that heading's text. Case and punctuation are the Book's own. A Chapter keeps the Parts
+ * [listed] gives it, save a Chapter of Back matter, which falls under none.
  */
 fun chaptersOf(
     listed: List<Chapter>,
@@ -62,55 +57,8 @@ fun chaptersOf(
             else -> chapter
         }.let { if (it.start >= textEnd) it.copy(parts = emptyList()) else it }
     }
-    return withListedParts(titled, spineItems, textEnd)
+    return titled
 }
-
-/**
- * [chapters], each also under the Parts listed beside its Chapters that it falls under. A Chapter of the text
- * is such a Part when its text, up to the next Chapter's start, is all headings (a page reading "BOOK ONE:
- * 1805"), and another such Chapter falls under the same Parts: Parts come in runs, a lone title page doesn't.
- * A Part is over the Chapters after it that fall under the Parts it falls under, until a Part found this way
- * that falls under no more Parts than it does, or Back matter. It ends sooner, as a missed Part boundary does, at a title
- * repeating under it (normalized: trailing ".:;," and spaces dropped, case folded), which ends every Part
- * found this way, or at a Chapter under the same Parts as it whose title no other Chapter has.
- */
-private fun withListedParts(chapters: List<Chapter>, spineItems: List<SpineItem>, textEnd: SpinePoint): List<Chapter> {
-    val text = chapters.map { it.start < textEnd }
-    val headingsOnly = chapters.mapIndexed { i, chapter ->
-        text[i] && blocksBetween(spineItems, chapter.start, chapters.getOrNull(i + 1)?.start).all { it.kind == BlockKind.Heading }
-    }
-    val runs = chapters.filterIndexed { i, _ -> headingsOnly[i] }.groupingBy { it.parts }.eachCount()
-    val titles = chapters.groupingBy { normalTitle(it.title) }.eachCount()
-    class Listed(val part: Part, val over: List<Part>, val seen: MutableSet<Pair<List<Part>, String>> = hashSetOf())
-    val open = mutableListOf<Listed>()
-    fun partsOver(nested: List<Part>): List<Part> = (0..nested.size).flatMap { depth ->
-        open.filter { it.over.size == depth }.map { it.part } + listOfNotNull(nested.getOrNull(depth))
-    }
-    return chapters.mapIndexed { i, chapter ->
-        val nested = chapter.parts
-        if (!text[i]) {
-            open.clear()
-            return@mapIndexed chapter
-        }
-        open.removeAll { nested.take(it.over.size) != it.over }
-        if (headingsOnly[i] && runs.getValue(nested) >= 2) {
-            open.removeAll { it.over.size >= nested.size }
-            val parts = partsOver(nested)
-            open += Listed(Part(chapter.title, chapter.start, isChapter = true), nested)
-            return@mapIndexed chapter.copy(parts = parts)
-        }
-        val title = normalTitle(chapter.title)
-        if (titles.getValue(title) == 1) open.removeAll { it.over == nested }
-        val key = nested to title
-        if (open.any { key in it.seen }) open.clear()
-        open.forEach { it.seen += key }
-        chapter.copy(parts = partsOver(nested))
-    }
-}
-
-private fun normalTitle(title: String) = title.replace(TRAILING_PUNCTUATION, "").lowercase(Locale.ROOT)
-
-private val TRAILING_PUNCTUATION = Regex("[.:;,\\s]+$")
 
 /**
  * The index in [OpenBook.chapters] of the Chapter holding [point], or null in Front matter. Of two
@@ -135,8 +83,8 @@ fun pageFloor(chapterStarts: List<SpinePoint>, spineItem: SpineItem, item: Int, 
     return spineItem.blockStarts[block]
 }
 
-/** A row of Contents: a Chapter's title and start, or with [part] a Part's title and where its heading starts. */
-data class ContentsRow(val title: String, val start: SpinePoint, val part: Boolean = false)
+/** A row of Contents: a Chapter's title and start, or, [isPart], a Part's title and start. */
+data class ContentsRow(val title: String, val start: SpinePoint, val isPart: Boolean = false)
 
 /** What Contents lists: its [rows] in order, and [current], the index of the row marked "you're here", or null for none. */
 data class Contents(val rows: List<ContentsRow>, val current: Int?)
@@ -145,20 +93,18 @@ data class Contents(val rows: List<ContentsRow>, val current: Int?)
  * Contents for a reader at [point], the point the Page being read goes by (its start, or a Chapter starting
  * later in its first line, or in the first line under the headings it opens on), or on the end page when
  * [atEnd]. A row per Chapter, in order, each after a row for every Part it falls under that the Chapter
- * before it doesn't, outermost first, save a Part that is a Chapter too ([Part.isChapter]): its Chapter's row
- * is its row. The current row is the Chapter holding [point] ([chapterAt]), in text or Back matter, and on
- * the end page the last Chapter of the text, the last starting before [OpenBook.textEnd]; in Front matter
- * no row is current, and a Part's row never is.
+ * before it doesn't, outermost first. The current row is the Chapter holding [point] ([chapterAt]), in text
+ * or Back matter, and on the end page the last Chapter of the text, the last starting before
+ * [OpenBook.textEnd]; in Front matter no row is current, and a Part's row never is.
  */
 fun OpenBook.contentsAt(point: SpinePoint, atEnd: Boolean): Contents {
     val rows = mutableListOf<ContentsRow>()
     val chapterRows = IntArray(chapters.size)
     var above = emptyList<Part>()
     chapters.forEachIndexed { i, chapter ->
-        val parts = chapter.parts.filter { !it.isChapter }
-        val kept = above.zip(parts).takeWhile { (a, b) -> a == b }.size
-        parts.drop(kept).mapTo(rows) { ContentsRow(it.title, it.start, part = true) }
-        above = parts
+        val kept = above.zip(chapter.parts).takeWhile { (a, b) -> a == b }.size
+        chapter.parts.drop(kept).mapTo(rows) { ContentsRow(it.title, it.start, isPart = true) }
+        above = chapter.parts
         chapterRows[i] = rows.size
         rows += ContentsRow(chapter.title, chapter.start)
     }
@@ -166,25 +112,23 @@ fun OpenBook.contentsAt(point: SpinePoint, atEnd: Boolean): Contents {
     return Contents(rows, current?.let { chapterRows[it] })
 }
 
-/** The text of the first heading of [blocksBetween] [from] and [until], whitespace-collapsed. */
-private fun firstHeading(spineItems: List<SpineItem>, from: SpinePoint, until: SpinePoint?): String? =
-    blocksBetween(spineItems, from, until).firstOrNull { it.kind == BlockKind.Heading }?.text?.replace(WHITESPACE_RUN, " ")?.trim()
-
 /**
- * The blocks holding or after [from] and starting before [until] (the end of the Book when null), in order.
- * A block's text holds [from], its separating '\n' doesn't.
+ * The text of the first heading holding or after [from] and before [until] (the end of the Book when null),
+ * whitespace-collapsed. A block's text holds [from], its separating '\n' doesn't.
  */
-private fun blocksBetween(spineItems: List<SpineItem>, from: SpinePoint, until: SpinePoint?): Sequence<Block> = sequence {
+private fun firstHeading(spineItems: List<SpineItem>, from: SpinePoint, until: SpinePoint?): String? {
     for (item in from.item..(until?.item ?: spineItems.lastIndex)) {
         val spineItem = spineItems[item]
         val first = if (item != from.item) 0 else spineItem.blockAt(from.char).let { block ->
             if (block >= 0 && from.char < spineItem.blockStarts[block] + spineItem.blocks[block].text.length) block else block + 1
         }
         for (i in first until spineItem.blocks.size) {
-            if (until != null && SpinePoint(item, spineItem.blockStarts[i]) >= until) return@sequence
-            yield(spineItem.blocks[i])
+            if (until != null && SpinePoint(item, spineItem.blockStarts[i]) >= until) return null
+            val block = spineItem.blocks[i]
+            if (block.kind == BlockKind.Heading) return block.text.replace(WHITESPACE_RUN, " ").trim()
         }
     }
+    return null
 }
 
 /**
