@@ -92,11 +92,11 @@ flush, judged on block kinds, never on window boundaries.
   publisher's EPUB may mark its notes `linear="no"`; listed, they stay, in Spine order, so a contents entry
   pointing at them still works. An unlisted one is gone: a Place stored in it opens at the Book's start. `parseEpub` in `Epub.kt`.
 - Parts. A table of contents entry with entries nested under it is a Part over the Chapters among them,
-  never a Chapter itself. Its heading is where its href points, or its first Chapter's start when that is
-  earlier, when it has no href, when the href names no Spine item kept (an image-only divider page, a
-  `linear="no"` one), or when its fragment isn't there. It is no Part when it has no label, is named for
+  never a Chapter itself. Its heading is where its href points, or its first Chapter's start when it has
+  no href, when the href names no Spine item kept (an image-only divider page, a `linear="no"` one), when
+  its fragment isn't there, or when where it points isn't after the Chapter before and before its first. It is no Part when it has no label, is named for
   the Book, or names a Spine item dropped as not reading matter: Standard Ebooks nests every Book under its
-  half title. One over no Chapter is dropped, and a Chapter keeps only the innermost 8 Parts nesting it, so
+  half title. One over no Chapter is dropped, and a Chapter keeps only the outermost 8 Parts nesting it, so
   a crafted table of contents nested thousands deep still opens quickly. A Part listed beside its Chapters
   in the table of contents is a Chapter like any other for now; the controls' running head will need to
   tell such Parts apart. `parseEpub` in `Epub.kt`.

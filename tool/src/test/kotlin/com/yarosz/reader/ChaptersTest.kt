@@ -557,16 +557,39 @@ class ChaptersTest {
     }
 
     @Test
-    fun `a Part whose fragment isn't there, or whose href names no Spine item kept, starts at its first Chapter`() {
+    fun `a Part whose heading isn't there, or isn't after the Chapter before, starts at its first Chapter`() {
         val book = open(
-            listOf("<h2 id=\"ten\">Chapter 10</h2><p>Ten</p><h2 id=\"eleven\">Chapter 11</h2><p>Eleven</p>", "<h3>Chapter 12</h3><p>Twelve</p>"),
+            listOf(
+                "<h2 id=\"ten\">Chapter 10</h2><p>Ten</p><h2 id=\"eleven\">Chapter 11</h2><p>Eleven</p><h2 id=\"twelve\">Chapter 12</h2><p>Twelve</p>",
+                "<h3>Chapter 13</h3><p>Thirteen</p>",
+            ),
             nav = nav(
                 li("Chapter 10", "text/c0.xhtml#ten"),
                 li("Part II", "text/c0.xhtml#part2", li("Chapter 11", "text/c0.xhtml#eleven")),
-                li("Part III", "text/missing.xhtml", li("Chapter 12", "text/c1.xhtml")),
+                li("Part III", "text/c0.xhtml", li("Chapter 12", "text/c0.xhtml#twelve")),
+                li("Part IV", "text/missing.xhtml", li("Chapter 13", "text/c1.xhtml")),
             ),
         )
-        assertEquals(listOf(emptyList(), listOf(Part("Part II", book.startOf("Chapter 11"))), listOf(Part("Part III", SpinePoint(1, 0)))), book.chapters.map { it.parts })
+        assertEquals(
+            listOf(emptyList(), listOf(Part("Part II", book.startOf("Chapter 11"))), listOf(Part("Part III", book.startOf("Chapter 12"))), listOf(Part("Part IV", SpinePoint(1, 0)))),
+            book.chapters.map { it.parts },
+        )
+    }
+
+    @Test
+    fun `a Part page with no text, one marked linear no, or a heading after its first Chapter, gives the Part its first Chapter's start`() {
+        val nav = nav(li("Part One", "text/c0.xhtml", li("One", "text/c1.xhtml"), li("Two", "text/c2.xhtml")))
+        val bodies = listOf("<h1>Part One</h1>", "<h2>One</h2><p>First</p>", "<h2>Two</h2><p>Second</p>")
+        fun partOf(book: OpenBook) = book.chapters.map { it.parts }.distinct().single().single()
+        val imageOnly = open(listOf("<img src=\"part.png\"/>") + bodies.drop(1), nav = nav)
+        assertEquals(Part("Part One", imageOnly.startOf("One")), partOf(imageOnly))
+        val files = tocEpubFiles(bodies, nav)
+        val nonLinear = files + ("OEBPS/content.opf" to files.getValue("OEBPS/content.opf").replace("idref=\"c0\"", "idref=\"c0\" linear=\"no\""))
+        val skipped = parseEpub(File(dir, "book.epub").writeEpub(nonLinear))
+        assertEquals(2, skipped.spineItems.size)
+        assertEquals(Part("Part One", skipped.startOf("One")), partOf(skipped))
+        val later = open(bodies, nav = nav(li("Part One", "text/c2.xhtml", li("One", "text/c1.xhtml"), li("Two", "text/c2.xhtml"))))
+        assertEquals(Part("Part One", later.chapters[0].start), partOf(later))
     }
 
     @Test
@@ -579,12 +602,13 @@ class ChaptersTest {
     }
 
     @Test
-    fun `a table of contents nested thousands deep opens quickly, each Chapter under the innermost Parts nesting it`() {
+    fun `a table of contents nested thousands deep opens quickly, each Chapter under the outermost Parts nesting it`() {
         val depth = 20_000
         val items = (0 until depth).joinToString("") { "<li><a href=\"text/c0.xhtml\">P$it</a><ol><li><a href=\"text/c0.xhtml\">C$it</a></li>" } +
             "</ol></li>".repeat(depth)
         val book = openQuickly(epub(listOf("<p>Text</p>"), nav = nav(items)))
         assertEquals(depth, book.chapters.size)
-        assertEquals((depth - MAX_PART_DEPTH until depth).map { "P$it" }, book.chapters.last().parts.map { it.title })
+        assertEquals((0 until MAX_PART_DEPTH).map { "P$it" }, book.chapters.last().parts.map { it.title })
+        assertEquals(depth + MAX_PART_DEPTH, book.contentsAt(SpinePoint(0, 0), atEnd = false).rows.size)
     }
 }

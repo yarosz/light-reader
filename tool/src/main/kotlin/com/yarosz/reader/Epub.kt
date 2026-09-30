@@ -83,11 +83,11 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
  * the Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
  * its Spine item doesn't have starts at that Spine item's start, or at the previous Chapter's start if that
  * is later in the same Spine item. An entry with entries nested under it is a Part over the Chapters among
- * them, starting where its href names, or at its first Chapter's start when that is earlier, its href names
- * no Spine item kept, or its fragment isn't there. It is no Part when it has no label, is named for the Book
- * (whitespace-collapsed, case aside), or names a Spine item dropped as not reading matter: Standard Ebooks
- * nests every Book under its half title. One over no Chapter is dropped, and a Chapter keeps only the
- * innermost [MAX_PART_DEPTH] Parts nesting it.
+ * them, starting where its href names, or at its first Chapter's start when its href names no Spine item
+ * kept, its fragment isn't there, or where it names isn't after the Chapter before and before its first. It
+ * is no Part when it has no label, is named for the Book (whitespace-collapsed, case aside), or names a
+ * Spine item dropped as not reading matter: Standard Ebooks nests every Book under its half title. One over
+ * no Chapter is dropped, and a Chapter keeps only the outermost [MAX_PART_DEPTH] Parts nesting it.
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
@@ -117,11 +117,12 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
             while (open.lastOrNull()?.let { it.depth >= entry.depth } == true) open.removeLast()
             when {
                 entries.nests(i) -> {
-                    val part = entry.label.takeIf { it.isNotEmpty() && entry.path !in notReading && !it.sameTitle(pkg.title) }
-                    val heading = start?.takeIf { entry.fragment == null || entry.fragment in body[it.item].second.anchors }
-                    open += ListedPart(entry.depth, part, heading)
+                    val isPart = entry.label.isNotEmpty() && entry.path !in notReading && !entry.label.sameTitle(pkg.title)
+                    val after = resolved.lastOrNull()?.start
+                    val heading = start?.takeIf { (entry.fragment == null || entry.fragment in body[it.item].second.anchors) && (after == null || it > after) }
+                    if (isPart && open.size < MAX_PART_DEPTH) open += ListedPart(entry.depth, entry.label, heading)
                 }
-                start != null -> resolved += Chapter(entry.label, start, open.takeLast(MAX_PART_DEPTH).mapNotNull { it.over(start) })
+                start != null -> resolved += Chapter(entry.label, start, open.map { it.over(start) })
             }
         }
         resolved.ifEmpty { null }
@@ -136,19 +137,18 @@ private fun List<TableOfContentsEntry>.nests(i: Int) = (getOrNull(i + 1)?.depth 
 
 private fun String.sameTitle(other: String) = replace(WHITESPACE_RUN, " ").trim().equals(other.replace(WHITESPACE_RUN, " ").trim(), ignoreCase = true)
 
-/** The most Parts a Chapter falls under: a table of contents nested deeper keeps the innermost, so a crafted one opens quickly. */
+/** The most Parts a Chapter falls under: a table of contents nested deeper keeps the outermost, so a crafted one opens quickly. */
 const val MAX_PART_DEPTH = 8
 
 /**
- * A table of contents entry with entries nested under it, [depth] deep: the Part [title] names, or none when
- * null, made at its first Chapter, its heading at [heading] unless that is later.
+ * A table of contents entry with entries nested under it, [depth] deep: the Part [title] names, made at its
+ * first Chapter, its heading at [heading] unless that is null or later.
  */
-private class ListedPart(val depth: Int, private val title: String?, private val heading: SpinePoint?) {
+private class ListedPart(val depth: Int, private val title: String, private val heading: SpinePoint?) {
     private var part: Part? = null
 
     /** The Part, for a Chapter under it starting at [chapter]. */
-    fun over(chapter: SpinePoint): Part? =
-        part ?: title?.let { Part(it, heading?.takeIf { h -> h <= chapter } ?: chapter) }?.also { part = it }
+    fun over(chapter: SpinePoint): Part = part ?: Part(title, heading?.takeIf { it <= chapter } ?: chapter).also { part = it }
 }
 
 /** The id of the element holding Project Gutenberg's license, the start of a Gutenberg Book's Back matter. */

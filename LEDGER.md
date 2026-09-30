@@ -206,6 +206,12 @@ Ordered. Each item ends on its _done-when_.
   already a Chapter row, never a second one, and is current like any Chapter); no Light/Dark button in
   v1; "Reader" on the Shelf opens About; the first-run hint shows once ever; a sixth, 15 sp font size.
   Still open: a way to the top or bottom of a long Contents (measure the scrollbar's track tap first).
+  Parts in Contents (nested tables of contents) landed first. Finding Parts listed beside their Chapters
+  (the running head's "BOOK TWO: 1805" in a flat table of contents) lands with the controls: the survey's
+  R2h rule (a page of only headings, in a run of two or more; a repeating title or a uniquely titled peer
+  ends it) leaves a Book numbered straight through its Parts ("CHAPTER I" to "CHAPTER LXXXVI" under
+  "BOOK I" to "BOOK VIII") with no Parts, since every title is unique; settle that, and the CONTEXT Part
+  entry's "falls under the Part listed last before it", against what the running head shows.
   Found at v0.1.0: a failed search on a Catalogue whose search template puts the terms in the URL path
   (Calibre's `/opds/search/{searchTerms}`) logs them, since the log redaction strips only the query;
   cut the path of a search result's URL too (`Network.kt`), and DESIGN's fetch-failure line then holds.

@@ -75,9 +75,7 @@ nests Chapters under it, it is not a Chapter, and a Page opening on its heading 
 when only headings come between them. When the table of contents lists it beside its Chapters, it is a
 Chapter too. A Part is never a Book, whatever its heading says, and the Book's own title nesting its
 Chapters is no Part. A Chapter falls under every Part the table of contents nests it in, and the nearest
-of them is its Part. When Parts are listed beside their Chapters, a Chapter that is not itself a Part
-falls under the Part listed last before it. A Chapter before the first Part, and every Chapter of Back
-matter, falls under none.
+of them is its Part. A Chapter before the first Part, and every Chapter of Back matter, falls under none.
 _Avoid_: section, volume, book (for a Part)
 
 **Front matter**:
