@@ -15,6 +15,10 @@ const val MINUTES_UNDER_ONE_SHORT = "under 1 min left"
 const val CONTENTS_TITLE = "Contents"
 const val CONTENTS_HERE = "you're here"
 const val CONTENTS_SHELF = "Shelf"
+const val READING_PREVIOUS_PAGE = "Previous page"
+const val READING_SHOW_CONTROLS = "Show controls"
+const val READING_NEXT_PAGE = "Next page"
+const val READING_HIDE_CONTROLS = "Hide controls"
 
 /** The reading speed, in words per minute, until the reader has given [MEASURED_AFTER] samples. */
 const val PRIOR_WPM = 230.0

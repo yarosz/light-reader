@@ -69,10 +69,14 @@ class ReaderViewModel(
     val atEnd = MutableStateFlow(false)
 
     /**
-     * The top line: the title of the Chapter the Page goes by ([pagePoint]), Back matter's included, else
-     * (Front matter, the end page) the Book's Shelf title.
+     * The controls' running head: the title of the Chapter the Page goes by ([pagePoint]), Back matter's
+     * included, after its Part's and [RUNNING_HEAD_SEPARATOR] when it has one, else (Front matter, the end
+     * page) the Book's Shelf title.
      */
-    val topLine = MutableStateFlow("")
+    val runningHead = MutableStateFlow("")
+
+    /** Whether the controls show over the Page. A volume key turn and opening Contents hide them. */
+    val controls = MutableStateFlow(false)
 
     /** The footer's Progress line ([minutesLine]); null for none. */
     val progressLine = MutableStateFlow<ProgressLine?>(null)
@@ -230,6 +234,7 @@ class ReaderViewModel(
     /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
     fun openContents(): Contents? {
         timer.discard()
+        controls.value = false
         return book.value?.contentsAt(pagePoint, atEnd.value)
     }
 
@@ -250,10 +255,10 @@ class ReaderViewModel(
         stamp(finished = if (clears) false else null)
     }
 
-    /** The page turn a key makes: volume down forward, volume up back; null for any other key. */
+    /** The page turn a key makes, hiding the controls: volume down forward, volume up back; null for any other key. */
     private fun turnFor(keyCode: Int): (() -> Unit)? = when (keyCode) {
-        KeyEvent.KEYCODE_VOLUME_DOWN -> { { nextPage() } }
-        KeyEvent.KEYCODE_VOLUME_UP -> { { previousPage() } }
+        KeyEvent.KEYCODE_VOLUME_DOWN -> { { controls.value = false; nextPage() } }
+        KeyEvent.KEYCODE_VOLUME_UP -> { { controls.value = false; previousPage() } }
         else -> null
     }
 
@@ -368,7 +373,7 @@ class ReaderViewModel(
         val opened = book.value ?: return
         val point = pagePoint
         val chapter = opened.chapterAt(point).takeUnless { atEnd.value }
-        topLine.value = chapter?.let { opened.chapters[it].title } ?: shelfTitle
+        runningHead.value = chapter?.let { runningHeadOf(opened.chapters[it]) } ?: shelfTitle
         progressLine.value = words?.takeUnless { atEnd.value }?.let { opened.minutesLine(it, point, owner.speed.wpm) }
     }
 
@@ -430,3 +435,10 @@ class ReaderViewModel(
 
     private fun ms(ns: Long) = "%.1f".format(Locale.ROOT, ns / 1e6)
 }
+
+/** A Chapter's running head: its Part's title, [RUNNING_HEAD_SEPARATOR], then its own; its own alone when it has no Part. */
+fun runningHeadOf(chapter: Chapter): String =
+    chapter.parts.lastOrNull()?.let { "${it.title}$RUNNING_HEAD_SEPARATOR${chapter.title}" } ?: chapter.title
+
+/** Between a Part's title and its Chapter's in the running head: "BOOK TWO: 1805 · CHAPTER I". */
+const val RUNNING_HEAD_SEPARATOR = " · "

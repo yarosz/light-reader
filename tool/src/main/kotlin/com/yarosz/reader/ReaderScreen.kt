@@ -2,12 +2,13 @@ package com.yarosz.reader
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,11 +23,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
@@ -40,16 +42,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.constrainWidth
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thelightphone.sdk.LightScreen
 import com.thelightphone.sdk.SealedLightActivity
+import com.thelightphone.sdk.ui.LightBarButton
+import com.thelightphone.sdk.ui.LightIcons
 import com.thelightphone.sdk.ui.LightText
 import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.LightTheme
 import com.thelightphone.sdk.ui.LightThemeController
 import com.thelightphone.sdk.ui.LightThemeTokens
-import com.thelightphone.sdk.ui.designVerticalPxToSp
+import com.thelightphone.sdk.ui.LightTopBar
+import com.thelightphone.sdk.ui.LightTopBarCenter
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
 import kotlin.math.sign
@@ -71,31 +75,24 @@ class ReaderScreen(
         val themeColors by LightThemeController.colors.collectAsState()
         val book by viewModel.book.collectAsState()
         val status by viewModel.status.collectAsState()
-        val topLine by viewModel.topLine.collectAsState()
+        val controls by viewModel.controls.collectAsState()
         val measurer = rememberTextMeasurer(cacheSize = 0)
         val source = MeasurerSource(LocalDensity.current, LocalFontFamilyResolver.current, LocalLayoutDirection.current)
         LaunchedEffect(measurer) { viewModel.warmUp(measurer) }
 
         LightTheme(colors = themeColors) {
-            val topLineHeight = with(LocalDensity.current) { LightThemeTokens.typography.detail.lineHeight.value.designVerticalPxToSp().toDp() }
             Box(Modifier.fillMaxSize().background(LightThemeTokens.colors.background)) {
                 val opened = book
+                val reading = opened != null && opened.spineItems.isNotEmpty()
+                if (reading) TapZones()
                 Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
                     when {
                         opened == null -> NoPage(status)
-                        opened.spineItems.isEmpty() -> NoPage(READING_NO_TEXT)
-                        else -> Reader(measurer, source, topLineHeight)
+                        !reading -> NoPage(READING_NO_TEXT)
+                        else -> Reader(measurer, source)
                     }
                 }
-                if (opened != null && opened.spineItems.isNotEmpty()) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(contentsTargetHeight(TOP_BOTTOM_MARGIN, topLineHeight))
-                            .semantics { contentDescription = "$CONTENTS_TITLE: $topLine" }
-                            .lightClickable(role = Role.Button) { openContents() }
-                    )
-                }
+                if (reading && controls) Controls()
             }
         }
     }
@@ -117,57 +114,100 @@ class ReaderScreen(
     }
 
     /**
-     * The top line, the Page (or the end page) and the footer, stacked (DESIGN.md "Reading"). The Page gets
-     * whatever height the top line and footer leave, so a change to either re-packs the Pages at the Place.
-     * The top line is [topLineHeight], one Detail line high at the system font scale, whatever the title: a
-     * title in a fallback font's taller line can't re-pack the Pages at a Chapter change. Its tap target,
-     * which opens Contents, lies over it and the top of the Page ([contentsTargetHeight]).
+     * The tap zones (DESIGN.md "Reading"): full-height columns across the whole screen, margins included, the
+     * left [TAP_BACK_WIDTH] turning back, the next [TAP_CONTROLS_WIDTH] showing the controls, the rest turning
+     * forward. They lie under the Page, which takes no taps, so the end page's "Back to Shelf" still does.
      */
     @Composable
-    private fun Reader(measurer: TextMeasurer, source: MeasurerSource, topLineHeight: Dp) {
+    private fun TapZones() {
+        Row(Modifier.fillMaxSize()) {
+            TapZone(READING_PREVIOUS_PAGE, TAP_BACK_WIDTH) { viewModel.previousPage() }
+            TapZone(READING_SHOW_CONTROLS, TAP_CONTROLS_WIDTH) { viewModel.controls.value = true }
+            TapZone(READING_NEXT_PAGE, 1f - TAP_BACK_WIDTH - TAP_CONTROLS_WIDTH) { viewModel.nextPage() }
+        }
+    }
+
+    /** One tap zone, [width] of the screen's, a button called [label] to a screen reader. */
+    @Composable
+    private fun RowScope.TapZone(label: String, width: Float, onTap: () -> Unit) {
+        Box(
+            Modifier
+                .weight(width)
+                .fillMaxHeight()
+                .semantics { contentDescription = label }
+                .lightClickable(hapticsEnabled = false, role = Role.Button, onClick = onTap)
+        )
+    }
+
+    /**
+     * The Page, or the end page, filling the reading view inside its margins; it never moves, and the controls
+     * draw over it. The Pages re-pack at the Place when its size changes.
+     */
+    @Composable
+    private fun Reader(measurer: TextMeasurer, source: MeasurerSource) {
         val frame by viewModel.frame.collectAsState()
         val atEnd by viewModel.atEnd.collectAsState()
-        val topLine by viewModel.topLine.collectAsState()
-        val progressLine by viewModel.progressLine.collectAsState()
-        val fontStep by viewModel.fontStep.collectAsState()
         val colors = LightThemeTokens.colors
 
-        Column(Modifier.fillMaxSize()) {
-            LightText(
-                text = topLine,
-                variant = LightTextVariant.Detail,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp).height(topLineHeight),
-                align = TextAlign.Center,
-                lighten = true,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f).pointerInput(Unit) {
-                detectTapGestures { tap -> if (tap.x < size.width / 3f) viewModel.previousPage() else viewModel.nextPage() }
-            }) {
-                val widthPx = constraints.maxWidth
-                val pageHeightPx = constraints.maxHeight
-                val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx) {
-                    Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx, source)
-                }
-                LaunchedEffect(typesetter) { viewModel.bind(typesetter) }
-                val shown = frame ?: return@BoxWithConstraints
-                if (atEnd) EndPage() else Canvas(
-                    Modifier
-                        .fillMaxSize()
-                        .semantics { contentDescription = shown.pass.spineItem.text.substring(shown.page.start, shown.page.end) }
-                ) {
-                    drawPage(shown, colors.content)
-                }
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val widthPx = constraints.maxWidth
+            val pageHeightPx = constraints.maxHeight
+            val typesetter = remember(measurer, colors.contentSecondary, widthPx, pageHeightPx) {
+                Typesetter(measurer, colors.contentSecondary, widthPx, pageHeightPx, source)
             }
-            Row(
-                Modifier.fillMaxWidth().height(48.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            LaunchedEffect(typesetter) { viewModel.bind(typesetter) }
+            val shown = frame ?: return@BoxWithConstraints
+            if (atEnd) EndPage() else Canvas(
+                Modifier
+                    .fillMaxSize()
+                    .semantics { contentDescription = shown.pass.spineItem.text.substring(shown.page.start, shown.page.end) }
             ) {
-                FontButton("A−", -1, fontStep)
-                ProgressText(progressLine, Modifier.weight(1f))
-                FontButton("A+", +1, fontStep)
+                drawPage(shown, colors.content)
+            }
+        }
+    }
+
+    /**
+     * The controls (DESIGN.md "Reading"), over the Page: the top bar, back to the Shelf and the running head,
+     * and at the bottom the Progress line over "A−" and "A+" at the left and "Contents" at the right, each
+     * block ruled off from the Page. A tap anywhere else hides them.
+     */
+    @Composable
+    private fun Controls() {
+        val runningHead by viewModel.runningHead.collectAsState()
+        val progressLine by viewModel.progressLine.collectAsState()
+        val fontStep by viewModel.fontStep.collectAsState()
+        val background = LightThemeTokens.colors.background
+        val rule = LightThemeTokens.colors.contentSecondary
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .semantics { contentDescription = READING_HIDE_CONTROLS }
+                    .lightClickable(hapticsEnabled = false, role = Role.Button) { viewModel.controls.value = false }
+            )
+            LightTopBar(
+                leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = { goBack() }),
+                center = LightTopBarCenter.Text(runningHead),
+                modifier = Modifier.align(Alignment.TopCenter).background(background).drawBehind {
+                    drawLine(rule, Offset(0f, size.height), Offset(size.width, size.height), CONTROLS_RULE.toPx())
+                },
+            )
+            Column(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(background)
+                    .drawBehind { drawLine(rule, Offset.Zero, Offset(size.width, 0f), CONTROLS_RULE.toPx()) }
+                    .padding(start = SIDE_MARGIN, end = SIDE_MARGIN, top = 8.dp, bottom = TOP_BOTTOM_MARGIN),
+            ) {
+                ProgressText(progressLine, Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FontButton("A−", -1, fontStep)
+                    FontButton("A+", +1, fontStep)
+                    Spacer(Modifier.weight(1f))
+                    ControlButton(CONTENTS_TITLE, enabled = true) { openContents() }
+                }
             }
         }
     }
@@ -177,14 +217,18 @@ class ReaderScreen(
      * it is drawn in secondary text, ignores taps, and a screen reader hears it as disabled.
      */
     @Composable
-    private fun FontButton(label: String, delta: Int, fontStep: Int) {
-        val enabled = canChangeFont(fontStep, delta)
+    private fun FontButton(label: String, delta: Int, fontStep: Int) =
+        ControlButton(label, canChangeFont(fontStep, delta)) { viewModel.changeFont(delta) }
+
+    /** A text button of the controls' bottom row, filling its height, with 8 dp of padding at the sides. */
+    @Composable
+    private fun ControlButton(label: String, enabled: Boolean, onClick: () -> Unit) {
         LightText(
             text = label,
             variant = LightTextVariant.Copy,
             modifier = Modifier
                 .fillMaxHeight()
-                .lightClickable(enabled = enabled, role = Role.Button) { viewModel.changeFont(delta) }
+                .lightClickable(enabled = enabled, role = Role.Button, onClick = onClick)
                 .padding(horizontal = 8.dp)
                 .wrapContentHeight(),
             lighten = !enabled,
@@ -205,7 +249,7 @@ class ReaderScreen(
     }
 
     /**
-     * A Book with no Page to show, still opening or unreadable, which has no top line and so no Contents:
+     * A Book with no Page to show, still opening or unreadable, which has no controls and so no Contents:
      * [message], then "Back to Shelf" aligned with it (its tap padding hangs into the margin).
      */
     @Composable
@@ -242,11 +286,11 @@ fun progressForm(fullWidthPx: Int, availableWidthPx: Int): ProgressForm =
     if (fullWidthPx <= availableWidthPx) ProgressForm.Full else ProgressForm.Short
 
 /**
- * The footer's Progress line, one line in Detail and secondary text, centred: [line]'s full form when it fits
+ * The controls' Progress line, one line in Detail and secondary text, centred: [line]'s full form when it fits
  * the width, measured as drawn at the system font scale, else its short form, ellipsised if even that
  * doesn't fit. The form not shown isn't placed, so a screen reader hears only the one on screen. Its
  * intrinsic sizes come from Compose's default (measuring at unbounded width), which gives the full form's
- * width: fine for its one caller, a weighted Row slot, which never asks.
+ * width: fine for its one caller, a full-width slot, which never asks.
  */
 @Composable
 private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
@@ -270,12 +314,6 @@ private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
     }
 }
 
-/**
- * The height of the top line's tap target, measured from the screen's top edge: 48 dp, or the top [margin],
- * the top line ([topLine] high) and the 4 dp under it when that is taller (large text).
- */
-fun contentsTargetHeight(margin: Dp, topLine: Dp): Dp = maxOf(48.dp, margin + topLine + 4.dp)
-
 /** Draws a Page as its bands stacked in order: each its window's layout shifted up by the band's top and clipped to the band's height. */
 private fun DrawScope.drawPage(shown: Shown<WindowLayout>, color: Color) {
     var y = 0f
@@ -288,3 +326,6 @@ private fun DrawScope.drawPage(shown: Shown<WindowLayout>, color: Color) {
         y += height
     }
 }
+
+/** The rule between the controls and the Page. */
+private val CONTROLS_RULE = 1.dp
