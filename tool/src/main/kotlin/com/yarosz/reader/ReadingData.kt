@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlin.math.abs
@@ -22,9 +23,10 @@ private const val TAG = "Reader"
  * a page turn creates a fresh Place, so a newer build's Place-level extras describe the old Place and
  * are dropped with it. Extras at the top level, in settings, and on a Book survive.
  *
- * Fields added since schema 1: `catalogues` (N3) and a Place's `progress` (N4). `progress` is how far
- * through the Book the Place is, for the Shelf's percent; the minutes left in a Chapter are never
- * stored, because they depend on the reader's speed.
+ * Fields added since schema 1: `catalogues` (N3), a Place's `progress` (N4), and `settings.fontSize`.
+ * `progress` is how far through the Book the Place is, for the Shelf's percent; the minutes left in a
+ * Chapter are never stored, because they depend on the reader's speed. `fontSize` is the font size in
+ * sp; `fontStep` keeps its meaning beside it (see [Settings]).
  */
 const val CURRENT_SCHEMA = 1
 
@@ -79,7 +81,11 @@ data class Book(
     val extras: Map<String, JsonElement> = emptyMap(),
 )
 
-data class Settings(val fontStep: Int = DEFAULT_FONT_STEP, val extras: Map<String, JsonElement> = emptyMap())
+/**
+ * The reader's settings. [fontSize] is the reading font size in sp, one of [FONT_SIZES]. The file stores it
+ * as `fontSize` and, for older builds, as `fontStep`, the nearest size's index in [LEGACY_FONT_SIZES].
+ */
+data class Settings(val fontSize: Float = FONT_SIZES[DEFAULT_FONT_STEP], val extras: Map<String, JsonElement> = emptyMap())
 
 /**
  * The reader's last change to one Catalogue, keyed by its [CatalogueKey] in [ReadingData.catalogues]:
@@ -361,13 +367,13 @@ private val LINE_BREAK_RUN = Regex("\n+")
 /**
  * Combines the file on disk with this process's data before a save. What it protects: the Books and
  * the unknown fields another build wrote, which [mine] doesn't carry, and each Book's newest Place.
- * Only the Place is independent of the order of saves; fontStep, a Book's file, Shelf state, and
+ * Only the Place is independent of the order of saves; the font size, a Book's file, Shelf state, and
  * title come from [mine], so the save that runs last decides them (see [ReadingSaver], which makes
  * that the save with the newest data). Idempotent: merge(x, x) == x, and merging the same [mine]
  * twice changes nothing.
  * - schemaVersion: the higher, so an older build never downgrades the file.
  * - books: both sides' Books. For a Book on both sides, see [mergeBook].
- * - settings: fontStep from [mine]; unknown fields from both, [mine] winning a clash.
+ * - settings: fontSize and fontStep together from [mine]; unknown fields from both, [mine] winning a clash.
  * - catalogues: both sides' records; for a Catalogue on both sides, see [mergeRecord]. A removal is a
  *   record too, so it survives a merge with a file that still lists the Catalogue, and adding it
  *   back later wins over the removal the same way.
@@ -380,7 +386,7 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
         val m = mine.books[id]
         if (d != null && m != null) mergeBook(d, m) else m ?: d!!
     },
-    settings = Settings(mine.settings.fontStep, disk.settings.extras + mine.settings.extras),
+    settings = Settings(mine.settings.fontSize, disk.settings.extras + mine.settings.extras),
     catalogues = (disk.catalogues.keys + mine.catalogues.keys).associateWith { key ->
         val d = disk.catalogues[key]
         val m = mine.catalogues[key]
@@ -434,14 +440,25 @@ private val Book.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
 private val prettyJson = Json { prettyPrint = true }
 
 private val TOP_FIELDS = setOf("schemaVersion", "settings", "books", "catalogues")
-private val SETTINGS_FIELDS = setOf("fontStep")
+private val SETTINGS_FIELDS = setOf("fontSize", "fontStep")
 private val ENTRY_FIELDS = setOf("title", "file", "place", "finished", "onShelf", "author", "source", "addedAt")
 private val PLACE_FIELDS = setOf("spineId", "block", "offset", "snippet", "updatedAt", "progress")
 private val CATALOGUE_FIELDS = setOf("name", "url", "removed", "updatedAt")
 
 /**
+ * The font sizes in sp before 15 sp was added. Builds from then read and write the font size only as
+ * `fontStep`, an index into this list, so every save writes one ([legacyFontStep]) beside `fontSize`.
+ * Fixed by those builds: it never changes with [FONT_SIZES].
+ */
+private val LEGACY_FONT_SIZES = listOf(17f, 20f, 24.5f, 30f, 36f)
+
+/** The `fontStep` written for [size]: its nearest size's index in [LEGACY_FONT_SIZES], so 15 sp's is 17 sp's, 0. */
+private fun legacyFontStep(size: Float) = nearestFontStep(size, LEGACY_FONT_SIZES)
+
+/**
  * The file's text. Absent Places, progress, files, authors, sources, dates, names and URLs are
- * omitted, and so is an empty `catalogues`; unknown fields are written back as they came.
+ * omitted, and so is an empty `catalogues`; unknown fields are written back as they came. The font size
+ * is written twice: as `fontSize`, a whole number where it is one, and as `fontStep` ([legacyFontStep]).
  */
 fun ReadingData.encode(): String = prettyJson.encodeToString(
     JsonElement.serializer(),
@@ -449,7 +466,12 @@ fun ReadingData.encode(): String = prettyJson.encodeToString(
         TOP_FIELDS,
         extras,
         "schemaVersion" to JsonPrimitive(schemaVersion),
-        "settings" to jsonObject(SETTINGS_FIELDS, settings.extras, "fontStep" to JsonPrimitive(settings.fontStep)),
+        "settings" to jsonObject(
+            SETTINGS_FIELDS,
+            settings.extras,
+            "fontSize" to JsonPrimitive(settings.fontSize.let { if (it % 1f == 0f) it.toInt() else it }),
+            "fontStep" to JsonPrimitive(legacyFontStep(settings.fontSize)),
+        ),
         "books" to JsonObject(books.mapValues { (_, book) -> book.toJson() }),
         "catalogues" to catalogues.takeIf { it.isNotEmpty() }?.let { records ->
             JsonObject(
@@ -503,18 +525,33 @@ private fun jsonObject(known: Set<String>, extras: Map<String, JsonElement>, var
  * A Catalogue is read under its [CatalogueKey], so a key written as http:// or with a trailing slash
  * is the Catalogue the list shows and can remove; two keys for one Catalogue merge as a save does
  * ([mergeRecord]). A key that isn't an http(s) URL reads as missing (logged), and the other
- * Catalogues stay; a record's `url` that isn't a URL of its key's Catalogue reads as missing too.
- * Never throws.
+ * Catalogues stay; a record's `url` that isn't a URL of its key's Catalogue reads as missing too. The
+ * font size is read as [toSettings] says. Never throws.
  */
 fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
     val root = Json.parseToJsonElement(text) as? JsonObject ?: corrupt("top level")
     ReadingData(
         schemaVersion = root.int("schemaVersion") ?: CURRENT_SCHEMA,
         books = root.obj("books")?.mapValues { (id, json) -> (json as? JsonObject ?: corrupt("books.$id")).toBook(id) }.orEmpty(),
-        settings = root.obj("settings")?.let { Settings(it.int("fontStep") ?: DEFAULT_FONT_STEP, it.unknown(SETTINGS_FIELDS)) } ?: Settings(),
+        settings = root.obj("settings")?.toSettings() ?: Settings(),
         catalogues = root.obj("catalogues")?.let(::catalogueRecords).orEmpty(),
         extras = root.unknown(TOP_FIELDS),
     )
+}
+
+/**
+ * The font size is `fontSize`, taken to the nearest of [FONT_SIZES], when `fontStep` is absent or is the
+ * one a save writes with that size ([legacyFontStep]). Otherwise an older build changed the size since
+ * this build last saved, and it is `fontStep`'s size in [LEGACY_FONT_SIZES], a stray index clamped to
+ * the list. A `fontSize` that isn't a finite number reads as absent; a `fontStep` that isn't an integer
+ * is corruption, as before.
+ */
+private fun JsonObject.toSettings(): Settings {
+    val step = int("fontStep")?.coerceIn(LEGACY_FONT_SIZES.indices)
+    val size = (present("fontSize") as? JsonPrimitive)?.takeUnless { it.isString }?.floatOrNull?.takeIf { it.isFinite() }
+        ?.let { FONT_SIZES[nearestFontStep(it)] }
+    val fontSize = size?.takeIf { step == null || legacyFontStep(it) == step } ?: step?.let(LEGACY_FONT_SIZES::get)
+    return Settings(fontSize ?: Settings().fontSize, unknown(SETTINGS_FIELDS))
 }
 
 private fun catalogueRecords(records: JsonObject): Map<CatalogueKey, CatalogueRecord> =

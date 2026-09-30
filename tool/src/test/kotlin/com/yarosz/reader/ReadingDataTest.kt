@@ -5,11 +5,15 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class ReadingDataTest {
 
@@ -87,20 +91,79 @@ class ReadingDataTest {
         val disk = ReadingData(
             schemaVersion = 3,
             books = mapOf("a" to book(extras = mapOf("d" to JsonPrimitive(1), "both" to JsonPrimitive("disk")))),
-            settings = Settings(fontStep = 4, extras = mapOf("theme" to JsonPrimitive("dark"))),
+            settings = Settings(fontSize = 30f, extras = mapOf("theme" to JsonPrimitive("dark"))),
             extras = mapOf("sync" to JsonPrimitive(true)),
         )
         val mine = ReadingData(
             books = mapOf("a" to book(extras = mapOf("both" to JsonPrimitive("mine"))), "b" to book()),
-            settings = Settings(fontStep = 0, extras = mapOf("margin" to JsonPrimitive(2))),
+            settings = Settings(fontSize = 15f, extras = mapOf("margin" to JsonPrimitive(2))),
             extras = mapOf("export" to JsonNull),
         )
         val merged = merge(disk, mine)
         assertEquals(3, merged.schemaVersion)
         assertEquals(setOf("a", "b"), merged.books.keys)
         assertEquals(mapOf("d" to JsonPrimitive(1), "both" to JsonPrimitive("mine")), merged.books.getValue("a").extras)
-        assertEquals(Settings(0, mapOf("theme" to JsonPrimitive("dark"), "margin" to JsonPrimitive(2))), merged.settings)
+        assertEquals(Settings(15f, mapOf("theme" to JsonPrimitive("dark"), "margin" to JsonPrimitive(2))), merged.settings)
         assertEquals(mapOf("sync" to JsonPrimitive(true), "export" to JsonNull), merged.extras)
+    }
+
+    @Test
+    fun `a save writes the font size as fontSize and as an older build's fontStep`() {
+        val written = mapOf(15f to ("15" to 0), 17f to ("17" to 0), 20f to ("20" to 1), 24.5f to ("24.5" to 2), 30f to ("30" to 3), 36f to ("36" to 4))
+        assertEquals(FONT_SIZES.toSet(), written.keys)
+        written.forEach { (size, json) ->
+            val settings = Json.parseToJsonElement(ReadingData(settings = Settings(size)).encode()).jsonObject.getValue("settings").jsonObject
+            assertEquals(json, settings.getValue("fontSize").jsonPrimitive.content to settings.getValue("fontStep").jsonPrimitive.int, "$size")
+            assertEquals(size, fontSizeIn(settings.toString()))
+        }
+    }
+
+    @Test
+    fun `a file with only fontStep, as an older build writes, reads as that build's size`() {
+        assertEquals(listOf(17f, 20f, 24.5f, 30f, 36f), (0..4).map { fontSizeIn("{\"fontStep\": $it}") })
+        assertEquals(17f, fontSizeIn("{\"fontStep\": -2}"))
+        assertEquals(36f, fontSizeIn("{\"fontStep\": 9}"))
+        assertEquals(20f, fontSizeIn("{}"))
+    }
+
+    @Test
+    fun `fontSize wins when fontStep is the one a save writes with it`() {
+        assertEquals(15f, fontSizeIn("{\"fontSize\": 15, \"fontStep\": 0}"))
+        assertEquals(17f, fontSizeIn("{\"fontSize\": 17, \"fontStep\": 0}"))
+        assertEquals(24.5f, fontSizeIn("{\"fontSize\": 24.5, \"fontStep\": 2}"))
+        assertEquals(36f, fontSizeIn("{\"fontSize\": 36.0, \"fontStep\": 4}"))
+        assertEquals(15f, fontSizeIn("{\"fontSize\": 15}"))
+    }
+
+    @Test
+    fun `fontStep wins when an older build changed it after fontSize was written`() {
+        assertEquals(24.5f, fontSizeIn("{\"fontSize\": 15, \"fontStep\": 2}"))
+        assertEquals(20f, fontSizeIn("{\"fontSize\": 24.5, \"fontStep\": 1}"))
+        assertEquals(17f, fontSizeIn("{\"fontSize\": 20, \"fontStep\": -1}"))
+    }
+
+    @Test
+    fun `a fontSize not on the scale takes the nearest size, the smaller at a tie`() {
+        assertEquals(15f, fontSizeIn("{\"fontSize\": 16, \"fontStep\": 0}"))
+        assertEquals(17f, fontSizeIn("{\"fontSize\": 16.5, \"fontStep\": 0}"))
+        assertEquals(36f, fontSizeIn("{\"fontSize\": 40, \"fontStep\": 4}"))
+        assertEquals(15f, fontSizeIn("{\"fontSize\": 0}"))
+    }
+
+    @Test
+    fun `a fontSize that isn't a number reads as absent`() {
+        listOf("\"20\"", "\"x\"", "true", "null", "[15]", "{\"sp\": 15}", "1e999").forEach { value ->
+            assertEquals(30f, fontSizeIn("{\"fontSize\": $value, \"fontStep\": 3}"), value)
+            assertEquals(20f, fontSizeIn("{\"fontSize\": $value}"), value)
+        }
+    }
+
+    @Test
+    fun `merge takes fontSize and fontStep together from mine`() {
+        val merged = merge(ReadingData(settings = Settings(30f)), ReadingData(settings = Settings(15f)))
+        val settings = Json.parseToJsonElement(merged.encode()).jsonObject.getValue("settings").jsonObject
+        assertEquals(15f, merged.settings.fontSize)
+        assertEquals("15" to 0, settings.getValue("fontSize").jsonPrimitive.content to settings.getValue("fontStep").jsonPrimitive.int)
     }
 
     @Test
@@ -471,6 +534,9 @@ private fun randomJson(rnd: Random, depth: Int = 0): JsonElement = when (rnd.nex
     else -> JsonObject(List(rnd.nextInt(0, 4)) { randomString(rnd) to randomJson(rnd, depth + 1) }.toMap())
 }
 
+/** The font size decoded from a file whose settings are [settings]. */
+private fun fontSizeIn(settings: String) = decodeReadingData("{\"settings\": $settings}").getOrThrow().settings.fontSize
+
 private fun randomExtras(rnd: Random, known: Set<String>) =
     List(rnd.nextInt(0, 4)) { "x" + randomString(rnd) to randomJson(rnd) }.toMap().filterKeys { it !in known }
 
@@ -499,7 +565,7 @@ private fun randomEntry(rnd: Random) = Book(
 private fun randomData(rnd: Random) = ReadingData(
     schemaVersion = rnd.nextInt(1, 4),
     books = List(rnd.nextInt(0, 5)) { "https://example.org/" + randomString(rnd) to randomEntry(rnd) }.toMap(),
-    settings = Settings(rnd.nextInt(0, 5), randomExtras(rnd, setOf("fontStep"))),
+    settings = Settings(FONT_SIZES.random(rnd), randomExtras(rnd, setOf("fontSize", "fontStep"))),
     extras = randomExtras(rnd, setOf("schemaVersion", "settings", "books")),
 )
 

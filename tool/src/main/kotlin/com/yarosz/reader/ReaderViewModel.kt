@@ -31,7 +31,7 @@ private data class Opened(val book: OpenBook, val words: WordIndex, val wordsNs:
 const val SAVE_DEBOUNCE_MS = 1_000L
 
 /**
- * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font step
+ * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font size
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
  * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened, and [now] is the
  * monotonic millis that time Pages for the reading speed; tests pass ones they control.
@@ -57,6 +57,8 @@ class ReaderViewModel(
      * starts mid-word ([pack]). Relayouts never rewrite it, so font changes can't drift.
      */
     val spinePoint = MutableStateFlow(SpinePoint(0, 0))
+
+    /** The font step, an index into [FONT_SIZES]; the reading data stores the size itself. */
     val fontStep = MutableStateFlow(DEFAULT_FONT_STEP)
 
     /** The Page to draw and the pass whose layouts draw it; null until the view binds a [Typesetter]. */
@@ -133,7 +135,7 @@ class ReaderViewModel(
                     shelfTitle = title
                     words = index
                     saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = openedAt) }
-                    if (start == null) fontStep.value = saver.data.settings.fontStep.coerceIn(FONT_SIZES.indices)
+                    if (start == null) fontStep.value = nearestFontStep(saver.data.settings.fontSize)
                     if (start != null && opened.spineItems.isNotEmpty()) {
                         val item = start.item.coerceIn(opened.spineItems.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
@@ -192,7 +194,7 @@ class ReaderViewModel(
         val step = (fontStep.value + delta).coerceIn(FONT_SIZES.indices)
         if (step == fontStep.value) return
         fontStep.value = step
-        saver.change { it.copy(settings = it.settings.copy(fontStep = step)) }
+        saver.change { it.copy(settings = it.settings.copy(fontSize = FONT_SIZES[step])) }
         timer.discard()
         open("font")
     }
