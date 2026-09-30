@@ -159,25 +159,26 @@ at the Place, which a layout change never moves.
 
 **Controls.** A centre tap shows the controls over the Page, which stays as it is under them: a top bar
 (the SDK's `LightTopBar`: back on the left, which leaves the Reader as system back does and is "Back to
-Shelf" to a screen reader, and the running head in the centre), and at the bottom the Progress line over
-a 48 dp row, "A−" and "A+" at its left and "Contents" at its right, each with 12 dp of padding at the
-sides (so the two side by side are 48 dp targets or wider) and filling the row's height as its tap
-target. A 1 dp rule in secondary text parts each block from the Page, and a tap on a block's blank space
-does nothing. The running head names the Chapter the Page goes by, verbatim: its title on one line, in
-the SDK's one-line title, ellipsised at the end; when the table of contents nests the Chapter in a Part,
-the nearest Part's title is a line above it, the two in the SDK's two-line title, each ellipsised, so a
-long Part never hides the Chapter. A Part listed beside its Chapters is a Chapter of its own, named only
-on its own Pages. In Front matter, and on the end page, it is the Book's title as the Shelf shows it. At
-the smallest size "A−", and at the largest "A+", is drawn in secondary text, ignores taps, and is a
-disabled button to a screen reader. The Progress line is one line, in Detail and secondary text, centred;
-when its full form, measured as drawn, doesn't fit the width (large system text), it shows its short form
-(below), ellipsised only if even that doesn't fit; with no line (in Front matter, on the end page, in
-Back matter, or in a Chapter that reads in under a minute) the row stands alone. A tap anywhere else, the
-Page included, hides the controls without turning (to a screen reader, "Hide controls", the one button
-over the Page while they show); every turn hides them, so a volume key turns and hides them (on the end
-page volume down only hides them); a font change keeps them; opening Contents, or the Tool pausing, hides
-them, and the reading view always opens without them. Showing them keeps the Page's timing, the time they
-show counting as time on the Page. "Chrome" and "overlay" are not names for them.
+Shelf" to a screen reader, the running head in the centre, and on the right the SDK's list icon, which
+opens Contents and is "Contents" to a screen reader), and at the bottom one 48 dp row: "A−" and "A+" at
+its ends, each with 12 dp of padding at the sides and filling the row's height as its tap target, and the
+Progress line between them. A 1 dp rule in secondary text parts each block from the Page, and a tap on a
+block's blank space does nothing. The running head names the Chapter the Page goes by, verbatim: its
+title on one line, in the SDK's one-line title, ellipsised at the end; when the table of contents nests
+the Chapter in a Part, the nearest Part's title is a line above it, the two in the SDK's two-line title,
+each ellipsised, so a long Part never hides the Chapter. A Part listed beside its Chapters is a Chapter
+of its own, named only on its own Pages. In Front matter, and on the end page, it is the Book's title as
+the Shelf shows it. At the smallest size "A−", and at the largest "A+", is drawn in secondary text,
+ignores taps, and is a disabled button to a screen reader. The Progress line is one line, in Detail and
+secondary text, centred; when its full form, measured as drawn, doesn't fit between "A−" and "A+" (large
+system text), it shows its short form (below), ellipsised only if even that doesn't fit; with no line (in
+Front matter, on the end page, in Back matter, or in a Chapter that reads in under a minute) the space
+between "A−" and "A+" is blank. A tap anywhere else, the Page included, hides the controls without
+turning (to a screen reader, "Hide controls", the one button over the Page while they show); every turn
+hides them, so a volume key turns and hides them (on the end page volume down only hides them); a font
+change keeps them; opening Contents, or the Tool pausing, hides them, and the reading view always opens
+without them. Showing them keeps the Page's timing, the time they show counting as time on the Page.
+"Chrome" and "overlay" are not names for them.
 
 **Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
 end (the next Chapter's start, or the end of the Book's text if that comes first), divided by the
@@ -217,7 +218,7 @@ there opens there. Back matter's first row starts where Back matter does: the fi
 moves back there when no Chapter starts there and no heading comes between (Gutenberg's `*** END OF THE
 PROJECT GUTENBERG EBOOK … ***` lines before its license), else an untitled row takes its first heading.
 
-**Contents.** The controls' "Contents" opens it, from a Page, the end page, Front matter or Back matter,
+**Contents.** The controls' list icon opens it, from a Page, the end page, Front matter or Back matter,
 and drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
 with the bar's back on the left and "Shelf" on the right, and one row per Chapter in order, each the
 Chapter's title verbatim at full strength, at most two lines, with a row for each Part as below; Back
