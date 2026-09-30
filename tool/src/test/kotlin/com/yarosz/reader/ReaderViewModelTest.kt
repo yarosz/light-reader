@@ -423,7 +423,7 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `a volume key turns and hides the controls, and opening Contents hides them, but a font change keeps them`() {
+    fun `a volume key turns and hides the controls, and a jump from Contents hides them, but a font change and opening Contents keep them`() {
         val vm = reading()
         val first = vm.pageStart
         vm.showControls()
@@ -439,6 +439,8 @@ class ReaderViewModelTest {
         settle()
         assertTrue(vm.controls.value)
         assertNotNull(vm.openContents())
+        assertTrue(vm.controls.value, "back from Contents shows the Page as it was, controls and all")
+        vm.jumpTo(SpinePoint(0, 0))
         assertFalse(vm.controls.value)
     }
 

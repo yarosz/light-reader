@@ -143,8 +143,9 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
   [ "$first" != "$before" ] || { echo " (A+ did not change the layout)"; return 1; }
   [ "$before" = "$after" ]
 }
-leave_check() {  # serial: from a Page, the controls' list icon opens Contents, back returns to the Page, and
-                 # the controls' back leaves the Reader: a "shelf rows=" line logged after this run's marker.
+leave_check() {  # serial: from a Page, the controls' list icon opens Contents, back returns to the Page with
+                 # the controls still up, and their back leaves the Reader: a "shelf rows=" line logged after
+                 # this run's marker.
                  # The controls are shown first unless they already are (the round trip leaves them up;
                  # tapping "Show controls" under them would hide them). Contents is known by its title's text
                  # node; a Page's own text is a label, not a text node. The Shelf cleared dev-start when it
@@ -161,8 +162,7 @@ leave_check() {  # serial: from a Page, the controls' list icon opens Contents, 
   done
   [ -n "$shown" ] || { echo "the controls' Contents icon never opened Contents"; return 1; }
   "$adb" -s "$s" shell input keyevent KEYCODE_BACK || { echo "could not press back in Contents"; return 1; }
-  ANDROID_SERIAL=$s mise run ui wait "Show controls" >/dev/null 2>&1 || { echo "back from Contents never showed the Page"; return 1; }
-  ANDROID_SERIAL=$s mise run ui tap "Show controls" >/dev/null 2>&1 || { echo "could not show the controls"; return 1; }
+  ANDROID_SERIAL=$s mise run ui wait "Back to Shelf" >/dev/null 2>&1 || { echo "back from Contents never showed the Page with its controls"; return 1; }
   ANDROID_SERIAL=$s mise run ui tap "Back to Shelf" >/dev/null 2>&1 || { echo "could not tap the controls' back"; return 1; }
   for _ in $(seq 1 15); do
     "$adb" -s "$s" logcat -d -s Reader:I | sed -n "/$mark/,\$p" | grep -q 'shelf rows=' && return 0
@@ -279,7 +279,7 @@ else
   line=$(roundtrip "$emu") || fail_ctx emulator "font round trip: $line"
   note "emulator font round trip (identical Page): $line"
   why=$(leave_check "$emu") || fail_ctx emulator "$why"
-  note "emulator: the controls open Contents, back returns to the Page, and the controls' back leaves for the Shelf"
+  note "emulator: the controls open Contents, back returns to the Page with its controls, and their back leaves for the Shelf"
   why=$(shelf_check "$emu") || fail_ctx emulator "$why"
   note "emulator: reading data byte-identical after the round trip; a plain launch renders the Shelf"
 fi
@@ -299,7 +299,7 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
   why=$(leave_check "$lp3") || fail_ctx lp3 "$why"
-  note "LP3: the controls open Contents, back returns to the Page, and the controls' back leaves for the Shelf"
+  note "LP3: the controls open Contents, back returns to the Page with its controls, and their back leaves for the Shelf"
   why=$(shelf_check "$lp3") || fail_ctx lp3 "$why"
   note "LP3: reading data byte-identical after the round trip; a plain launch renders the Shelf"
   lp3_ran=1

@@ -79,7 +79,10 @@ class ReaderViewModel(
      */
     val runningHead = MutableStateFlow(RunningHead(null, ""))
 
-    /** Whether the controls show over the Page. Every turn, opening Contents and the Tool pausing hide them. */
+    /**
+     * Whether the controls show over the Page. Every turn, a jump from Contents and the Tool pausing hide them;
+     * opening Contents keeps them, so back from it returns to the Page as it was.
+     */
     val controls = MutableStateFlow(false)
 
     fun showControls() {
@@ -353,7 +356,6 @@ class ReaderViewModel(
     /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
     fun openContents(): Contents? {
         timer.discard()
-        hideControls()
         return book.value?.contentsAt(pagePoint, atEnd.value)
     }
 
@@ -367,6 +369,7 @@ class ReaderViewModel(
         val opened = book.value ?: return
         val measurer = measurer ?: return
         timer.discard()
+        hideControls()
         atEnd.value = false
         publishHint()
         val shown = show("jump") { it.jump(start.item, start.char, measurer.key(fontStep.value)) } ?: return

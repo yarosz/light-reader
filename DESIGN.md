@@ -180,8 +180,9 @@ Front matter, on the end page, in Back matter, or in a Chapter that reads in und
 between "A−" and "A+" is blank. A tap anywhere else, the Page included, hides the controls without
 turning (to a screen reader, "Hide controls", the one button over the Page while they show); every turn
 hides them, so a volume key turns and hides them (on the end page volume down only hides them); a font
-change keeps them; opening Contents, or the Tool pausing, hides them, and the reading view always opens
-without them. Showing them keeps the Page's timing, the time they show counting as time on the Page.
+change keeps them; opening Contents keeps them, so back from Contents returns to the Page as it was,
+controls and all, while a Chapter or Part chosen there shows its Page without them; the Tool pausing
+hides them, and the reading view always opens without them. Showing them keeps the Page's timing, the time they show counting as time on the Page.
 "Chrome" and "overlay" are not names for them.
 
 **Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
