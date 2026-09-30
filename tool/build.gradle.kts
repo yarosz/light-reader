@@ -86,6 +86,15 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 }
 
+configurations.configureEach {
+    exclude(group = "com.google.mlkit")
+    exclude(group = "com.google.android.gms")
+    exclude(group = "com.google.firebase")
+    exclude(group = "com.google.android.datatransport")
+    exclude(group = "com.google.android.odml")
+    exclude(group = "androidx.camera")
+}
+
 /**
  * Uploads the debug APK to a device/emulator running the Light SDK server, via the
  * "developer" tool manager branch (see DeveloperModeDataTree.kt in sdk/server), and waits for

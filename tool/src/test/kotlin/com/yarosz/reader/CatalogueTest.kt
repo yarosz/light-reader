@@ -156,6 +156,41 @@ class CatalogueTest {
     }
 
     @Test
+    fun `a lowercase title of nobility is dropped from an author as life dates are, and nothing else is`() {
+        listOf(
+            "Tolstoy, Leo, graf" to "Leo Tolstoy",
+            "Tolstoy, Leo, graf, 1828-1910" to "Leo Tolstoy",
+            "Leo Tolstoy, graf" to "Leo Tolstoy",
+            "graf Leo Tolstoy" to "Leo Tolstoy",
+            "Tolstoy, Lev Nikolaevich, graf" to "Lev Nikolaevich Tolstoy",
+            "Kropotkin, Petr Alekseevich, kniaz, 1842-1921" to "Petr Alekseevich Kropotkin",
+            "Kropotkin, Petr Alekseevich, kniaz" to "Petr Alekseevich Kropotkin",
+            "kniaz Petr Alekseevich Kropotkin" to "Petr Alekseevich Kropotkin",
+            "hrabia Zygmunt Krasiński" to "Zygmunt Krasiński",
+            "Baroness Emmuska Orczy Orczy" to "Baroness Emmuska Orczy Orczy",
+            "Tolstoy, Leo, graf, Maude, Louise" to "Tolstoy, Leo, graf, Maude, Louise",
+            "Tolstoy, Leo, graf, Maude, Louise, Maude, Aylmer" to "Tolstoy, Leo, graf, Maude, Louise, Maude, Aylmer",
+            "Grafton, Sue" to "Sue Grafton",
+            "Corvo, Baron" to "Baron Corvo",
+            "Baron Corvo" to "Baron Corvo",
+            "Chateaubriand, François-René, vicomte de, 1768-1848" to "Chateaubriand, François-René, vicomte de, 1768-1848",
+            "graf" to "graf",
+            "count Dracula's guests" to "count Dracula's guests",
+        ).forEach { (name, shown) -> assertEquals(shown, displayAuthor(name), name) }
+    }
+
+    @Test
+    fun `a row's content line loses a leading title of nobility only when a name follows it`() {
+        assertEquals("Leo Tolstoy", entryByline(emptyList(), "graf Leo Tolstoy"))
+        assertEquals("Petr Alekseevich Kropotkin", entryByline(emptyList(), "kniaz Petr Alekseevich Kropotkin"))
+        assertEquals("Zygmunt Krasiński", entryByline(emptyList(), "hrabia Zygmunt Krasiński"))
+        assertEquals("Honoré de Balzac", entryByline(emptyList(), "count Honoré de Balzac"))
+        assertEquals("baron of the Exchequer", entryByline(emptyList(), "baron of the Exchequer"))
+        assertEquals("prince Hal and the tavern", entryByline(emptyList(), "prince Hal and the tavern"))
+        assertEquals("Our most popular books.", entryByline(emptyList(), "Our most popular books."))
+    }
+
+    @Test
     fun `a download size reads in KB below a megabyte and MB above`() {
         listOf(
             0L to "1 KB",

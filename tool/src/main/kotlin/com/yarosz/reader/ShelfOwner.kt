@@ -60,6 +60,7 @@ class ShelfOwner(
     private val filesDir: File,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val transport: Transport = HttpsTransport(),
+    private val logFailure: (String) -> Unit = ::logFeedFailure,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -157,11 +158,11 @@ class ShelfOwner(
         return result
     }
 
-    /** Fetches a Catalogue page on [io]. */
-    suspend fun fetchPage(url: HttpsUrl): Fetched<CataloguePage> = withContext(io) { fetchPage(transport, url) }
+    /** Fetches a Catalogue page on [io]; [search] marks a search's results or their "More" ([fetchPage]). */
+    suspend fun fetchPage(url: HttpsUrl, search: Boolean = false): Fetched<CataloguePage> = withContext(io) { fetchPage(transport, url, logFailure, search) }
 
     /** Fetches the search template an OpenSearch description offers, on [io]. */
-    suspend fun fetchSearch(description: HttpsUrl): Fetched<SearchTemplate> = withContext(io) { fetchSearch(transport, description) }
+    suspend fun fetchSearch(description: HttpsUrl): Fetched<SearchTemplate> = withContext(io) { fetchSearch(transport, description, logFailure) }
 
     /** Puts [catalogue] on the list of Catalogues, or back on it, and saves at once. */
     fun addCatalogue(catalogue: Catalogue) = changeCatalogues { it.withCatalogue(catalogue, now()) }

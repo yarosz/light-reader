@@ -86,7 +86,7 @@ fun pageFloor(chapterStarts: List<SpinePoint>, spineItem: SpineItem, item: Int, 
 /** A row of Contents: a Chapter's title and start, or, [isPart], a Part's title and start. */
 data class ContentsRow(val title: String, val start: SpinePoint, val isPart: Boolean = false)
 
-/** What Contents lists: its [rows] in order, and [current], the index of the row marked "you're here", or null for none. */
+/** What Contents lists: its [rows] in order, and [current], the index of the row marked "you’re here", or null for none. */
 data class Contents(val rows: List<ContentsRow>, val current: Int?)
 
 /**

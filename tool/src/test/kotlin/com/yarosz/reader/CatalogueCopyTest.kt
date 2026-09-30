@@ -44,7 +44,11 @@ class CatalogueCopyTest {
     fun `each download failure has its copy, and only the ones a retry can fix offer Retry`() {
         val expected = listOf(
             NotAnEpub to FailureCopy("This file isn't an EPUB the Reader can open.", retry = false),
-            CopyProtected to FailureCopy("This Book is copy-protected and can't be opened here.", retry = false),
+            CopyProtected to FailureCopy(
+                "This Book is copy-protected and can't be opened here. " +
+                    "About, from “Reader” on the Shelf, lists places to find Books without copy protection.",
+                retry = false,
+            ),
             DiskError to FailureCopy("There isn't enough space on your phone to add this Book.", retry = true),
             Unreachable to FailureCopy(COPY_UNREACHABLE, retry = true),
             NoHttps to FailureCopy(COPY_NO_HTTPS, retry = false),
@@ -60,7 +64,7 @@ class CatalogueCopyTest {
     fun `copy capitalises Book, Shelf and Catalogue, and the domain terms are never lowercase in a sentence`() {
         val sentences = listOf(
             COPY_UNREACHABLE, COPY_NO_SUCH_HOST, COPY_NO_HTTPS, COPY_HTTP_ERROR, COPY_NEEDS_SIGN_IN, COPY_UNREADABLE, COPY_UNTRUSTED,
-            COPY_UNTRUSTED_SELF_HOSTED, COPY_NOT_AN_EPUB, COPY_COPY_PROTECTED, COPY_DISK_FULL, CATALOGUES_OFFLINE,
+            COPY_UNTRUSTED_SELF_HOSTED, COPY_NOT_AN_EPUB, COPY_COPY_PROTECTED, COPY_FIND_WITHOUT_COPY_PROTECTION, COPY_DISK_FULL, CATALOGUES_OFFLINE,
             CATALOGUES_CONFIRM_REMOVE, ADD_CATALOGUE_DUPLICATE, CATALOGUES_ADD, DETAIL_ADD, DETAIL_ON_SHELF,
         )
         val lower = Regex("\\b(book|shelf|catalogue)s?\\b")

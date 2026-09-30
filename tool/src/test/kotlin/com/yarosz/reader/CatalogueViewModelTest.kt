@@ -135,7 +135,7 @@ class CatalogueViewModelTest {
         val book = openBook()
         book.download(book.detail.value!!.action as DetailAction.Download)
         settle()
-        assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_COPY_PROTECTED, retry = false)), book.detail.value)
+        assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_COPY_PROTECTED_DETAIL, retry = false)), book.detail.value)
         assertEquals(emptyList(), owner().snapshot.value!!.rows)
     }
 
@@ -192,6 +192,28 @@ class CatalogueViewModelTest {
         val search = CatalogueSearch.Description(url("https://www.gutenberg.org/catalog/osd-books.xml"))
         val results = page(PageSource.Search(search, "austen"))
         assertEquals("Pride and Prejudice", (results.state.value as PageState.Listing).entries.first().title)
+    }
+
+    @Test
+    fun `a search's results and their More fetch as a search, so a failure logs no path`() {
+        val lines = mutableListOf<String>()
+        val owner = ShelfOwner.of(dir) { ShelfOwner(dir, io, transport, lines::add) { clock } }.also {
+            it.refresh()
+            settle()
+        }
+        val results = "https://books.example.org/opds/search/private%20terms"
+        val search = CatalogueSearch.Ready(SearchTemplate("https://books.example.org/opds/search/{searchTerms}", home))
+        val page = CataloguePageViewModel(owner, GUTENBERG, PageSource.Search(search, "private terms")).also { settle() }
+        assertIs<PageState.Failed>(page.state.value)
+        answers[results] = Answer(body = fixture("gutenberg-popular.xml"))
+        page.load()
+        settle()
+        assertIs<PageState.Listing>(page.state.value)
+        page.more()
+        settle()
+        assertEquals("https://books.example.org/ebooks/search.opds/?sort_order=downloads&start_index=26", transport.asked.last().value)
+        val refused = "catalogue fetch failed: https://books.example.org/…: java.net.ConnectException: refused: https://books.example.org/… -> Unreachable"
+        assertEquals(listOf(refused, refused), lines)
     }
 
     @Test

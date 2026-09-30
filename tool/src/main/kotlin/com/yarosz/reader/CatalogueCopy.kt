@@ -36,6 +36,10 @@ const val COPY_UNTRUSTED = "This connection isn't trusted. If you're on public W
 const val COPY_UNTRUSTED_SELF_HOSTED = "A self-hosted Catalogue needs a public certificate."
 const val COPY_NOT_AN_EPUB = "This file isn't an EPUB the Reader can open."
 const val COPY_COPY_PROTECTED = "This Book is copy-protected and can't be opened here."
+const val COPY_FIND_WITHOUT_COPY_PROTECTION = "About, from “Reader” on the Shelf, lists places to find Books without copy protection."
+
+/** CopyProtected on a Book's detail page: the refusal, then where About lists Books that will open. */
+const val COPY_COPY_PROTECTED_DETAIL = COPY_COPY_PROTECTED + " " + COPY_FIND_WITHOUT_COPY_PROTECTION
 const val COPY_DISK_FULL = "There isn't enough space on your phone to add this Book."
 
 /** "Add back Project Gutenberg": the row that adds a removed shipped Catalogue back. */
@@ -63,7 +67,7 @@ fun feedFailureCopy(failure: FeedFailure, shipped: Boolean, typedOnline: Boolean
 fun downloadFailureCopy(failure: DownloadFailure, shipped: Boolean): FailureCopy = when (failure) {
     is NetworkFailure -> networkFailureCopy(failure, shipped)
     NotAnEpub -> FailureCopy(COPY_NOT_AN_EPUB, failure.isRetryable)
-    CopyProtected -> FailureCopy(COPY_COPY_PROTECTED, failure.isRetryable)
+    CopyProtected -> FailureCopy(COPY_COPY_PROTECTED_DETAIL, failure.isRetryable)
     DiskError -> FailureCopy(COPY_DISK_FULL, failure.isRetryable)
 }
 

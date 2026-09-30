@@ -8,7 +8,8 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
 
 > **Status: early development (0.1.0).** Reader downloads books from catalogues onto a Shelf, turns
 > pages by tap or volume key, keeps your place in each book at any font size, and lists each book's
-> chapters, with reading controls a centre tap shows. An About screen is being built next.
+> chapters, with reading controls a centre tap shows. "Reader" on the Shelf opens About, which lists where
+> to find books without copy protection. Next: measuring speed on the phone, then illustrations.
 > Not yet signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>
@@ -20,7 +21,7 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
 <p>
   <img src="docs/screenshots/shelf.png" width="30%" alt="The Shelf: a list of four books, with War and Peace at 99%">
   <img src="docs/screenshots/catalogue-page.png" width="30%" alt="Standard Ebooks' new releases: a search field above a list of titles and authors">
-  <img src="docs/screenshots/contents.png" width="30%" alt="Contents: Alice's chapters in order, Chapter I marked 'you're here', with Shelf at the top right">
+  <img src="docs/screenshots/contents.png" width="30%" alt="Contents: Alice's chapters in order, Chapter I marked 'you’re here', with Shelf at the top right">
 </p>
 
 <sub>Reading and Contents on a Light Phone III; the Shelf and a Catalogue on the emulator at the LP3's

@@ -67,7 +67,7 @@ class BookDetailTest {
 
     @Test
     fun `a permanent failure shows its copy and no action, and adds nothing`() {
-        assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_COPY_PROTECTED, retry = false)), detail(snapshot(), CopyProtected))
+        assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_COPY_PROTECTED_DETAIL, retry = false)), detail(snapshot(), CopyProtected))
         assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_NOT_AN_EPUB, retry = false)), detail(snapshot(), NotAnEpub))
     }
 

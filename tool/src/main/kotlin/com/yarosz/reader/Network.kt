@@ -137,10 +137,14 @@ fun interface Transport {
 class InsecureRedirectException(location: String) : IOException("redirected to $location")
 
 /**
- * Sent on every request, so a server's logs can tell the Tool apart and link to its code. The
- * version is `versionName` in lighttool.toml (a test keeps them equal).
+ * The Tool's version: `versionName` in lighttool.toml (a test keeps them equal). A constant, since
+ * the Tool can't read it at run time: PackageManager needs a Context, which a Light Tool can't hold,
+ * and the tool module generates no BuildConfig.
  */
-const val USER_AGENT = "Reader/0.1.0 (+https://github.com/yarosz/light-reader)"
+const val VERSION_NAME = "0.1.0"
+
+/** Sent on every request, so a server's logs can tell the Tool apart and link to its code. */
+const val USER_AGENT = "Reader/$VERSION_NAME (+https://$REPO_URL)"
 
 /** Redirects followed before the last 3xx is returned as it is. */
 const val MAX_REDIRECTS = 5
@@ -252,63 +256,70 @@ fun LightConnectivity.reporter(): () -> Boolean? = {
 private const val TAG = "Reader"
 
 /** Logs why a Catalogue fetch failed; "Couldn't open" logs its reason the same way. */
-private fun logFeedFailure(line: String) {
+internal fun logFeedFailure(line: String) {
     Log.w(TAG, line)
 }
 
 /**
  * This URL as a log may keep it: no userinfo, no fragment, and its query replaced by "?…", so a
- * search's terms and any credentials stay out of logcat.
+ * search's terms and any credentials stay out of logcat. A [search]'s URL keeps only its host, the
+ * rest shown as "/…" (or "?…" when only a query follows the host), since a search template may put
+ * the terms in the path (Calibre's `/opds/search/{searchTerms}`).
  */
-internal fun HttpsUrl.forLog(): String = urlForLog(value)
+internal fun HttpsUrl.forLog(search: Boolean = false): String = urlForLog(value, search)
 
-private fun urlForLog(url: String): String {
+private fun urlForLog(url: String, search: Boolean): String {
     val bare = url.substringBefore('#')
     val rest = bare.substringAfter("://")
     val authorityEnd = rest.indexOfFirst { it == '/' || it == '?' }.let { if (it < 0) rest.length else it }
     val tail = rest.substring(authorityEnd)
-    return bare.substringBefore("://") + "://" + rest.substring(0, authorityEnd).substringAfterLast('@') +
-        if ('?' in tail) tail.substringBefore('?') + "?…" else tail
+    return bare.substringBefore("://") + "://" + rest.substring(0, authorityEnd).substringAfterLast('@') + when {
+        search && tail.startsWith('?') -> "?…"
+        search && tail.isNotEmpty() -> "/…"
+        '?' in tail -> tail.substringBefore('?') + "?…"
+        else -> tail
+    }
 }
 
 /** [e] for a log line, each URL its message names (a redirect to http:// names its target) cut as [forLog] cuts one. */
-private fun exceptionForLog(e: Exception): String = URL_IN_TEXT.replace(e.toString()) { urlForLog(it.value) }
+private fun exceptionForLog(e: Exception, search: Boolean): String = URL_IN_TEXT.replace(e.toString()) { urlForLog(it.value, search) }
 
 private val URL_IN_TEXT = Regex("""\b[A-Za-z][A-Za-z0-9+.-]*://\S*[^\s.,;:)\]"'>]""")
 
 /**
  * Fetches a Catalogue page. Each failure is logged through [log], with the URL (as [forLog] cuts it)
  * and the status or exception behind it, since the copy the reader sees can't say which server
- * answered or how.
+ * answered or how. [search] marks a search's results or their "More", whose URLs are logged without
+ * their path.
  */
-fun fetchPage(transport: Transport, url: HttpsUrl, log: (String) -> Unit = ::logFeedFailure): Fetched<CataloguePage> =
-    fetch(transport, url, log, ::parseFeed)
+fun fetchPage(transport: Transport, url: HttpsUrl, log: (String) -> Unit = ::logFeedFailure, search: Boolean = false): Fetched<CataloguePage> =
+    fetch(transport, url, log, search, ::parseFeed)
 
 /** The search template from an OpenSearch description, the document a [CataloguePage.search] names; logs a failure as [fetchPage] does. */
 fun fetchSearch(transport: Transport, description: HttpsUrl, log: (String) -> Unit = ::logFeedFailure): Fetched<SearchTemplate> =
-    fetch(transport, description, log, ::parseOpenSearch)
+    fetch(transport, description, log, search = false, ::parseOpenSearch)
 
-private fun <T> fetch(transport: Transport, url: HttpsUrl, log: (String) -> Unit, read: (InputStream, HttpsUrl) -> T?): Fetched<T> {
+private fun <T> fetch(transport: Transport, url: HttpsUrl, log: (String) -> Unit, search: Boolean, read: (InputStream, HttpsUrl) -> T?): Fetched<T> {
     fun failed(reason: FeedFailure, cause: String): Fetched.Failed {
-        log("catalogue fetch failed: ${url.forLog()}: $cause -> $reason")
+        log("catalogue fetch failed: ${url.forLog(search)}: $cause -> $reason")
         return Fetched.Failed(reason)
     }
     val response = try {
         transport.get(url)
     } catch (e: UnknownHostException) {
-        return failed(NoSuchHost, exceptionForLog(e))
+        return failed(NoSuchHost, exceptionForLog(e, search))
     } catch (e: IOException) {
-        return failed(unreachable(url, e), exceptionForLog(e))
+        return failed(unreachable(url, e), exceptionForLog(e, search))
     }
     return response.use {
-        val at = if (it.url == url) "" else " at ${it.url.forLog()}"
+        val at = if (it.url == url) "" else " at ${it.url.forLog(search)}"
         if (it.status !in 200..299) return failed(HttpError(it.status), "HTTP ${it.status}$at")
         try {
             read(it.body, it.url)?.let { value -> Fetched.Ok(value) } ?: failed(Unreadable, "not a feed$at")
         } catch (e: SAXException) {
-            failed(Unreadable, exceptionForLog(e) + at)
+            failed(Unreadable, exceptionForLog(e, search) + at)
         } catch (e: IOException) {
-            failed(Unreachable, exceptionForLog(e) + at)
+            failed(Unreachable, exceptionForLog(e, search) + at)
         }
     }
 }
