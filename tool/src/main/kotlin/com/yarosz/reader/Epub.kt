@@ -79,10 +79,15 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
  * the first of those, as a Gutenberg Book opens on its title page. Back matter, Project Gutenberg's
  * license or a trailing run of Spine items marked as back matter (Standard Ebooks' colophon and
  * uncopyright), starts at [OpenBook.textEnd].
- * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
- * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
- * its Spine item doesn't have starts at that Spine item's start, or at the previous entry's start if that
- * is later in the same Spine item.
+ * Chapters come from its first table of contents ([readTablesOfContents]) with a leaf entry naming one of
+ * the Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
+ * its Spine item doesn't have starts at that Spine item's start, or at the previous Chapter's start if that
+ * is later in the same Spine item. An entry with entries nested under it is a Part over the Chapters among
+ * them, starting where its href names, or at its first Chapter's start when its href names no Spine item
+ * kept, its fragment isn't there, or where it names isn't after the Chapter before and before its first. It
+ * is no Part when it has no label, is named for the Book (whitespace-collapsed, case aside), or names a
+ * Spine item dropped as not reading matter: Standard Ebooks nests every Book under its half title. One over
+ * no Chapter is dropped, and a Chapter keeps only the outermost [MAX_PART_DEPTH] Parts nesting it.
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
@@ -90,28 +95,60 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     val pkg = readPackage(zip, fallbackTitle)
     val tables = readTablesOfContents(zip, pkg)
     val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
-    val listedPaths = tables.flatten().mapTo(hashSetOf()) { it.path }
+    val listedPaths = tables.flatMap { entries -> entries.filterIndexed { i, entry -> !entries.nests(i) } }.mapNotNullTo(hashSetOf()) { it.path }
     val docs = pkg.spine.filter { it.linear || it.path in listedPaths }.ifEmpty { pkg.spine }.map { item ->
         item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) }
     }
     val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.types.none(NOT_READING::contains) } else docs
+    val notReading = (docs - kept.toSet()).mapTo(hashSetOf()) { it.first.path }
     val body = kept.filter { it.second.blocks.isNotEmpty() }
     val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
     val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
     val listed = tables.firstNotNullOfOrNull { entries ->
         val resolved = mutableListOf<Chapter>()
-        for (entry in entries) {
-            val index = indexOfPath[entry.path] ?: continue
-            val char = entry.fragment?.let { fragment ->
-                body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
-            } ?: 0
-            resolved += Chapter(entry.label, SpinePoint(index, char))
+        val open = ArrayDeque<ListedPart>()
+        entries.forEachIndexed { i, entry ->
+            val start = entry.path?.let(indexOfPath::get)?.let { index ->
+                val char = entry.fragment?.let { fragment ->
+                    body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
+                } ?: 0
+                SpinePoint(index, char)
+            }
+            while (open.lastOrNull()?.let { it.depth >= entry.depth } == true) open.removeLast()
+            when {
+                entries.nests(i) -> {
+                    val isPart = entry.label.isNotEmpty() && entry.path !in notReading && !entry.label.sameTitle(pkg.title)
+                    val after = resolved.lastOrNull()?.start
+                    val heading = start?.takeIf { (entry.fragment == null || entry.fragment in body[it.item].second.anchors) && (after == null || it > after) }
+                    if (isPart && open.size < MAX_PART_DEPTH) open += ListedPart(entry.depth, entry.label, heading)
+                }
+                start != null -> resolved += Chapter(entry.label, start, open.map { it.over(start) })
+            }
         }
         resolved.ifEmpty { null }
     }.orEmpty()
     val footer = body.withIndex().firstNotNullOfOrNull { (i, doc) -> doc.second.anchors[PG_FOOTER]?.let { SpinePoint(i, it) } }
     val textEnd = textEndOf(spineItems, footer, backMatter = body.indexOfLast { !it.second.isBackMatter } + 1)
     OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems, textEnd), textEnd)
+}
+
+/** Whether entries are nested under the [i]th: the next is deeper. */
+private fun List<TableOfContentsEntry>.nests(i: Int) = (getOrNull(i + 1)?.depth ?: -1) > this[i].depth
+
+private fun String.sameTitle(other: String) = replace(WHITESPACE_RUN, " ").trim().equals(other.replace(WHITESPACE_RUN, " ").trim(), ignoreCase = true)
+
+/** The most Parts a Chapter falls under: a table of contents nested deeper keeps the outermost, so a crafted one opens quickly. */
+const val MAX_PART_DEPTH = 8
+
+/**
+ * A table of contents entry with entries nested under it, [depth] deep: the Part [title] names, made at its
+ * first Chapter, its heading at [heading] unless that is null or later.
+ */
+private class ListedPart(val depth: Int, private val title: String, private val heading: SpinePoint?) {
+    private var part: Part? = null
+
+    /** The Part, for a Chapter under it starting at [chapter]. */
+    fun over(chapter: SpinePoint): Part = part ?: Part(title, heading?.takeIf { it <= chapter } ?: chapter).also { part = it }
 }
 
 /** The id of the element holding Project Gutenberg's license, the start of a Gutenberg Book's Back matter. */

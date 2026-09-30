@@ -101,7 +101,7 @@ class ReaderScreen(
     }
 
     /**
-     * Opens Contents over the Reader; a Chapter chosen there is jumped to, "Shelf" leaves the Reader as system
+     * Opens Contents over the Reader; a Chapter or Part chosen there is jumped to, "Shelf" leaves the Reader as system
      * back does, and back changes nothing. Leaving pops the Reader as Contents' result arrives, before a frame
      * shows the Page again. That relies on LightActivity.goBack delivering the result after the Reader is
      * current again, and on ReaderViewModel not overriding onBackPressed, which system back never asks.
@@ -110,7 +110,7 @@ class ReaderScreen(
         val contents = viewModel.openContents() ?: return
         navigateTo({ ContentsScreen(it, contents) }) { choice ->
             when (choice) {
-                is ContentsChoice.Chapter -> viewModel.jumpTo(choice.index)
+                is ContentsChoice.Row -> viewModel.jumpTo(choice.start)
                 ContentsChoice.Shelf -> goBack()
             }
         }

@@ -7,24 +7,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.SimpleLightScreen
 import com.thelightphone.sdk.ui.LightBarButton
+import com.thelightphone.sdk.ui.LightText
+import com.thelightphone.sdk.ui.LightTextVariant
+import com.thelightphone.sdk.ui.lightClickable
 
-/** What Contents hands the Reader: a Chapter to jump to, by index, or leaving the Book for the Shelf. */
+/** What Contents hands the Reader: a row's start to jump to, a Chapter's start or a Part's, or leaving the Book for the Shelf. */
 sealed interface ContentsChoice {
-    data class Chapter(val index: Int) : ContentsChoice
+    data class Row(val start: SpinePoint) : ContentsChoice
     data object Shelf : ContentsChoice
 }
 
 /**
- * Contents (DESIGN.md "Contents"): one row per Chapter, the current one marked "you're here". A tap hands
- * the Reader that Chapter, "Shelf" on the bar hands it leaving the Book, and back hands it nothing. "Shelf"
- * sits under the right of the top line that opened Contents, so for [SHELF_GUARD_NS] after Contents opens
- * it does nothing: a double tap on the top line opens Contents and stays there. It opens with the row
- * before the current one at the top, so the current row is second, or the current row at the top when it
- * is first; the list scrolls there as that row is first placed, so no frame shows it from the top. The
- * volume keys stay LightOS's here.
+ * Contents (DESIGN.md "Contents"): its rows in order, a Part's row a heading, the current row marked
+ * "you're here". A tap hands the Reader that row's start, "Shelf" on the bar hands it leaving the Book, and
+ * back hands it nothing. "Shelf" sits under the right of the top line that opened Contents, so for
+ * [SHELF_GUARD_NS] after Contents opens it does nothing: a double tap on the top line opens Contents and
+ * stays there. It opens with the row before the current one at the top, so the current row is second, or
+ * the current row at the top when it is first; the list scrolls there as that row is first placed, so no
+ * frame shows it from the top. The volume keys stay LightOS's here.
  */
 class ContentsScreen(
     sealedActivity: SealedLightActivity,
@@ -45,19 +51,22 @@ class ContentsScreen(
             }),
             scrollState = scroll,
         ) {
-            contents.titles.forEachIndexed { i, title ->
-                val row = if (i != top) Modifier else Modifier.onPlaced { placed ->
+            contents.rows.forEachIndexed { i, row ->
+                val placed = if (i != top) Modifier else Modifier.onPlaced { placed ->
                     if (!scrolled[0]) {
                         scrolled[0] = true
                         scroll.dispatchRawDelta(placed.positionInParent().y)
                     }
                 }
-                Box(row) {
-                    ListRow(
-                        title,
-                        CONTENTS_HERE.takeIf { i == contents.current },
-                        onClick = { goBack(ContentsChoice.Chapter(i)) },
-                    )
+                val choose = { goBack(ContentsChoice.Row(row.start)) }
+                Box(placed) {
+                    if (row.isPart) {
+                        Box(Modifier.lightClickable(onClick = choose).then(rowPadding()).semantics { heading() }) {
+                            LightText(text = row.title, variant = LightTextVariant.Heading, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    } else {
+                        ListRow(row.title, CONTENTS_HERE.takeIf { i == contents.current }, onClick = choose)
+                    }
                 }
             }
         }

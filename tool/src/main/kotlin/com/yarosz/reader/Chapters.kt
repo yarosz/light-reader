@@ -4,8 +4,14 @@ import java.util.zip.ZipFile
 import org.xml.sax.Attributes
 import org.xml.sax.helpers.DefaultHandler
 
-/** A Chapter (ADR 0004): its title and where its text starts. It runs to the next Chapter's start, or the end of the Book. */
-data class Chapter(val title: String, val start: SpinePoint)
+/**
+ * A Chapter (ADR 0004): its title, where its text starts, and [parts], the Parts its table of contents nests
+ * it in, outermost first, the last being its Part. It runs to the next Chapter's start, or the end of the Book.
+ */
+data class Chapter(val title: String, val start: SpinePoint, val parts: List<Part> = emptyList())
+
+/** A Part the table of contents nests Chapters under: its title and where its heading starts, else its first Chapter's start. */
+data class Part(val title: String, val start: SpinePoint)
 
 /**
  * The Chapters of a Book made of [spineItems], from [listed]: the leaf entries of its table of contents
@@ -20,7 +26,8 @@ data class Chapter(val title: String, val start: SpinePoint)
  * first heading is the first Heading block holding or after its start and before the next Chapter's start.
  * When a Chapter starts in a Caption block (a Gutenberg Chapter's illustration caption) and its label,
  * whitespace-collapsed, ends with a space and then its first heading's text, whitespace-collapsed, the
- * Chapter's title is that heading's text. Case and punctuation are the Book's own.
+ * Chapter's title is that heading's text. Case and punctuation are the Book's own. A Chapter keeps the Parts
+ * [listed] gives it, save a Chapter of Back matter, which falls under none.
  */
 fun chaptersOf(
     listed: List<Chapter>,
@@ -41,15 +48,16 @@ fun chaptersOf(
             found.subList(0, at) + Chapter("", backMatter) + found.subList(at, found.size)
         }
     }
-    return chapters.mapIndexed { i, chapter ->
+    val titled = chapters.mapIndexed { i, chapter ->
         val heading = firstHeading(spineItems, chapter.start, chapters.getOrNull(i + 1)?.start)
         val atCaption = spineItems[chapter.start.item].kindAt(chapter.start.char) == BlockKind.Caption
         when {
             chapter.title.isEmpty() -> chapter.copy(title = heading ?: "Chapter ${i + 1}")
             heading != null && atCaption && chapter.title.endsWith(" $heading") -> chapter.copy(title = heading)
             else -> chapter
-        }
+        }.let { if (it.start >= textEnd) it.copy(parts = emptyList()) else it }
     }
+    return titled
 }
 
 /**
@@ -75,20 +83,34 @@ fun pageFloor(chapterStarts: List<SpinePoint>, spineItem: SpineItem, item: Int, 
     return spineItem.blockStarts[block]
 }
 
-/** What Contents lists: every Chapter's title, in order, and [current], the row marked "you're here", or null for none. */
-data class Contents(val titles: List<String>, val current: Int?)
+/** A row of Contents: a Chapter's title and start, or, [isPart], a Part's title and start. */
+data class ContentsRow(val title: String, val start: SpinePoint, val isPart: Boolean = false)
+
+/** What Contents lists: its [rows] in order, and [current], the index of the row marked "you're here", or null for none. */
+data class Contents(val rows: List<ContentsRow>, val current: Int?)
 
 /**
  * Contents for a reader at [point], the point the Page being read goes by (its start, or a Chapter starting
  * later in its first line, or in the first line under the headings it opens on), or on the end page when
- * [atEnd]. The current row is the Chapter holding [point] ([chapterAt]), in text or Back matter, and on
- * the end page the last Chapter of the text, the last starting before [OpenBook.textEnd]; in Front matter
- * no row is current.
+ * [atEnd]. A row per Chapter, in order, each after a row for every Part it falls under that the Chapter
+ * before it doesn't, outermost first. The current row is the Chapter holding [point] ([chapterAt]), in text
+ * or Back matter, and on the end page the last Chapter of the text, the last starting before
+ * [OpenBook.textEnd]; in Front matter no row is current, and a Part's row never is.
  */
-fun OpenBook.contentsAt(point: SpinePoint, atEnd: Boolean): Contents = Contents(
-    chapters.map { it.title },
-    if (atEnd) chapters.indexOfLast { it.start < textEnd }.takeIf { it >= 0 } else chapterAt(point),
-)
+fun OpenBook.contentsAt(point: SpinePoint, atEnd: Boolean): Contents {
+    val rows = mutableListOf<ContentsRow>()
+    val chapterRows = IntArray(chapters.size)
+    var above = emptyList<Part>()
+    chapters.forEachIndexed { i, chapter ->
+        val kept = above.zip(chapter.parts).takeWhile { (a, b) -> a == b }.size
+        chapter.parts.drop(kept).mapTo(rows) { ContentsRow(it.title, it.start, isPart = true) }
+        above = chapter.parts
+        chapterRows[i] = rows.size
+        rows += ContentsRow(chapter.title, chapter.start)
+    }
+    val current = if (atEnd) chapters.indexOfLast { it.start < textEnd }.takeIf { it >= 0 } else chapterAt(point)
+    return Contents(rows, current?.let { chapterRows[it] })
+}
 
 /**
  * The text of the first heading holding or after [from] and before [until] (the end of the Book when null),
@@ -109,49 +131,51 @@ private fun firstHeading(spineItems: List<SpineItem>, from: SpinePoint, until: S
     return null
 }
 
-/** A leaf entry of a table of contents: its label, whitespace-collapsed, and the zip path and fragment its href names. */
-data class TableOfContentsEntry(val label: String, val path: String, val fragment: String?)
+/**
+ * An entry of a table of contents: its label, whitespace-collapsed, the zip path and fragment its href names
+ * (both null when it has none), and [depth], how many entries it is nested in.
+ */
+data class TableOfContentsEntry(val label: String, val path: String?, val fragment: String?, val depth: Int = 0)
 
 /**
- * The leaf entries of each of the Book's tables of contents, in document order, most preferred first: its
- * EPUB 3 nav document's toc nav, then its EPUB 2 NCX's navMap. A document that is missing, has no toc nav
- * or navMap, or doesn't parse is left out. An entry without an href is left out.
+ * The entries of each of the Book's tables of contents, in document order, most preferred first: its EPUB 3
+ * nav document's toc nav, then its EPUB 2 NCX's navMap. An entry is a leaf when the next entry isn't nested
+ * deeper. A document that is missing, has no toc nav or navMap, or doesn't parse is left out.
  */
 fun readTablesOfContents(zip: ZipFile, pkg: Package): List<List<TableOfContentsEntry>> {
     fun read(path: String?, ncx: Boolean): List<TableOfContentsEntry>? {
         val entry = path?.let(zip::getEntry) ?: return null
         val handler = TableOfContentsHandler(directoryOf(path), ncx)
-        return runCatching { parseUntrusted(zip.getInputStream(entry), handler, MAX_PACKAGE_XML_BYTES) }.getOrNull()?.let { handler.leaves }
+        return runCatching { parseUntrusted(zip.getInputStream(entry), handler, MAX_PACKAGE_XML_BYTES) }.getOrNull()?.let { handler.entries?.filterNotNull() }
     }
     return listOfNotNull(read(pkg.nav, ncx = false), read(pkg.ncx, ncx = true))
 }
 
 /**
  * Reads the first `<nav epub:type="toc">` of a nav document, or with [ncx] the `navMap` of an NCX,
- * resolving hrefs against [dir]. [leaves] stays null when the document has neither. A nav entry's label is
+ * resolving hrefs against [dir]. [entries] stays null when the document has neither. A nav entry's label is
  * its first `<a>` with an href, or its first `<span>` or `<a>` when it has no such `<a>`; an `<a>` inside
  * that label gives the entry its href if it has none.
  */
 private class TableOfContentsHandler(private val dir: String, private val ncx: Boolean) : DefaultHandler() {
-    var leaves: MutableList<TableOfContentsEntry>? = null
+    var entries: MutableList<TableOfContentsEntry?>? = null
     private val itemName = if (ncx) "navpoint" else "li"
     private val open = ArrayDeque<Entry>()
     private var depth = 0 // inside the toc nav or navMap
     private var labelDepth = 0
 
-    private class Entry {
+    private class Entry(val index: Int) {
         var href: String? = null
         val label = StringBuilder()
         var labelled = false
-        var parent = false
     }
 
     override fun startElement(uri: String, localName: String, qName: String, attrs: Attributes) {
         val name = qName.substringAfter(':').lowercase()
         if (depth == 0) {
             val opens = if (ncx) name == "navmap" else name == "nav" && "toc" in attrs.getValue("epub:type").orEmpty().split(WHITESPACE_RUN)
-            if (opens && leaves == null) {
-                leaves = mutableListOf()
+            if (opens && entries == null) {
+                entries = mutableListOf()
                 depth = 1
             }
             return
@@ -163,9 +187,9 @@ private class TableOfContentsHandler(private val dir: String, private val ncx: B
                 labelDepth++
                 if (!ncx && name == "a" && top?.href == null) top?.href = attrs.getValue("href")
             }
-            name == itemName -> {
-                top?.parent = true
-                open.addLast(Entry())
+            name == itemName -> entries?.let {
+                open.addLast(Entry(it.size))
+                it += null
             }
             top == null -> Unit
             !ncx && name == "a" && top.href == null && attrs.getValue("href") != null -> {
@@ -196,11 +220,12 @@ private class TableOfContentsHandler(private val dir: String, private val ncx: B
         }
         if (qName.substringAfter(':').lowercase() != itemName) return
         val entry = open.removeLastOrNull() ?: return
-        val href = entry.href?.takeIf { !entry.parent } ?: return
-        leaves?.add(TableOfContentsEntry(
+        val href = entry.href
+        entries?.set(entry.index, TableOfContentsEntry(
             entry.label.toString().replace(WHITESPACE_RUN, " ").trim(),
-            zipPath(dir, href),
-            href.substringAfter('#', "").takeIf { it.isNotEmpty() }?.let(::decodePercent),
+            href?.let { zipPath(dir, it) },
+            href?.substringAfter('#', "")?.takeIf { it.isNotEmpty() }?.let(::decodePercent),
+            open.size,
         ))
     }
 }

@@ -117,6 +117,8 @@ class ReaderViewModelTest {
             SpinePoint(it.pass.item, it.page.start) < textEnd && SpinePoint(it.pass.item, it.page.end) >= textEnd
         }
 
+    private fun ReaderViewModel.jumpToChapter(chapter: Int) = jumpTo(book.value!!.chapters[chapter].start)
+
     private fun ReaderViewModel.toLastPage() {
         repeat(10_000) { if (onLastPage) return else nextPage() }
         error("never reached the last Page")
@@ -646,7 +648,7 @@ class ReaderViewModelTest {
         vm.nextPage()
         assertTrue(vm.atEnd.value)
         assertTrue(stored(vm).finished)
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         assertFalse(vm.atEnd.value)
         assertEquals(book.chapters[1].start, vm.pageStart)
         assertEquals(vm.pageStart, vm.spinePoint.value)
@@ -661,7 +663,7 @@ class ReaderViewModelTest {
         val vm = gutenberg(finished = true) { SpinePoint(1, 500) }
         val book = vm.book.value!!
         assertTrue(stored(vm).finished)
-        vm.jumpTo(2)
+        vm.jumpToChapter(2)
         assertFalse(vm.atEnd.value)
         assertEquals(book.chapters[2].start, vm.pageStart)
         assertFalse(stored(vm).finished)
@@ -672,7 +674,7 @@ class ReaderViewModelTest {
     private fun assertJumpIntoBackMatter(finished: Boolean) {
         val vm = gutenberg(finished) { SpinePoint(1, 500) }
         val book = vm.book.value!!
-        vm.jumpTo(3)
+        vm.jumpToChapter(3)
         assertFalse(vm.atEnd.value)
         assertEquals(book.textEnd, vm.pageStart)
         vm.assertBackMatterLines()
@@ -687,14 +689,34 @@ class ReaderViewModelTest {
     fun `a jump into Back matter never sets Finished`() = assertJumpIntoBackMatter(finished = false)
 
     @Test
+    fun `a jump to a Part's heading lands there, and the Page goes by the Part's first Chapter`() {
+        val words = List(150) { "<p>It is a truth universally acknowledged. $it</p>" }.joinToString("")
+        val bodies = listOf("<h1>BOOK ONE</h1>", "<h2 id=\"ch1\">Chapter I.</h2>$words", "<h2 id=\"ch2\">Chapter II.</h2>$words")
+        val ncx = ncx(navPoint("BOOK ONE", "text/c0.xhtml", navPoint("Chapter I.", "text/c1.xhtml#ch1"), navPoint("Chapter II.", "text/c2.xhtml#ch2")))
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx))
+        val vm = reading()
+        vm.bind(LineMeasurer(byBlock = true))
+        settle()
+        vm.jumpToChapter(1)
+        val contents = vm.openContents()!!
+        assertEquals(listOf("BOOK ONE", "Chapter I.", "Chapter II."), contents.rows.map { it.title })
+        assertEquals(2, contents.current)
+        vm.jumpTo(contents.rows[0].start)
+        assertEquals(SpinePoint(0, 0), vm.pageStart)
+        assertEquals(vm.pageStart, vm.storedPlace())
+        assertEquals("Chapter I.", vm.topLine.value)
+        assertEquals(1, vm.openContents()!!.current)
+    }
+
+    @Test
     fun `a jump to the current Chapter goes to its start`() {
         val vm = gutenberg()
         val book = vm.book.value!!
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         repeat(3) { vm.nextPage() }
         assertTrue(vm.pageStart > book.chapters[1].start)
         assertEquals(1, vm.openContents()!!.current)
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         assertEquals(book.chapters[1].start, vm.pageStart)
         assertEquals(vm.pageStart, vm.storedPlace())
     }
@@ -704,7 +726,7 @@ class ReaderViewModelTest {
         val vm = reading()
         vm.fourSamples()
         clock += 20_000
-        vm.jumpTo(3)
+        vm.jumpToChapter(3)
         assertEquals(vm.book.value!!.chapters[3].start, vm.pageStart)
         vm.readThenTurn()
         assertEquals(PRIOR_WPM, speed.wpm)
@@ -733,13 +755,13 @@ class ReaderViewModelTest {
         File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
         val vm = reading()
         val two = vm.book.value!!.chapters[1].start
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         val shown = vm.frame.value!!
         assertTrue(vm.pageStart < two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
         assertEquals("Two", vm.topLine.value)
         assertEquals(1, vm.openContents()!!.current)
         val landed = vm.frame.value!!
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         assertSame(landed.pass, vm.frame.value!!.pass)
     }
 
@@ -762,7 +784,7 @@ class ReaderViewModelTest {
         val two = opened.chapters[1].start
         vm.bind(LineMeasurer(tailAt = opened.spineItems[two.item].spineId to two.char))
         settle()
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         val shown = vm.frame.value!!
         assertTrue(vm.pageStart <= two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
         assertEquals("Two", vm.topLine.value)
@@ -789,7 +811,7 @@ class ReaderViewModelTest {
         val two = opened.chapters[1].start
         vm.bind(LineMeasurer(tailAt = opened.spineItems[two.item].spineId to two.char))
         settle()
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         assertEquals(two, vm.pageStart)
         assertEquals("Two", vm.topLine.value)
         vm.changeFont(+1)
@@ -820,7 +842,7 @@ class ReaderViewModelTest {
         assertEquals(opened.spineItems[0].blockStarts[3], two.char)
         vm.bind(LineMeasurer(byBlock = true))
         settle()
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         assertEquals(two, vm.pageStart)
         assertEquals("Two", vm.topLine.value)
         vm.changeFont(+1)
@@ -843,7 +865,7 @@ class ReaderViewModelTest {
         assertSame(shown, vm.frame.value)
         vm.previousPage()
         assertEquals(before.page, vm.frame.value!!.page)
-        vm.jumpTo(3)
+        vm.jumpToChapter(3)
         val landed = vm.frame.value
         vm.bind(LineMeasurer())
         assertSame(landed, vm.frame.value)
@@ -856,14 +878,14 @@ class ReaderViewModelTest {
     fun `Contents lists the Chapters, and its current row follows the Place, the end page and Back matter`() {
         val vm = gutenberg()
         val contents = vm.openContents()!!
-        assertEquals(listOf("Title", "Chapter I.", "Chapter II.", BackMatterTest.LICENSE_HEADING), contents.titles)
+        assertEquals(listOf("Title", "Chapter I.", "Chapter II.", BackMatterTest.LICENSE_HEADING), contents.rows.map { it.title })
         assertEquals(0, contents.current)
         vm.toLastPage()
         assertEquals(2, vm.openContents()!!.current)
         vm.nextPage()
         assertTrue(vm.atEnd.value)
         assertEquals(2, vm.openContents()!!.current)
-        vm.jumpTo(3)
+        vm.jumpToChapter(3)
         assertEquals(3, vm.openContents()!!.current)
     }
 
@@ -878,12 +900,12 @@ class ReaderViewModelTest {
         val vm = gutenberg(ncx = ncx)
         val book = vm.book.value!!
         assertEquals(book.chapters[1].start, book.chapters[2].start)
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         val first = vm.frame.value!!.page
         assertEquals(2, vm.openContents()!!.current)
         assertEquals("Chapter I.", vm.topLine.value)
-        vm.jumpTo(3)
-        vm.jumpTo(2)
+        vm.jumpToChapter(3)
+        vm.jumpToChapter(2)
         assertEquals(first, vm.frame.value!!.page)
         assertEquals(2, vm.openContents()!!.current)
     }
@@ -904,11 +926,11 @@ class ReaderViewModelTest {
         val opened = vm.book.value!!
         vm.bind(LineMeasurer(byBlock = true))
         settle()
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         assertEquals(opened.chapters[1].start, vm.pageStart)
         assertEquals("Book One", vm.topLine.value)
         assertEquals(1, vm.openContents()!!.current)
-        vm.jumpTo(2)
+        vm.jumpToChapter(2)
         assertEquals("Chapter I", vm.topLine.value)
         assertEquals(2, vm.openContents()!!.current)
     }
@@ -940,7 +962,7 @@ class ReaderViewModelTest {
         val opened = vm.book.value!!
         vm.bind(LineMeasurer(byBlock = true))
         settle()
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         assertEquals("Book One", vm.topLine.value)
         vm.changeFont(+1)
         settle()
@@ -962,7 +984,7 @@ class ReaderViewModelTest {
         settle()
         vm.bind(LineMeasurer(byBlock = true))
         settle()
-        vm.jumpTo(0)
+        vm.jumpToChapter(0)
         vm.nextPage()
         assertEquals(SpinePoint(1, 0), vm.pageStart, "the Page is the Part's title page")
         assertEquals("Two", vm.topLine.value)
@@ -1007,7 +1029,7 @@ class ReaderViewModelTest {
         assertEquals(listOf("Title", "One", BackMatterTest.LICENSE_HEADING), opened.chapters.map { it.title })
         vm.bind(LineMeasurer(pageHeightPx = 90, byBlock = true))
         settle()
-        vm.jumpTo(1)
+        vm.jumpToChapter(1)
         vm.nextPage()
         assertEquals(opened.textEnd, vm.pageEnd, "the last Page of the text holds only headings")
         assertEquals("One", vm.topLine.value)
