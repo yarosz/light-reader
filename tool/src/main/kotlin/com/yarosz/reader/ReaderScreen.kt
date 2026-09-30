@@ -1,5 +1,9 @@
 package com.yarosz.reader
 
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -16,27 +20,37 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -58,6 +72,7 @@ import com.thelightphone.sdk.ui.LightTopBar
 import com.thelightphone.sdk.ui.LightTopBarCenter
 import com.thelightphone.sdk.ui.lightClickable
 import java.io.File
+import kotlin.math.roundToInt
 import kotlin.math.sign
 
 /** Reads the Book in [file], opened from the Shelf; back returns there. See [ReaderViewModel] for [start]. */
@@ -79,15 +94,23 @@ class ReaderScreen(
         val status by viewModel.status.collectAsState()
         val controls by viewModel.controls.collectAsState()
         val frame by viewModel.frame.collectAsState()
+        val keepAwake by viewModel.keepAwake.collectAsState()
+        val hint by viewModel.readingHint.collectAsState()
         val measurer = rememberTextMeasurer(cacheSize = 0)
         val source = MeasurerSource(LocalDensity.current, LocalFontFamilyResolver.current, LocalLayoutDirection.current)
         LaunchedEffect(measurer) { viewModel.warmUp(measurer) }
 
         LightTheme(colors = themeColors) {
-            Box(Modifier.fillMaxSize().background(LightThemeTokens.colors.background)) {
-                val opened = book
-                val reading = opened != null && opened.spineItems.isNotEmpty()
-                if (reading && frame != null && !controls) TapZones()
+            val opened = book
+            val reading = opened != null && opened.spineItems.isNotEmpty()
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(LightThemeTokens.colors.background)
+                    .then(staysAwake)
+                    .then(if (keepAwake && reading && frame != null) Modifier.keepScreenOn() else Modifier)
+            ) {
+                if (reading && frame != null && !controls) TapZones(hint)
                 Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
                     when {
                         opened == null -> NoPage(status)
@@ -95,7 +118,21 @@ class ReaderScreen(
                         else -> Reader(measurer, source)
                     }
                 }
+                hint?.takeIf { reading && frame != null }?.let { step -> key(step) { Guide(step) } }
                 if (reading && controls) Controls()
+            }
+        }
+    }
+
+    /**
+     * Every pointer press anywhere on the reading view, seen before whatever takes it, keeps the screen on
+     * ([ReaderViewModel.stayAwake]), a block's blank space included. A screen reader's click never passes here;
+     * the view model's actions keep the screen on for it.
+     */
+    private val staysAwake = Modifier.pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                if (awaitPointerEvent(PointerEventPass.Initial).type == PointerEventType.Press) viewModel.stayAwake()
             }
         }
     }
@@ -113,25 +150,95 @@ class ReaderScreen(
      * left [TAP_BACK_WIDTH] turning back, the next [TAP_CONTROLS_WIDTH] showing the controls, the rest turning
      * forward. They lie under the Page, which takes no taps, so the end page's "Back to Shelf" still does.
      * They are there once a Page or the end page shows and while the controls don't, so a screen reader can't
-     * turn under the controls.
+     * turn under the controls. While the first-run hint's guide shows [hint], the two it doesn't point at are
+     * disabled to a screen reader, as a tap there does nothing.
      */
     @Composable
-    private fun TapZones() {
+    private fun TapZones(hint: HintStep?) {
         Row(Modifier.fillMaxSize()) {
-            TapZone(READING_PREVIOUS_PAGE, TAP_BACK_WIDTH) { viewModel.previousPage() }
-            TapZone(READING_SHOW_CONTROLS, TAP_CONTROLS_WIDTH) { viewModel.showControls() }
-            TapZone(READING_NEXT_PAGE, 1f - TAP_BACK_WIDTH - TAP_CONTROLS_WIDTH) { viewModel.nextPage() }
+            TapZone(READING_PREVIOUS_PAGE, TAP_BACK_WIDTH, hint, HintStep.Back) { viewModel.tapBack() }
+            TapZone(READING_SHOW_CONTROLS, TAP_CONTROLS_WIDTH, hint, HintStep.Controls) { viewModel.tapMiddle() }
+            TapZone(READING_NEXT_PAGE, 1f - TAP_BACK_WIDTH - TAP_CONTROLS_WIDTH, hint, HintStep.Next) { viewModel.tapNext() }
         }
     }
 
-    /** One tap zone, [width] of the screen's, a button called [label] to a screen reader. */
+    /**
+     * The first-run hint's guide at [step] (DESIGN.md "Reading"), over the Page, from the moment
+     * [ReaderViewModel.readingHint] has it, which is already [HINT_DELAY_MS] after the step can show: a touch dot
+     * centred in the step's tap zone at mid-height, pressing, and the step's line of copy just below it in a box
+     * inverted from the Page (the content colour its fill, the background colour its text), centred on the dot
+     * but kept inside the side margins. It takes no taps, so each reaches the tap zone under it, which acts only
+     * when it is the step's ([ReaderViewModel.tapNext]); to a screen reader only the copy is there, as plain text
+     * announced as it appears, and it is too small to cover a tap zone and drop it from the accessibility tree.
+     */
     @Composable
-    private fun RowScope.TapZone(label: String, width: Float, onTap: () -> Unit) {
+    private fun Guide(step: HintStep) {
+        val press = rememberInfiniteTransition(label = "hint")
+        val alpha by press.animateFloat(0f, HINT_REST_ALPHA, infiniteRepeatable(keyframes {
+            durationMillis = HINT_CYCLE_MS
+            1f at HINT_CYCLE_MS * 12 / 100
+            1f at HINT_CYCLE_MS * 36 / 100
+            HINT_REST_ALPHA at HINT_CYCLE_MS * 70 / 100
+        }), label = "alpha")
+        val scale by press.animateFloat(1f, 1f, infiniteRepeatable(keyframes {
+            durationMillis = HINT_CYCLE_MS
+            1f at HINT_CYCLE_MS * 12 / 100
+            HINT_PRESS_SCALE at HINT_CYCLE_MS * 24 / 100
+            1f at HINT_CYCLE_MS * 36 / 100
+        }), label = "scale")
+        val colors = LightThemeTokens.colors
+        val (centre, copy) = when (step) {
+            HintStep.Next -> (1f + TAP_BACK_WIDTH + TAP_CONTROLS_WIDTH) / 2 to HINT_NEXT
+            HintStep.Back -> TAP_BACK_WIDTH / 2 to HINT_BACK
+            HintStep.Controls -> TAP_BACK_WIDTH + TAP_CONTROLS_WIDTH / 2 to HINT_CONTROLS
+        }
+        Layout(
+            content = {
+                Canvas(Modifier.size(HINT_DOT_SIZE).graphicsLayer { this.alpha = alpha; scaleX = scale; scaleY = scale }) {
+                    val ring = HINT_RING.toPx()
+                    drawCircle(colors.content.copy(alpha = HINT_DOT_ALPHA))
+                    drawCircle(colors.content.copy(alpha = HINT_RING_ALPHA), radius = size.minDimension / 2 + ring / 2, style = Stroke(ring))
+                }
+                LightText(
+                    text = copy,
+                    variant = LightTextVariant.Detail,
+                    maxLines = 1,
+                    color = colors.background,
+                    modifier = Modifier
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                        .background(colors.content)
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) { measurables, constraints ->
+            val width = constraints.maxWidth
+            val margin = SIDE_MARGIN.roundToPx()
+            val dot = measurables[0].measure(Constraints())
+            val box = measurables[1].measure(Constraints(maxWidth = (width - 2 * margin).coerceAtLeast(0)))
+            val x = (width * centre).roundToInt()
+            val y = constraints.maxHeight / 2
+            layout(width, constraints.maxHeight) {
+                dot.place(x - dot.width / 2, y - dot.height / 2)
+                box.place((x - box.width / 2).coerceIn(margin, maxOf(margin, width - margin - box.width)), y + dot.height / 2 + HINT_COPY_GAP.roundToPx())
+            }
+        }
+    }
+
+    /**
+     * One tap zone, [width] of the screen's, a button called [label] to a screen reader, disabled while the guide
+     * shows a [hint] other than its own [zone].
+     */
+    @Composable
+    private fun RowScope.TapZone(label: String, width: Float, hint: HintStep?, zone: HintStep, onTap: () -> Unit) {
         Box(
             Modifier
                 .weight(width)
                 .fillMaxHeight()
-                .semantics { contentDescription = label }
+                .semantics {
+                    contentDescription = label
+                    if (hint != null && hint != zone) disabled()
+                }
                 .lightClickable(hapticsEnabled = false, role = Role.Button, onClick = onTap)
         )
     }

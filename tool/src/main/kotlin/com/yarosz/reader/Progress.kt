@@ -18,6 +18,9 @@ const val READING_PREVIOUS_PAGE = "Previous page"
 const val READING_SHOW_CONTROLS = "Show controls"
 const val READING_NEXT_PAGE = "Next page"
 const val READING_HIDE_CONTROLS = "Hide controls"
+const val HINT_NEXT = "Tap here for the next page"
+const val HINT_BACK = "Tap here to go back"
+const val HINT_CONTROLS = "Tap the middle for controls"
 
 /** The reading speed, in words per minute, until the reader has given [MEASURED_AFTER] samples. */
 const val PRIOR_WPM = 230.0

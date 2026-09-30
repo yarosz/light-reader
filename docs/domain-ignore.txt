@@ -223,3 +223,11 @@ Opened
 # "Controls"), UI vocabulary rather than a glossary term.
 Controls
 RunningHead
+
+# N5: DESIGN.md "Reading" heading for the screen staying on while reading, UI behaviour, not a glossary term.
+Keep awake
+
+# N5: the first-run walkthrough of the tap zones (DESIGN.md "Reading"), its heading and its steps, UI behaviour,
+# not a glossary term.
+First-run hint
+HintStep

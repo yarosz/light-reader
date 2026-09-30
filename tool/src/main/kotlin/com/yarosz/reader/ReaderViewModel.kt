@@ -12,6 +12,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -33,14 +34,16 @@ const val SAVE_DEBOUNCE_MS = 1_000L
 /**
  * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font size
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
- * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened, and [now] is the
- * monotonic millis that time Pages for the reading speed; tests pass ones they control.
+ * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened, [idle] where the keep-awake
+ * times out ([keepAwake]) and the first-run hint waits out its delay ([readingHint]), and [now] is the monotonic
+ * millis that time Pages for the reading speed; tests pass ones they control.
  */
 class ReaderViewModel(
     private val file: File,
     private val owner: ShelfOwner,
     private val start: DevStart? = null,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val idle: CoroutineDispatcher = Dispatchers.Main,
     private val now: () -> Long = { System.nanoTime() / 1_000_000 },
 ) : LightViewModel<Unit>() {
     /**
@@ -76,19 +79,123 @@ class ReaderViewModel(
      */
     val runningHead = MutableStateFlow(RunningHead(null, ""))
 
-    /** Whether the controls show over the Page. Every turn, opening Contents and the Tool pausing hide them. */
+    /**
+     * Whether the controls show over the Page. Every turn, a jump from Contents and the Tool pausing hide them;
+     * opening Contents keeps them, so back from it returns to the Page as it was.
+     */
     val controls = MutableStateFlow(false)
 
     fun showControls() {
+        stayAwake()
         controls.value = true
+        publishHint()
     }
 
     fun hideControls() {
+        stayAwake()
         controls.value = false
+        publishHint()
     }
 
     /** The controls' Progress line ([minutesLine]); null for none. */
     val progressLine = MutableStateFlow<ProgressLine?>(null)
+
+    /**
+     * Whether the reading view keeps the screen on while it shows a Page or the end page (DESIGN.md "Reading"):
+     * from the reading view showing, until [KEEP_AWAKE_MS] pass with no tap or volume key press there
+     * ([stayAwake]). Never while the reading view is hidden or the Tool is paused.
+     */
+    val keepAwake = MutableStateFlow(false)
+
+    private var showing = false
+    private var awake: Job? = null
+
+    /**
+     * A press on the reading view, a tap, a screen reader's click or a volume key: the screen stays on for
+     * [KEEP_AWAKE_MS] from now, while it shows. A screen reader's click reaches no pointer handler, so every
+     * action the reading view offers calls this itself.
+     */
+    fun stayAwake() {
+        if (!showing) return
+        keepAwake.value = true
+        awake?.cancel()
+        awake = viewModelScope.launch(idle) {
+            delay(KEEP_AWAKE_MS)
+            keepAwake.value = false
+        }
+    }
+
+    private fun sleep() {
+        showing = false
+        awake?.cancel()
+        keepAwake.value = false
+        publishHint()
+    }
+
+    /**
+     * The first-run hint's step on screen (DESIGN.md "Reading"), [HINT_DELAY_MS] after it can show: the reading
+     * view showing a Page (not "Opening…", not the end page) with the controls hidden. Null for none, at once
+     * when it can't show, and once the hint is dismissed or in a dev-start session. While a step is on screen only
+     * a tap in its zone acts ([tapped]) and the volume keys don't turn ([turnFor]); a step waiting out its delay
+     * isn't on screen, so every tap and key then acts as usual, and a tap in its zone doesn't move it on.
+     */
+    val readingHint = MutableStateFlow<HintStep?>(null)
+
+    /** The walkthrough's step, on screen or not; null once it is over, or when it never runs. */
+    private var hintStep: HintStep? = null
+
+    /** The wait before [pending] shows ([HINT_DELAY_MS]), on [idle]. */
+    private var hintDelay: Job? = null
+    private var pending: HintStep? = null
+
+    /**
+     * Puts [hintStep] on screen [HINT_DELAY_MS] after it can show, and takes it off at once when it can't. A step
+     * already on screen or already waiting keeps its time, so a turn doesn't restart the wait.
+     */
+    private fun publishHint() {
+        val step = hintStep.takeIf { showing && frame.value != null && !atEnd.value && !controls.value }
+        if (step != null && (readingHint.value == step || (hintDelay?.isActive == true && pending == step))) return
+        hintDelay?.cancel()
+        readingHint.value = null
+        pending = step
+        if (step == null) return
+        hintDelay = viewModelScope.launch(idle) {
+            delay(HINT_DELAY_MS)
+            readingHint.value = step
+        }
+    }
+
+    /** A tap on the next-page zone: a forward turn ([nextPage]), moving the hint on from [HintStep.Next]. */
+    fun tapNext() = tapped(HintStep.Next) { nextPage() }
+
+    /** A tap on the previous-page zone: a back turn ([previousPage]), moving the hint on from [HintStep.Back], turned or not. */
+    fun tapBack() = tapped(HintStep.Back) { previousPage() }
+
+    /** A tap on the middle zone: shows the controls, and from [HintStep.Controls] ends the hint for good. */
+    fun tapMiddle() = tapped(HintStep.Controls) { showControls() }
+
+    /**
+     * A tap on [zone]'s tap zone, doing [action] while no guide is on screen. While the guide shows, the walkthrough
+     * is followed: a tap on another zone does nothing, and a tap on [zone] acts and moves it on, to the next step,
+     * or from the last one to none, dismissing it ([dismissReadingHint]). A volume key never moves it.
+     */
+    private fun tapped(zone: HintStep, action: () -> Unit) {
+        stayAwake()
+        val guide = readingHint.value
+        if (guide != null && guide != zone) return
+        action()
+        if (guide == null) return
+        hintStep = HintStep.entries.getOrNull(zone.ordinal + 1)
+        if (hintStep == null) dismissReadingHint() else publishHint()
+    }
+
+    /** Ends the hint for good, saving that it was dismissed; no write when it already was. */
+    private fun dismissReadingHint() {
+        hintStep = null
+        publishHint()
+        if (saver.data.settings.readingHintDismissed) return
+        saver.change { it.copy(settings = it.settings.copy(readingHintDismissed = true)) }
+    }
 
     /** The title the Shelf shows for the Book. */
     private var shelfTitle = ""
@@ -103,7 +210,15 @@ class ReaderViewModel(
 
     private var loading: Job? = null
 
-    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = openBook()
+    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = shown()
+
+    /** The reading view showing, on opening, back from Contents, or the Tool resuming: opens the Book, and keeps the screen on afresh. */
+    internal fun shown() {
+        showing = true
+        openBook()
+        stayAwake()
+        publishHint()
+    }
 
     /** Opens the Book once: a show while the first open is still running (a pause and resume) starts no second one. */
     internal fun openBook() {
@@ -136,6 +251,7 @@ class ReaderViewModel(
                     words = index
                     saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = openedAt) }
                     if (start == null) fontStep.value = nearestFontStep(saver.data.settings.fontSize)
+                    if (start == null && !saver.data.settings.readingHintDismissed) hintStep = HintStep.Next
                     if (start != null && opened.spineItems.isNotEmpty()) {
                         val item = start.item.coerceIn(opened.spineItems.indices)
                         windowChars = start.windowChars ?: WINDOW_CHARS
@@ -191,6 +307,7 @@ class ReaderViewModel(
     }
 
     fun changeFont(delta: Int) {
+        stayAwake()
         val step = (fontStep.value + delta).coerceIn(FONT_SIZES.indices)
         if (step == fontStep.value) return
         fontStep.value = step
@@ -215,6 +332,7 @@ class ReaderViewModel(
             atEnd.value = true
             stamp(finished = true)
             publishLines()
+            publishHint()
             return
         }
         if (isLastPage(shown)) return
@@ -237,6 +355,7 @@ class ReaderViewModel(
             atEnd.value = false
             stamp(finished = false)
             publishLines()
+            publishHint()
             return
         }
         turn(back = true) { it.previous() }
@@ -244,8 +363,8 @@ class ReaderViewModel(
 
     /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
     fun openContents(): Contents? {
+        stayAwake()
         timer.discard()
-        hideControls()
         return book.value?.contentsAt(pagePoint, atEnd.value)
     }
 
@@ -256,27 +375,40 @@ class ReaderViewModel(
      * running timing is dropped and the landed Page is untimed, so it gives no sample.
      */
     fun jumpTo(start: SpinePoint) {
+        stayAwake()
         val opened = book.value ?: return
         val measurer = measurer ?: return
         timer.discard()
+        hideControls()
         atEnd.value = false
+        publishHint()
         val shown = show("jump") { it.jump(start.item, start.char, measurer.key(fontStep.value)) } ?: return
         spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
         val clears = start < opened.textEnd && saver.data.books[opened.identifier]?.finished == true
         stamp(finished = if (clears) false else null)
     }
 
-    /** The page turn a key makes: volume down forward, volume up back; null for any other key. */
+    /**
+     * What a page key's press does, keeping the screen on ([stayAwake]): volume down turns forward, volume up back,
+     * but neither turns while the first-run hint's guide shows ([readingHint]), as it teaches the taps. Null for any
+     * other key.
+     */
     private fun turnFor(keyCode: Int): (() -> Unit)? = when (keyCode) {
-        KeyEvent.KEYCODE_VOLUME_DOWN -> { { nextPage() } }
-        KeyEvent.KEYCODE_VOLUME_UP -> { { previousPage() } }
+        KeyEvent.KEYCODE_VOLUME_DOWN -> keyTurn(::nextPage)
+        KeyEvent.KEYCODE_VOLUME_UP -> keyTurn(::previousPage)
         else -> null
     }
 
+    private fun keyTurn(turn: () -> Unit): () -> Unit = {
+        stayAwake()
+        if (readingHint.value == null) turn()
+    }
+
     /**
-     * A page key turns on key-down (a held key repeats there) and is consumed on key-up and key-multiple too,
-     * or LightActivity forwards it to LightOS, as it does any Light Phone key a screen declines (the wheel's
-     * click lights the flashlight that way). Any other key is declined everywhere and stays LightOS's.
+     * A page key turns on key-down (a held key repeats there) and is consumed on key-up and key-multiple too, even
+     * while the guide keeps it from turning, or LightActivity forwards it to LightOS, as it does any Light Phone
+     * key a screen declines (the wheel's click lights the flashlight that way). Any other key is declined
+     * everywhere and stays LightOS's.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = turnFor(keyCode)?.let { it(); true } ?: false
 
@@ -285,14 +417,26 @@ class ReaderViewModel(
     override fun onKeyMultiple(keyCode: Int, repeatCount: Int, event: KeyEvent): Boolean =
         turnFor(keyCode)?.let { turn -> repeat(repeatCount) { turn() }; true } ?: false
 
-    /** Activity.onPause: the last hook guaranteed to run before the process can be killed. */
+    /**
+     * Activity.onPause: the last hook guaranteed to run before the process can be killed, and only the current
+     * screen's, so a pause in Contents leaves the controls and the hint as they were. A hint mid-walkthrough
+     * starts again from its first step, having saved nothing.
+     */
     override fun onAppPause() {
         timer.discard()
+        hintStep = hintStep?.let { HintStep.Next }
         hideControls()
+        sleep()
         saver.flush()
     }
 
-    override fun onScreenHide(screen: SimpleLightScreen<Unit>) = saver.flush()
+    override fun onScreenHide(screen: SimpleLightScreen<Unit>) = hidden()
+
+    /** The reading view hiding, for Contents or on leaving: lets the screen go, takes the hint off, and saves. */
+    internal fun hidden() {
+        sleep()
+        saver.flush()
+    }
 
     override fun onCleared() {
         saver.flush()
@@ -311,6 +455,7 @@ class ReaderViewModel(
         if (atEnd.value && !reachesEnd(shown)) {
             atEnd.value = false
             publishLines()
+            publishHint()
         }
     }
 
@@ -405,6 +550,7 @@ class ReaderViewModel(
         val elapsed = System.nanoTime() - start
         frame.value = shown
         publishLines()
+        publishHint()
         val pass = shown.pass
         if (pass !== before) prefetching?.cancel()
         if (reading.passesStarted != started) {
@@ -447,6 +593,13 @@ class ReaderViewModel(
 
     private fun ms(ns: Long) = "%.1f".format(Locale.ROOT, ns / 1e6)
 }
+
+/**
+ * The first-run hint's steps, in order (DESIGN.md "Reading"): each points at a tap zone, and a tap there moves it
+ * on. Forward first, the first need and the largest zone; back second, to the starting Page; the middle last,
+ * opening the controls and ending it.
+ */
+enum class HintStep { Next, Back, Controls }
 
 /** The controls' running head: [title], the Chapter's or the Book's, under [part], its Part's title, when it has one. */
 data class RunningHead(val part: String?, val title: String)

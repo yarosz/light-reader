@@ -32,3 +32,26 @@ val CONTROL_PADDING = 12.dp
 
 val SIDE_MARGIN = 20.dp
 val TOP_BOTTOM_MARGIN = 14.dp
+
+/**
+ * How long the reading view keeps the screen on after the last tap or volume key press there (DESIGN.md
+ * "Reading"); after it, the phone's own timeout applies.
+ */
+const val KEEP_AWAKE_MS = 10 * 60_000L
+
+/**
+ * The first-run hint's guide (DESIGN.md "Reading"). It appears [HINT_DELAY_MS] after its step can show
+ * ([ReaderViewModel.readingHint]): a touch dot
+ * [HINT_DOT_SIZE] across, filled in the content colour at [HINT_DOT_ALPHA] and ringed by a [HINT_RING] line at
+ * [HINT_RING_ALPHA], that presses once every [HINT_CYCLE_MS] (fades in, shrinks to [HINT_PRESS_SCALE] and back,
+ * then rests at [HINT_REST_ALPHA]), with its copy [HINT_COPY_GAP] below it.
+ */
+const val HINT_DELAY_MS = 1_000L
+val HINT_DOT_SIZE = 40.dp
+const val HINT_DOT_ALPHA = 0.62f
+val HINT_RING = 1.dp
+const val HINT_RING_ALPHA = 0.25f
+const val HINT_CYCLE_MS = 2_400
+const val HINT_PRESS_SCALE = 0.82f
+const val HINT_REST_ALPHA = 0.75f
+val HINT_COPY_GAP = 24.dp

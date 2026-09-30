@@ -103,7 +103,7 @@ class ReadingDataTest {
         assertEquals(3, merged.schemaVersion)
         assertEquals(setOf("a", "b"), merged.books.keys)
         assertEquals(mapOf("d" to JsonPrimitive(1), "both" to JsonPrimitive("mine")), merged.books.getValue("a").extras)
-        assertEquals(Settings(15f, mapOf("theme" to JsonPrimitive("dark"), "margin" to JsonPrimitive(2))), merged.settings)
+        assertEquals(Settings(15f, extras = mapOf("theme" to JsonPrimitive("dark"), "margin" to JsonPrimitive(2))), merged.settings)
         assertEquals(mapOf("sync" to JsonPrimitive(true), "export" to JsonNull), merged.extras)
     }
 
@@ -173,6 +173,34 @@ class ReadingDataTest {
         val settings = Json.parseToJsonElement(merged.encode()).jsonObject.getValue("settings").jsonObject
         assertEquals(15f, merged.settings.fontSize)
         assertEquals("15" to 0, settings.getValue("fontSize").jsonPrimitive.content to settings.getValue("fontStep").jsonPrimitive.int)
+    }
+
+    @Test
+    fun `a save writes readingHintDismissed as a boolean, false included, and it reads back`() {
+        for (dismissed in listOf(false, true)) {
+            val data = ReadingData(settings = Settings(readingHintDismissed = dismissed))
+            val settings = Json.parseToJsonElement(data.encode()).jsonObject.getValue("settings").jsonObject
+            assertEquals(JsonPrimitive(dismissed), settings.getValue("readingHintDismissed"))
+            assertEquals(data, decodeReadingData(data.encode()).getOrThrow())
+        }
+    }
+
+    @Test
+    fun `a readingHintDismissed that is absent or isn't a boolean reads as false, and the other settings stay`() {
+        assertEquals(false, decodeReadingData("{\"settings\": {}}").getOrThrow().settings.readingHintDismissed)
+        assertEquals(true, decodeReadingData("{\"settings\": {\"readingHintDismissed\": true}}").getOrThrow().settings.readingHintDismissed)
+        listOf("\"true\"", "\"yes\"", "1", "null", "[true]", "{\"v\": true}").forEach { value ->
+            val settings = decodeReadingData("{\"settings\": {\"fontSize\": 30, \"readingHintDismissed\": $value}}").getOrThrow().settings
+            assertEquals(Settings(30f), settings, value)
+        }
+    }
+
+    @Test
+    fun `merge keeps readingHintDismissed when either side has it, and the font size from mine`() {
+        for (disk in listOf(false, true)) for (mine in listOf(false, true)) {
+            val merged = merge(ReadingData(settings = Settings(30f, disk)), ReadingData(settings = Settings(15f, mine)))
+            assertEquals(Settings(15f, disk || mine), merged.settings, "disk $disk, mine $mine")
+        }
     }
 
     @Test
@@ -574,7 +602,7 @@ private fun randomEntry(rnd: Random) = Book(
 private fun randomData(rnd: Random) = ReadingData(
     schemaVersion = rnd.nextInt(1, 4),
     books = List(rnd.nextInt(0, 5)) { "https://example.org/" + randomString(rnd) to randomEntry(rnd) }.toMap(),
-    settings = Settings(FONT_SIZES.random(rnd), randomExtras(rnd, setOf("fontSize", "fontStep"))),
+    settings = Settings(FONT_SIZES.random(rnd), rnd.nextBoolean(), randomExtras(rnd, setOf("fontSize", "fontStep", "readingHintDismissed"))),
     extras = randomExtras(rnd, setOf("schemaVersion", "settings", "books")),
 )
 
