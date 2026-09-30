@@ -50,7 +50,7 @@ interface WindowMeasurer {
 }
 
 /**
- * The body style at [FONT_SIZES] step [fontStep] (DESIGN.md). Body colour is left to drawing, but
+ * The body style at the font size [FONT_SIZES] gives [fontStep] (DESIGN.md "Type scale"). Body colour is left to drawing, but
  * captions bake [Typesetter]'s caption colour into the layout, so a theme change relays the book out.
  */
 fun readingStyle(fontStep: Int): TextStyle {

@@ -33,7 +33,7 @@ class ReadingStoreTest {
 
     private val alice = ReadingData(
         books = mapOf("urn:alice" to Book("Alice", "alice.epub", Place("chapter-1.xhtml", 3, 12, "Alice was", 100), finished = false, onShelf = true)),
-        settings = Settings(fontStep = 3),
+        settings = Settings(fontSize = 24.5f),
     )
 
     private val snark = ReadingData(
@@ -79,6 +79,7 @@ class ReadingStoreTest {
         val store = ReadingStore(dir)
         val loaded = store.load()
         assertEquals(Place("chapter-2.xhtml", 4, 8, "Curiouser", 1727400000000), loaded.books.getValue("urn:alice").place)
+        assertEquals(24.5f, loaded.settings.fontSize)
 
         store.save { ReadingData() }
         val saved = decodeReadingData(main.readText()).getOrThrow()

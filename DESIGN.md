@@ -8,13 +8,14 @@ constants and rules we expect to adjust from measurements.
 1 sp = 3 px ≈ 0.52 pt on the panel. Column = 360 dp − 2 × 20 dp margins ≈ 165 pt. Literata averages
 about half an em per character. Sizes stay in **sp** so the system large-text setting scales the Reader.
 
-| Step | sp | ≈ pt | ≈ chars/line | Note |
-|---|---|---|---|---|
-| 1 | 17 | 8.8 | 38 | |
-| 2 | **20** | 10.3 | 33 | **default**: first step above 30 cpl, where hyphenation stops being constant |
-| 3 | 24.5 | 12.6 | 27 | measured 26 on hardware |
-| 4 | 30 | 15.5 | 22 | |
-| 5 | 36 | 18.5 | 18 | large print |
+| sp | ≈ pt | ≈ chars/line | Note |
+|---|---|---|---|
+| 15 | 7.7 | 44 | |
+| 17 | 8.8 | 38 | |
+| **20** | 10.3 | 33 | **default**: first size above 30 cpl, where hyphenation stops being constant |
+| 24.5 | 12.6 | 27 | measured 26 on hardware |
+| 30 | 15.5 | 22 | |
+| 36 | 18.5 | 18 | large print |
 
 At 20 sp a Page holds about 13 lines (40–60 words of dialogue-heavy text, a turn every 10–15 s at
 230 wpm), so vertical space is precious: side margins 20 dp, top and bottom margins 12–16 dp, no footer

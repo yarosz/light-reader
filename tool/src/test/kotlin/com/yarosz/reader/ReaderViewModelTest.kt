@@ -25,9 +25,9 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 
 /**
- * Time on a Page in the speed tests: a [LineMeasurer] Page at [DEFAULT_FONT_STEP] holds about 900 words, 360 a
- * minute at this, under [SAMPLE_MAX_WPM]. The headroom holds only there: a step-0 Page is about 1,800 words,
- * 720 a minute.
+ * Time on a Page in the speed tests: a [LineMeasurer] Page at [DEFAULT_FONT_STEP] holds about 600 words, 240 a
+ * minute at this, under [SAMPLE_MAX_WPM]. The headroom doesn't hold at step 0: a step-0 Page is about 1,800
+ * words, 720 a minute.
  */
 private const val READ_MS = 150_000L
 
@@ -186,7 +186,7 @@ class ReaderViewModelTest {
 
     @Test
     fun `a dev-start session changes the font and pauses, and the reading data file stays byte for byte`() {
-        ReadingStore(dir).save { ReadingData(settings = Settings(fontStep = 3)) }
+        ReadingStore(dir).save { ReadingData(settings = Settings(fontSize = 30f)) }
         val before = File(dir, "reading-data.json").readBytes()
         val vm = reader(DevStart(2))
         vm.openBook()
@@ -212,7 +212,7 @@ class ReaderViewModelTest {
 
     @Test
     fun `a dev start opens at its Place and the default font, whatever the reading data holds`() {
-        ReadingStore(dir).save { ReadingData(settings = Settings(fontStep = 3)) }
+        ReadingStore(dir).save { ReadingData(settings = Settings(fontSize = 30f)) }
         val vm = reader(DevStart(2))
         vm.openBook()
         settle()
@@ -513,18 +513,34 @@ class ReaderViewModelTest {
 
     @Test
     fun `a show during the first open starts no second open, so a change made meanwhile survives`() {
-        ReadingStore(dir).save { ReadingData(settings = Settings(fontStep = 2)) }
+        ReadingStore(dir).save { ReadingData(settings = Settings(fontSize = 24.5f)) }
         val vm = reader()
         vm.openBook()
         main.scheduler.runCurrent()
         io.scheduler.runCurrent()
         vm.openBook()
         main.scheduler.runCurrent()
-        assertEquals(2, vm.fontStep.value)
+        assertEquals(24.5f, FONT_SIZES[vm.fontStep.value])
         vm.changeFont(+1)
         settle()
-        assertEquals(3, vm.fontStep.value)
-        assertEquals(3, ReadingStore(dir).load().settings.fontStep)
+        assertEquals(30f, FONT_SIZES[vm.fontStep.value])
+        assertEquals(30f, ReadingStore(dir).load().settings.fontSize)
+    }
+
+    @Test
+    fun `A− at 17 sp reaches 15 sp, saves it, and stops there`() {
+        ReadingStore(dir).save { ReadingData(settings = Settings(fontSize = 17f)) }
+        val vm = reading()
+        assertEquals(17f, FONT_SIZES[vm.fontStep.value])
+        vm.changeFont(-1)
+        settle()
+        assertEquals(15f, FONT_SIZES[vm.fontStep.value])
+        assertEquals(15f, ReadingStore(dir).load().settings.fontSize)
+        assertFalse(canChangeFont(vm.fontStep.value, -1))
+        vm.changeFont(-1)
+        settle()
+        assertEquals(0, vm.fontStep.value)
+        assertEquals(15f, ReadingStore(dir).load().settings.fontSize)
     }
 
     @Test
@@ -545,7 +561,7 @@ class ReaderViewModelTest {
         vm.changeFont(-3)
         assertEquals(0, vm.fontStep.value)
         vm.changeFont(+3)
-        assertEquals(3, vm.fontStep.value)
+        assertEquals(24.5f, FONT_SIZES[vm.fontStep.value])
         vm.changeFont(+3)
         assertEquals(FONT_SIZES.lastIndex, vm.fontStep.value)
     }
@@ -830,6 +846,7 @@ class ReaderViewModelTest {
      * After that jump a font change re-packs at the Place, the Chapter's start, on a line that starts
      * mid-word again. The walk up to a whole word stops at the line holding the Chapter's start, so the
      * Page doesn't open in the Chapter before: the running head, Contents and the Place stay the Chapter's.
+     * It starts at 17 sp, where a [LineMeasurer] line starts at the Chapter's start, so the jump's Page does.
      */
     @Test
     fun `a font change after a jump to a Chapter keeps its Page, running head and Contents on that Chapter`() {
@@ -838,6 +855,7 @@ class ReaderViewModelTest {
             "<p>${"word ".repeat(400)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
         )
         File(dir, "alice.epub").writeEpub(tocEpubFiles(bodies, ncx = ncx(navPoint("One", "text/c0.xhtml"), navPoint("Two", "text/c1.xhtml#two"))))
+        ReadingStore(dir).save { ReadingData(settings = Settings(fontSize = 17f)) }
         val vm = reader()
         vm.openBook()
         settle()

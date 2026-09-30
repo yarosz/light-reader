@@ -8,8 +8,7 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
 
 > **Status: early development (0.1.0).** Reader downloads books from catalogues onto a Shelf, turns
 > pages by tap or volume key, keeps your place in each book at any font size, and lists each book's
-> chapters, with reading controls a centre tap shows. An About screen and a smaller font size are being
-> built next.
+> chapters, with reading controls a centre tap shows. An About screen is being built next.
 > Not yet signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>
