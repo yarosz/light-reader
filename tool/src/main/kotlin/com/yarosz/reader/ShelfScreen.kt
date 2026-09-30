@@ -35,7 +35,8 @@ private const val TAG = "Reader"
 
 /**
  * The Shelf: the Books on this phone, text only, in the order of [shelfRows]. A tap opens a Book at
- * its Place in the Reader. "Add" and "Add a Book" open the list of Catalogues.
+ * its Place in the Reader. "Add" and "Add a Book" open the list of Catalogues; "Reader" in the top bar
+ * opens About.
  */
 @InitialScreen
 class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, ShelfViewModel>(sealedActivity) {
@@ -70,7 +71,7 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
                         text = if (mode is ShelfMode.Editing) SHELF_DONE else SHELF_EDIT,
                         onClick = viewModel::toggleEdit,
                     ),
-                    center = LightTopBarCenter.Text(SHELF_TITLE),
+                    center = LightTopBarCenter.Text(SHELF_TITLE, onClick = ::openAbout),
                     rightButton = LightBarButton.Text(SHELF_ADD, onClick = ::openCatalogues),
                     modifier = Modifier.padding(bottom = 1f.gridUnitsAsDp()),
                 )
@@ -93,6 +94,10 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
     private fun openCatalogues() {
         viewModel.endEdit()
         navigateTo({ CatalogueListScreen(it) }) { opened -> open(File(lightContext.filesDir, opened.file)) }
+    }
+
+    private fun openAbout() {
+        navigateTo({ AboutScreen(it) })
     }
 
     private fun tap(tap: RowTap) {

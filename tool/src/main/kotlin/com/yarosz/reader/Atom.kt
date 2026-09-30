@@ -213,7 +213,7 @@ const val MAX_BYLINE_CHARS = 80
 internal fun entryByline(authors: List<String>, content: String?): String? {
     if (authors.isNotEmpty()) return authors.joinToString(", ")
     val line = content?.takeIf { it.isNotEmpty() && '\n' !in it && it.length <= MAX_BYLINE_CHARS } ?: return null
-    return line.takeUnless { KEY_VALUE_LINE.matches(it) }
+    return line.takeUnless { KEY_VALUE_LINE.matches(it) }?.let(::withoutLeadingTitle)
 }
 
 /**
@@ -230,17 +230,52 @@ private val PLAIN_NAME = Regex("\\p{L}[\\p{L}.' -]*")
 private val OF = Regex("\\bof\\b")
 
 /**
- * An author's name for display. Only the simple inverted form un-inverts: "Austen, Jane" and
- * "Austen, Jane, 1775-1817" are "Jane Austen" (life dates dropped), and "Balzac, Honoré de" is
+ * Titles of nobility that catalogues write in lowercase beside a name (Gutenberg's "Tolstoy, Leo,
+ * graf" and "graf Leo Tolstoy"). Only these, and only in lowercase: a capitalised one ("Baron Corvo",
+ * "Corvo, Baron") can be part of a pen name, and "Sir" stays as the feed gave it.
+ */
+private val NOBILITY_TITLES = setOf(
+    "graf", "gräfin", "count", "countess", "baron", "baroness", "freiherr", "freifrau", "prince", "princess",
+    "knyaz", "knyaginya", "fürst", "fürstin", "duke", "duchess", "marquis", "marquise", "earl", "viscount",
+    "vicomte", "comte", "comtesse", "conte", "contessa",
+)
+
+/** Lowercase words a name may hold between its capitalised ones ("Honoré de Balzac"). */
+private val NAME_PARTICLES = setOf("de", "del", "della", "di", "da", "du", "des", "la", "le", "van", "von", "der", "den", "ter", "ten", "y")
+
+private val LEADING_WORD = Regex("(\\p{Ll}+) (.+)")
+
+/**
+ * [name] without a leading title of nobility ("graf Leo Tolstoy" is "Leo Tolstoy"), when every word
+ * after it is capitalised or a name particle; anything else, such as a description ("baron of the
+ * Exchequer"), stays whole.
+ */
+internal fun withoutLeadingTitle(name: String): String {
+    val (title, rest) = LEADING_WORD.matchEntire(name)?.destructured ?: return name
+    val isName = PLAIN_NAME.matches(rest) && rest.split(' ').all { it.isNotEmpty() && (it[0].isUpperCase() || it in NAME_PARTICLES) }
+    return if (title in NOBILITY_TITLES && rest[0].isUpperCase() && isName) rest else name
+}
+
+/**
+ * An author's name for display. A title of nobility is dropped: a comma-separated part after the
+ * first that is one of [NOBILITY_TITLES] ("Tolstoy, Leo, graf, 1828-1910"), or one leading a name in
+ * reading order ([withoutLeadingTitle]). Then only the simple inverted form un-inverts: "Austen, Jane"
+ * and "Austen, Jane, 1775-1817" are "Jane Austen" (life dates dropped), and "Balzac, Honoré de" is
  * "Honoré de Balzac". Anything else stays as the feed gave it: further commas, "Various",
- * organisations, several authors, parenthesised full names, and a title after the comma ("Marcus
- * Aurelius, Emperor of Rome"), which the word "of" gives away.
+ * organisations, several authors, parenthesised full names, a title that isn't a lowercase title of
+ * nobility ("Vicomte de" with its particle, "Sir"), and a title after the comma ("Marcus Aurelius,
+ * Emperor of Rome"), which the word "of" gives away.
  */
 fun displayAuthor(name: String): String {
-    val parts = name.split(',').map { it.trim() }
+    val all = name.split(',').map { it.trim() }
+    val parts = all.filterIndexed { i, part -> i == 0 || part !in NOBILITY_TITLES }
     val simple = parts.size in 2..3 && parts.take(2).all { PLAIN_NAME.matches(it) } && !OF.containsMatchIn(parts[1]) &&
         (parts.size == 2 || LIFE_DATES.matches(parts[2]))
-    return if (simple) "${parts[1]} ${parts[0]}" else name
+    return when {
+        simple -> "${parts[1]} ${parts[0]}"
+        parts.size < all.size -> parts.joinToString(", ")
+        else -> withoutLeadingTitle(name)
+    }
 }
 
 private val XHTML_BLOCKS = setOf("p", "div", "br", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "tr")

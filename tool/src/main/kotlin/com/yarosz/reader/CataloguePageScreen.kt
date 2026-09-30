@@ -59,7 +59,7 @@ class CataloguePageViewModel(
         loading = viewModelScope.launch {
             state.value = when (val url = pageUrl()) {
                 is Fetched.Failed -> PageState.Failed(url.reason)
-                is Fetched.Ok -> when (val fetched = owner.fetchPage(url.value)) {
+                is Fetched.Ok -> when (val fetched = owner.fetchPage(url.value, search = source is PageSource.Search)) {
                     is Fetched.Ok -> pageState(fetched.value, source, url.value)
                     is Fetched.Failed -> PageState.Failed(fetched.reason)
                 }
@@ -91,7 +91,7 @@ class CataloguePageViewModel(
         state.value = listing.copy(more = More.Loading)
         viewModelScope.launch {
             val current = state.value as? PageState.Listing ?: return@launch
-            state.value = when (val fetched = owner.fetchPage(next)) {
+            state.value = when (val fetched = owner.fetchPage(next, search = source is PageSource.Search)) {
                 is Fetched.Ok -> appendPage(current, fetched.value, next)
                 is Fetched.Failed -> current.copy(more = More.Failed(fetched.reason))
             }

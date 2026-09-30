@@ -18,7 +18,7 @@ import com.thelightphone.sdk.ui.lightClickable
 
 /**
  * Contents (DESIGN.md "Contents"): its rows in order, a Part's row a heading, the current row marked
- * "you're here". A tap hands the Reader that row's start, a Chapter's or a Part's, and back hands it
+ * "you’re here". A tap hands the Reader that row's start, a Chapter's or a Part's, and back hands it
  * nothing; there is no way straight to the Shelf. It opens with the row before the current one at the top,
  * so the current row is second, or the current row at the top when it is first; the list scrolls there as
  * that row is first placed, so no frame shows it from the top. The volume keys stay LightOS's here.

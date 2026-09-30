@@ -157,8 +157,8 @@ class ShelfOwner(
         return result
     }
 
-    /** Fetches a Catalogue page on [io]. */
-    suspend fun fetchPage(url: HttpsUrl): Fetched<CataloguePage> = withContext(io) { fetchPage(transport, url) }
+    /** Fetches a Catalogue page on [io]; [search] marks a search's results or their "More" ([fetchPage]). */
+    suspend fun fetchPage(url: HttpsUrl, search: Boolean = false): Fetched<CataloguePage> = withContext(io) { fetchPage(transport, url, search = search) }
 
     /** Fetches the search template an OpenSearch description offers, on [io]. */
     suspend fun fetchSearch(description: HttpsUrl): Fetched<SearchTemplate> = withContext(io) { fetchSearch(transport, description) }

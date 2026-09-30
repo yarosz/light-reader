@@ -135,7 +135,7 @@ class CatalogueViewModelTest {
         val book = openBook()
         book.download(book.detail.value!!.action as DetailAction.Download)
         settle()
-        assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_COPY_PROTECTED, retry = false)), book.detail.value)
+        assertEquals(BookDetail(DetailAction.None, FailureCopy(COPY_COPY_PROTECTED_DETAIL, retry = false)), book.detail.value)
         assertEquals(emptyList(), owner().snapshot.value!!.rows)
     }
 

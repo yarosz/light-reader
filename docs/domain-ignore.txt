@@ -208,8 +208,8 @@ HeldEvent
 
 # A failed Catalogue fetch's log line (DESIGN.md "Catalogues"): the URL is a feed's, not a Book's source,
 # and "feed" is the wire format's word, never copy.
-catalogue fetch failed: ${url.forLog()}: $cause -> $reason
-at ${it.url.forLog()}
+catalogue fetch failed: ${url.forLog(search)}: $cause -> $reason
+at ${it.url.forLog(search)}
 not a feed$at
 HTTP ${it.status}$at
 
@@ -231,3 +231,15 @@ Keep awake
 # not a glossary term.
 First-run hint
 HintStep
+
+# N5 E: About (DESIGN.md "About"), a UI surface, and its copy, quoted there verbatim: "Standard Ebooks"
+# is a name, not "ebook"; "works", "read" and "screen" are plain verbs and the phone's screen, not the
+# glossary's work, Finished or Page. The User-Agent names the Tool's version and its repository's
+# address, not an Edition or a Book's Source (DESIGN.md "Catalogues").
+About
+AboutScreen
+AboutSection
+Standard Ebooks (built in)
+Reader has no accounts, no hosted service and no tracking. It uses the network only to fetch a Catalogue and download a Book, and reading works fully offline.
+While you read, the screen stays on until 10 minutes pass without a tap or key press, then follows your phone’s own timeout.
+Reader/$VERSION_NAME (+https://$REPO_URL)

@@ -204,6 +204,25 @@ class NetworkTest {
     }
 
     @Test
+    fun `a search's results, or their More, log no path, where a template may put the terms`() {
+        val results = "https://books.example.org/opds/search/private%20terms"
+        val transport = FakeTransport(mapOf(results to Answer(status = 504, landsAt = "https://www.example.org/opds/search/private%20terms?offset=0")))
+        val lines = mutableListOf<String>()
+        fetchPage(transport, url(results), lines::add, search = true)
+        fetchPage(transport, url("$results/page/2"), lines::add, search = true)
+        fetchPage(transport, url("https://books.example.org/opds/new/private"), lines::add)
+        assertEquals(
+            listOf(
+                "catalogue fetch failed: https://books.example.org/…: HTTP 504 at https://www.example.org/… -> HttpError(status=504)",
+                "catalogue fetch failed: https://books.example.org/…: java.net.ConnectException: refused: https://books.example.org/… -> Unreachable",
+                "catalogue fetch failed: https://books.example.org/opds/new/private: java.net.ConnectException: refused: " +
+                    "https://books.example.org/opds/new/private -> Unreachable",
+            ),
+            lines,
+        )
+    }
+
+    @Test
     fun `an entity-expansion bomb, or a body past the feed cap, is unreadable`() {
         val huge = """<feed xmlns="http://www.w3.org/2005/Atom"><title>${" ".repeat(MAX_FEED_BYTES.toInt())}</title></feed>""".toByteArray()
         val transport = FakeTransport(

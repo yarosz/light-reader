@@ -1,7 +1,7 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done, released as v0.1.0; next is N5 (Reading controls)
-LAST SESSION: 2026-09-29
+STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done, released as v0.1.0; N5 (Reading controls) A–D merged (#40–#45), E (About) in review; then N6 (measurement), then images
+LAST SESSION: 2026-09-30
 
 ## v1 user flow
 
@@ -13,6 +13,8 @@ LAST SESSION: 2026-09-29
 4. **Reading**: tap the right side or press volume down to turn the page. A centre tap shows the
    controls: back to the Shelf, the running head, time left, A− A+, **Contents**.
 5. **Contents** lists the Chapters under their Parts; tap one to jump there.
+6. **About**: "Reader" on the Shelf opens it: the version, the no-network promise, where to find Books
+   without copy protection, the repository's address and the licenses.
 
 Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
 
@@ -195,25 +197,29 @@ Ordered. Each item ends on its _done-when_.
   From the N4 QA walkthrough, for N5 to settle: long Books' Contents (War and Peace: 385 rows, "CHAPTER
   I" ×17 with no Part named on the row or the top line, ~70 flings end to end; show the enclosing Part
   where titles repeat, and a way to the top or bottom; settled below); and the top line doesn't read as a
-  control (settled: the controls' top bar replaces it). Parked: identical rows in search
+  control (settled: the controls' top bar replaces it). Kept for later: identical rows in search
   results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3: different identifiers,
-  so separate Books once added) want a telling detail; Catalogue author forms keep titles of nobility
-  ("graf Leo Tolstoy"), which could be dropped as life dates are.
+  so separate Books once added); each Edition wants a telling detail.
   Decided before N5: no top line while reading (the controls' top bar takes its job and names the Part as
   a running head, "BOOK TWO: 1805 · CHAPTER I", since set as two lines, the Part over the Chapter); Contents lists Parts as heading rows, as a printed
   contents page does, and a Part row goes to its heading (nested tables of contents keep their Parts; a
   Part heading row, in nested tables of contents only, is never "you're here"; in flat ones the Part is
   already a Chapter row, never a second one, and is current like any Chapter); no Light/Dark button in
   v1; "Reader" on the Shelf opens About; the first-run hint shows once ever; a sixth, 15 sp font size.
-  Still open: a way to the top or bottom of a long Contents (measure the scrollbar's track tap first).
+  Closed: a way to the top or bottom of a long Contents; the scrollbar that shows while swiping does it.
   Parts in Contents (nested tables of contents) landed first (#40). Decided 2026-09-29 (Nicolas): the
   running head names a Part only when the table of contents nests it; a flat table of contents names none,
   with no guessing (a wrong running head is worse than a missing one). The survey's R2h rule is dropped,
   and CONTEXT's Part entry keeps no rule for Chapters under a listed Part.
-  Found at v0.1.0: a failed search on a Catalogue whose search template puts the terms in the URL path
-  (Calibre's `/opds/search/{searchTerms}`) logs them, since the log redaction strips only the query;
-  cut the path of a search result's URL too (`Network.kt`), and DESIGN's fetch-failure line then holds.
-- **N6 · Performance bar (ADR 0007).** Re-measure on the LP3 after N3–N5: first Page at any Place and
+  Landed: A, Parts in Contents (#40); B, the controls over a full-height Page, one bottom row, Contents
+  on the list icon and no Shelf button, a sixth font size (#41–#44); D, keep awake, the first-run
+  walkthrough, and back from Contents keeping the controls (#45). E is About ("Reader" on the Shelf
+  opens it; CopyProtected's detail line points to its list), with three follow-ups: a failed search
+  logs no path where a template puts the terms (Calibre's `/opds/search/{searchTerms}`), Contents'
+  marker reads "you’re here", and Catalogue authors drop lowercase titles of nobility ("graf Leo
+  Tolstoy" reads "Leo Tolstoy"). Decided 2026-09-30: keep-awake stays fixed at 10 minutes, with no
+  setting.
+- **N6 · Performance bar (ADR 0007).** Next after N5 E, before images. Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
   Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the
   LP3 debug build Alice's `parseMs` was 926; Pride and Prejudice takes about 2.8 s on the emulator.
@@ -222,9 +228,13 @@ Ordered. Each item ends on its _done-when_.
 - **N7 · Tool Manager node** (v1.x): upload your own EPUBs, download/upload `reading-data.json`; the
   change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
 
-**v1** = N1–N6. **v1.x:** N7, images (inverted line art), the Standard Ebooks full catalogue if granted,
-a Light SDK discussion asking for opt-in cleartext on user-entered LAN Catalogues. **v2:** offline
-tap-a-word dictionary. **Deferred:** full TalkBack audit (first check whether LightOS ships it),
-Gutenberg language filtering. **Not planned unless asked:** sync, bookmarks, highlights, covers on
-lists, Shelf search/sort options, per-Book font, reading statistics, forget a removed Book (needs a
-tombstone, because merge is a union).
+**v1** = N1–N6. **v1.x:** images first (the drop caps' `<img>` inside a `<p>` fixed, then
+`PREFER_IMAGES_EDITION` flipped, with inverted line art), N7, the Standard Ebooks full catalogue if
+granted, LAN Catalogues (first verify whether a Tool can set its own network-security config; the
+plugin generates the manifest, so it likely needs Light; then a Light SDK discussion asking for opt-in
+cleartext on user-entered LAN Catalogues). **v2:** offline tap-a-word dictionary; a candidate: sync,
+depending on what Calibre offers (research Calibre's and KOReader's progress sync; ADR 0003 names
+KOReader's), with a server the reader runs, never between two Light Phones. **Deferred:** full TalkBack
+audit (first check whether LightOS ships it), Gutenberg language filtering. **Not planned unless
+asked:** bookmarks, highlights, covers on lists, Shelf search/sort options, per-Book font, reading
+statistics, forget a removed Book (needs a tombstone, because merge is a union).

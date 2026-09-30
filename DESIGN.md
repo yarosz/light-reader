@@ -233,7 +233,7 @@ with no divider. As a printed contents page sets them, a Part the table of conte
 verbatim in the SDK's Heading style, at most two lines, marked as a heading for a screen reader (The
 Brothers Karamazov: "Part I", "Book I: The History of a Family", then "I: Fyodor Pavlovitch Karamazov").
 A Part listed beside its Chapters is already a row, its Chapter's, so it gets no second. The current row
-alone has the detail line "you're here": the Chapter the Page goes by, as the running head names it (of
+alone has the detail line "you’re here", with a typographic apostrophe: the Chapter the Page goes by, as the running head names it (of
 two starting at one point, the later), or on the end page the last Chapter of the text. A Part's heading
 row is never current, and in Front matter no row is. The list opens with the row before the current one
 at the top, so the current row is second, or with the current row at the top when it is first; with no
@@ -299,7 +299,7 @@ comes from it (see "Shelf"). The minutes left in a Chapter are never stored.
 The Tool's first screen: the Books on this phone. Product rulings from the advisor (2026-09-27); copy
 is verbatim, and `Shelf.kt` holds it.
 
-**Top bar.** `LightTopBar` with "Reader" in the centre, which opens About (N5). The left slot is "Edit",
+**Top bar.** `LightTopBar` with "Reader" in the centre, which opens About. The left slot is "Edit",
 free because the Shelf is the root screen; it reads "Done" while editing and is hidden when the Shelf is
 empty. The right button is "Add", which opens the list of Catalogues.
 
@@ -463,12 +463,22 @@ download merges into the Book by `dc:identifier`.
 The author is the Editions' authors, except that the byline of the row that opened the page wins
 when that row is this Book (its title is the page's first entry's, ignoring case and punctuation)
 and its words are the Editions' author's, ignoring case, order and punctuation, or the Editions name
-no author. So a list and its detail page name the author alike: Gutenberg's lists say "graf Leo
-Tolstoy" (the entry's content), where its Book pages say "Tolstoy, Leo, graf" (the OPDS author, which
-isn't the simple inverted form the Tool un-inverts). A row's second line isn't always an author
-(Gutenberg's "Our most popular books.", a Calibre category's "1 book", a description), hence both
-checks. A download records it only when the Book's file names no author (`dc:creator`), which
-otherwise wins when the file lands.
+no author. So a list and its detail page name the author alike where their forms differ. A row's
+second line isn't always an author (Gutenberg's "Our most popular books.", a Calibre category's "1
+book", a description), hence both checks. A download records it only when the Book's file names no
+author (`dc:creator`), which otherwise wins when the file lands.
+
+An author's name drops what a library catalogue adds to it (`displayAuthor` in `Atom.kt`). Life dates
+go, and so does a title of nobility written in lowercase: a comma-separated part after the surname
+that is one title word ("Tolstoy, Leo, graf, 1828-1910", "Leo Tolstoy, graf"), or a title leading a
+name in reading order, as a list row's content has it ("graf Leo Tolstoy"), when every word after it is
+capitalised or a particle such as "de" or "von". All three read "Leo Tolstoy". The titles are a fixed
+list (graf, count, baron, freiherr, prince, knyaz, duke, marquis, earl, viscount, vicomte, comte,
+conte, fürst and their feminine forms). A capitalised title ("Baron Corvo", "Corvo, Baron") may be a
+pen name and stays; so do "Sir", a title with its particle ("vicomte de"), and a lowercase word
+before text that isn't a name ("baron of the Exchequer"). Then only the simple inverted form
+un-inverts: "Austen, Jane" reads "Jane Austen"; further commas, organisations and several authors stay
+as the feed gave them.
 
 | Match | Action | Beside it |
 |---|---|---|
@@ -485,8 +495,9 @@ afresh. The page stays while a download runs and follows it: "downloading…", t
 The download belongs to the Shelf, so leaving the page doesn't stop it, and the Shelf shows it as a row
 meanwhile. A failure shows its copy above the action: a retryable one turns the action into "Retry", and
 a permanent one (CopyProtected, NotAnEpub, NoHttps) removes it and adds nothing to the Shelf.
-CopyProtected will point to About's list of places to find Books without copy protection, which arrives
-with N5; until then it shows its one line.
+CopyProtected's line then points to About's list of places to find Books without copy protection, as
+text: "About, from “Reader” on the Shelf, lists places to find Books without copy protection." It isn't
+a button (the Shelf row's "can't download again · copy-protected" has no pointer).
 
 **Failure copy.** One plain line, with "Retry" wherever retrying can help and never a dead button.
 
@@ -520,5 +531,34 @@ the Tool apart; it names the Tool and its version, nothing about the reader or t
 
 Every failed Catalogue fetch (a page, "More", a search description) logs one line under the `Reader`
 tag: the URL, the HTTP status (with where redirects ended) or the exception, and the failure it
-became. Each URL is logged without its user info, query (shown as "?…") or fragment, so neither a
-search's terms nor credentials reach the log.
+became. Each URL is logged without its user info, query (shown as "?…") or fragment, and a search's
+results page, or its "More", keeps only its host (the rest shown as "/…"), since a search template may
+put the terms in the path (Calibre's `/opds/search/{searchTerms}`). So neither a search's terms nor
+credentials reach the log.
+
+## About
+
+What the Tool is and promises, as static text: nothing on it is fetched, stored or changed, it needs no
+network, and nothing on it is tappable but back. "Reader" in the Shelf's top bar opens it: a screen
+titled "About", with the bar's back on the left, which returns to the Shelf, as system back does. Its
+text scrolls, in the SDK's styles: each block's heading in the Heading style (a heading to a screen
+reader), then its paragraphs in the Paragraph style. Copy is verbatim, and `About.kt` holds it; it
+follows "Copy" (above), so it says "copy-protected" and "without copy protection", never "DRM".
+
+1. The Tool's name and version, "Reader 0.1.0" (`VERSION_NAME`, which a test keeps equal to
+   `versionName` in `tool/lighttool.toml`; a Light Tool can't ask Android for it). Then ADR 0003's
+   promise, "Reader has no accounts, no hosted service and no tracking. It uses the network only to
+   fetch a Catalogue and download a Book, and reading works fully offline.", and "While you read, the
+   screen stays on until 10 minutes pass without a tap or key press, then follows your phone’s own
+   timeout." (see "Keep awake"; the 10 minutes are fixed, with no setting).
+2. "Books without copy protection": "Reader opens only Books without copy protection. Copy-protected
+   Books, such as those from Kindle, Apple Books or Libby, can’t be opened.", then "Places to find
+   them:" and a line each: "Project Gutenberg (built in)", "Standard Ebooks (built in)", "Smashwords",
+   "Humble Bundle", "Tor Publishing", "many independent presses". This is the list a copy-protected
+   Book's detail page points to (see "Catalogues").
+3. "Source code": github.com/yarosz/light-reader, as text to read, since a Tool can't open a browser.
+4. "Licenses": "Reader: MIT License.", "Literata, the typeface of Book text: SIL Open Font License
+   1.1.", "Light’s SDK: MIT License.", "AndroidX, Jetpack Compose, Kotlin, kotlinx.coroutines,
+   kotlinx.serialization, Ktor and OkHttp: Apache License 2.0.", and "The full texts of Reader’s
+   license and Literata’s are in its source code, above." (`LICENSE` and
+   `third_party/literata/OFL.txt`; the APK carries no license text).
