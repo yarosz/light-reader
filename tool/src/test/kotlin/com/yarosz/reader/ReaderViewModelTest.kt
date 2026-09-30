@@ -43,7 +43,10 @@ class ReaderViewModelTest {
     private val main = StandardTestDispatcher(TestCoroutineScheduler())
     private val io = StandardTestDispatcher(TestCoroutineScheduler())
 
-    /** Where the keep-awake times out: its own scheduler, so [settle] never runs its [KEEP_AWAKE_MS] out. */
+    /**
+     * Where the keep-awake times out and the first-run hint waits out its delay: its own scheduler, so [settle]
+     * never runs out [KEEP_AWAKE_MS] or [HINT_DELAY_MS].
+     */
     private val idle = StandardTestDispatcher(TestCoroutineScheduler())
 
     @BeforeTest
@@ -77,7 +80,7 @@ class ReaderViewModelTest {
         return ReaderViewModel(File(dir, "alice.epub"), owner, start, io, idle) { clock }
     }
 
-    /** Lets [ms] pass on the keep-awake's scheduler, running what falls due by then. */
+    /** Lets [ms] pass on [idle]'s scheduler, running what falls due by then. */
     private fun idleFor(ms: Long) {
         idle.scheduler.advanceTimeBy(ms)
         idle.scheduler.runCurrent()
@@ -528,6 +531,33 @@ class ReaderViewModelTest {
         assertFalse(vm.keepAwake.value)
     }
 
+    @Test
+    fun `a screen reader's click, with no pointer press, restarts the time too, a blocked one included, and pausing lets the screen go`() {
+        val vm = reading()
+        vm.shown()
+        val clicks = listOf<() -> Unit>(
+            vm::tapNext, vm::tapMiddle, vm::tapBack, vm::showControls, vm::hideControls,
+            { vm.changeFont(1) }, { vm.openContents() }, { vm.jumpTo(SpinePoint(0, 0)) },
+        )
+        for (click in clicks) {
+            idleFor(KEEP_AWAKE_MS - 1)
+            assertTrue(vm.keepAwake.value)
+            click()
+        }
+        assertEquals(HintStep.Controls, vm.readingHint.value, "the middle tap came while the guide showed back")
+        idleFor(KEEP_AWAKE_MS - 1)
+        assertTrue(vm.keepAwake.value)
+        idleFor(1)
+        assertFalse(vm.keepAwake.value)
+        vm.shown()
+        vm.showControls()
+        vm.onAppPause()
+        assertFalse(vm.keepAwake.value)
+        assertFalse(vm.controls.value)
+        idleFor(KEEP_AWAKE_MS)
+        assertFalse(vm.keepAwake.value)
+    }
+
     private val hintSaved: Boolean get() = ReadingStore(dir).load().settings.readingHintDismissed
 
     /** A [reading] reader whose view shows, [HINT_DELAY_MS] on, so the hint's first step is on screen. */
@@ -730,7 +760,7 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `once dismissed at the middle tap the hint never shows again, for any Book`() {
+    fun `once dismissed at the middle tap the hint never shows again, not even in a later session`() {
         val vm = guided()
         vm.tapNext()
         idleFor(HINT_DELAY_MS)
@@ -775,6 +805,48 @@ class ReaderViewModelTest {
         assertEquals(HintStep.Next, vm.readingHint.value)
         ShelfOwner.forget(dir)
         assertEquals(HintStep.Next, guided().readingHint.value)
+    }
+
+    /**
+     * A [guided] reader at the hint's second step, waiting out its delay, with the controls opened before it
+     * showed, then in Contents and back as the SDK does it: hidden, then shown with the controls still up.
+     */
+    private fun backFromContents(): ReaderViewModel = guided().also { vm ->
+        vm.tapNext()
+        idleFor(HINT_DELAY_MS - 1)
+        vm.tapMiddle()
+        assertTrue(vm.controls.value)
+        assertNotNull(vm.openContents())
+        vm.hidden()
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value, "not while in Contents")
+        vm.shown()
+        idleFor(HINT_DELAY_MS)
+        assertTrue(vm.controls.value)
+        assertNull(vm.readingHint.value, "not while the controls show")
+    }
+
+    @Test
+    fun `mid-walkthrough, a jump from Contents hides the controls and the step returns HINT_DELAY_MS later`() {
+        val vm = backFromContents()
+        vm.jumpTo(SpinePoint(0, 0))
+        assertFalse(vm.controls.value)
+        idleFor(HINT_DELAY_MS - 1)
+        assertNull(vm.readingHint.value)
+        idleFor(1)
+        assertEquals(HintStep.Back, vm.readingHint.value)
+    }
+
+    @Test
+    fun `mid-walkthrough, plain back from Contents shows no step until the controls hide, then HINT_DELAY_MS later`() {
+        val vm = backFromContents()
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value)
+        vm.hideControls()
+        idleFor(HINT_DELAY_MS - 1)
+        assertNull(vm.readingHint.value)
+        idleFor(1)
+        assertEquals(HintStep.Back, vm.readingHint.value)
     }
 
     @Test

@@ -46,8 +46,11 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -107,7 +110,7 @@ class ReaderScreen(
                     .then(staysAwake)
                     .then(if (keepAwake && reading && frame != null) Modifier.keepScreenOn() else Modifier)
             ) {
-                if (reading && frame != null && !controls) TapZones()
+                if (reading && frame != null && !controls) TapZones(hint)
                 Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
                     when {
                         opened == null -> NoPage(status)
@@ -122,8 +125,9 @@ class ReaderScreen(
     }
 
     /**
-     * Every press anywhere on the reading view, seen before whatever takes it, keeps the screen on
-     * ([ReaderViewModel.stayAwake]): a turn, showing or hiding the controls, a control, or a block's blank space.
+     * Every pointer press anywhere on the reading view, seen before whatever takes it, keeps the screen on
+     * ([ReaderViewModel.stayAwake]), a block's blank space included. A screen reader's click never passes here;
+     * the view model's actions keep the screen on for it.
      */
     private val staysAwake = Modifier.pointerInput(Unit) {
         awaitPointerEventScope {
@@ -146,14 +150,15 @@ class ReaderScreen(
      * left [TAP_BACK_WIDTH] turning back, the next [TAP_CONTROLS_WIDTH] showing the controls, the rest turning
      * forward. They lie under the Page, which takes no taps, so the end page's "Back to Shelf" still does.
      * They are there once a Page or the end page shows and while the controls don't, so a screen reader can't
-     * turn under the controls.
+     * turn under the controls. While the first-run hint's guide shows [hint], the two it doesn't point at are
+     * disabled to a screen reader, as a tap there does nothing.
      */
     @Composable
-    private fun TapZones() {
+    private fun TapZones(hint: HintStep?) {
         Row(Modifier.fillMaxSize()) {
-            TapZone(READING_PREVIOUS_PAGE, TAP_BACK_WIDTH) { viewModel.tapBack() }
-            TapZone(READING_SHOW_CONTROLS, TAP_CONTROLS_WIDTH) { viewModel.tapMiddle() }
-            TapZone(READING_NEXT_PAGE, 1f - TAP_BACK_WIDTH - TAP_CONTROLS_WIDTH) { viewModel.tapNext() }
+            TapZone(READING_PREVIOUS_PAGE, TAP_BACK_WIDTH, hint, HintStep.Back) { viewModel.tapBack() }
+            TapZone(READING_SHOW_CONTROLS, TAP_CONTROLS_WIDTH, hint, HintStep.Controls) { viewModel.tapMiddle() }
+            TapZone(READING_NEXT_PAGE, 1f - TAP_BACK_WIDTH - TAP_CONTROLS_WIDTH, hint, HintStep.Next) { viewModel.tapNext() }
         }
     }
 
@@ -163,8 +168,8 @@ class ReaderScreen(
      * centred in the step's tap zone at mid-height, pressing, and the step's line of copy just below it in a box
      * inverted from the Page (the content colour its fill, the background colour its text), centred on the dot
      * but kept inside the side margins. It takes no taps, so each reaches the tap zone under it, which acts only
-     * when it is the step's ([ReaderViewModel.tapNext]); to a screen reader only the copy is there, as plain text, and it is too
-     * small to cover a tap zone and drop it from the accessibility tree.
+     * when it is the step's ([ReaderViewModel.tapNext]); to a screen reader only the copy is there, as plain text
+     * announced as it appears, and it is too small to cover a tap zone and drop it from the accessibility tree.
      */
     @Composable
     private fun Guide(step: HintStep) {
@@ -200,6 +205,7 @@ class ReaderScreen(
                     maxLines = 1,
                     color = colors.background,
                     modifier = Modifier
+                        .semantics { liveRegion = LiveRegionMode.Polite }
                         .background(colors.content)
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
@@ -219,14 +225,20 @@ class ReaderScreen(
         }
     }
 
-    /** One tap zone, [width] of the screen's, a button called [label] to a screen reader. */
+    /**
+     * One tap zone, [width] of the screen's, a button called [label] to a screen reader, disabled while the guide
+     * shows a [hint] other than its own [zone].
+     */
     @Composable
-    private fun RowScope.TapZone(label: String, width: Float, onTap: () -> Unit) {
+    private fun RowScope.TapZone(label: String, width: Float, hint: HintStep?, zone: HintStep, onTap: () -> Unit) {
         Box(
             Modifier
                 .weight(width)
                 .fillMaxHeight()
-                .semantics { contentDescription = label }
+                .semantics {
+                    contentDescription = label
+                    if (hint != null && hint != zone) disabled()
+                }
                 .lightClickable(hapticsEnabled = false, role = Role.Button, onClick = onTap)
         )
     }

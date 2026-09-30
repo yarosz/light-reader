@@ -379,8 +379,8 @@ private val LINE_BREAK_RUN = Regex("\n+")
  * twice changes nothing.
  * - schemaVersion: the higher, so an older build never downgrades the file.
  * - books: both sides' Books. For a Book on both sides, see [mergeBook].
- * - settings: fontSize and fontStep together from [mine]; unknown fields from both, [mine] winning a clash.
- * - settings: readingHintDismissed is true if either side's is.
+ * - settings: fontSize and fontStep together from [mine], and readingHintDismissed true if either side's is;
+ *   unknown fields from both, [mine] winning a clash.
  * - catalogues: both sides' records; for a Catalogue on both sides, see [mergeRecord]. A removal is a
  *   record too, so it survives a merge with a file that still lists the Catalogue, and adding it
  *   back later wins over the removal the same way.

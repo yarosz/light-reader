@@ -145,20 +145,20 @@ so every Reader state has a visible way to the Shelf: "Back to Shelf" where ther
 Page the controls' back.
 
 **Layout.** The Page alone: it fills the screen inside the margins, and nothing else shows while reading
-until a centre tap shows the controls, but for the first-run hint (below). The screen is three full-height columns, margins included: a tap
-in the left 30% turns back, one in the right 45% turns forward, and one in the 25% between shows the
-controls (`Typesetting.kt`); to a screen reader they are the buttons "Previous page", "Show controls" and
-"Next page". They are there once a Page or the end page shows, and not while the controls show. The
-volume keys turn too, down forward and up back. A Page goes by its start, or, when a Chapter starts later
-in its first line (a table of contents may point mid-line, or at a Part's heading right above its first
-Chapter's), by the last Chapter starting there, so a jump names the Chapter chosen. A Page that opens on
-headings, with no Chapter starting in its first line, goes by the first Chapter starting in them (of two
-starting at one point, the later), else by its first line under them: a Page opening on an unlisted
-heading ("VOLUME I", or an illustration's caption) above a Part's heading goes by the Part, and a Page
-opening on a Chapter's heading, with the Chapter's start on the next line, goes by that Chapter. A Page
-of only headings goes by the Chapter starting where it ends, whose headings they are, unless Back matter
-starts there; the end of a Spine item counts as the next one's start, so a Part's title page that is a
-Spine item of its own goes by the Part's first Chapter. The Page takes the whole height, so Pages re-pack
+until a centre tap shows the controls, but for the first-run hint (below). The screen is three full-height
+columns, margins included: a tap in the left 30% turns back, one in the right 45% turns forward, and one in
+the 25% between shows the controls (`Typesetting.kt`); to a screen reader they are the buttons "Previous
+page", "Show controls" and "Next page". They are there once a Page or the end page shows, and not while the
+controls show. The volume keys turn too, down forward and up back. A Page goes by its start, or, when a
+Chapter starts later in its first line (a table of contents may point mid-line, or at a Part's heading
+right above its first Chapter's), by the last Chapter starting there, so a jump names the Chapter chosen. A
+Page that opens on headings, with no Chapter starting in its first line, goes by the first Chapter starting
+in them (of two starting at one point, the later), else by its first line under them: a Page opening on an
+unlisted heading ("VOLUME I", or an illustration's caption) above a Part's heading goes by the Part, and a
+Page opening on a Chapter's heading, with the Chapter's start on the next line, goes by that Chapter. A
+Page of only headings goes by the Chapter starting where it ends, whose headings they are, unless Back
+matter starts there; the end of a Spine item counts as the next one's start, so a Part's title page that is
+a Spine item of its own goes by the Part's first Chapter. The Page takes the whole height, so Pages re-pack
 at the Place, which a layout change never moves.
 
 **Controls.** A centre tap shows the controls over the Page, which stays as it is under them: a top bar
@@ -181,8 +181,9 @@ between "A−" and "A+" is blank. A tap anywhere else, the Page included, hides 
 turning (to a screen reader, "Hide controls", the one button over the Page while they show); every turn
 hides them, so a volume key turns and hides them (on the end page volume down only hides them); a font
 change keeps them; opening Contents keeps them, so back from Contents returns to the Page as it was,
-controls and all, while a Chapter or Part chosen there shows its Page without them; the Tool pausing
-hides them, and the reading view always opens without them. Showing them keeps the Page's timing, the time they show counting as time on the Page.
+controls and all, while a Chapter or Part chosen there shows its Page without them; the Tool pausing while
+reading hides them (a pause in Contents leaves them as they were), and the reading view always opens
+without them. Showing them keeps the Page's timing, the time they show counting as time on the Page.
 "Chrome" and "overlay" are not names for them.
 
 **Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
@@ -262,30 +263,32 @@ another font size a Finished Book's Place may land before the last Page, and for
 end page without clearing it.
 
 **Keep awake.** The screen stays on while the reading view shows a Page or the end page, until 10 minutes
-pass with no tap or volume key press there, then follows the phone's own timeout. It never stays on while
-the Tool is paused.
+pass with no tap, a screen reader's included, or volume key press there, then follows the phone's own
+timeout. It never stays on while the Tool is paused.
 
 **First-run hint.** A walkthrough of the three tap zones on the reading view, until the reader has taken it
-once across all Books: a touch dot, like Android's "Show taps", pressing in a zone at mid-height (a filled circle 40 dp
-across in the content colour at 62%, with a faint 1 dp ring, fading in, pressing to 82% and back, then resting
-at 75%, every 2.4 s), and one line of copy just below it in the SDK's Detail style, in a box inverted from
-the Page: the content colour as its fill and the background colour as its text, so white with black text on
-the LP3's black, and no rule. It is centred on the dot but kept inside the margins. It appears 1 s after its step can show:
-once the Book's first Page shows, after each step moves on, and when the controls hide or the end page is
-left. Before it appears every tap and key does what it always does, and a tap in the step's zone doesn't
-move it on.
-Three steps, each waiting for a tap in its zone: forward first ("Tap here for the next page"), the first
-need and the largest zone; back second ("Tap here to go back"), which returns to the starting Page, and
-moves on even on the Book's first Page, where it can't turn; the middle last ("Tap the middle for
-controls"), which opens the controls and ends it. While the guide shows, the walkthrough must be followed:
-a tap in its step's zone does what it always does and moves it on, a tap in another zone does nothing, and
-the volume keys do nothing either (LightOS still doesn't get them, so the volume stays), as it teaches the
-taps. Both still count as a press for "Keep awake". Once it ends, every tap and key does what it always
-does again. System back leaves the Reader as ever. It is saved as dismissed only at that last tap (`readingHintDismissed`): leaving the Book, or the Tool pausing,
-mid-walkthrough saves nothing, and it starts again from the first step. It hides while the controls show
-and returns at its step when they hide; it never shows on the end page, and a tap there doesn't move it
-on. Never in a dev-start session. The guide takes no taps, and to a screen reader it is only the line of
-copy, as plain text, too small to hide a tap zone's button.
+once across all Books: a touch dot, like Android's "Show taps", pressing in a zone at mid-height (a filled
+circle 40 dp across in the content colour at 62%, with a faint 1 dp ring, fading in, pressing to 82% and
+back, then resting at 75%, every 2.4 s), and one line of copy just below it in the SDK's Detail style, in a
+box inverted from the Page: the content colour as its fill and the background colour as its text, so white
+with black text on the LP3's black, and no rule. It is centred on the dot but kept inside the margins. It
+appears 1 s after its step can show: once the Book's first Page shows, after each step moves on, and when
+the controls hide or the end page is left. Before it appears every tap and key does what it always does,
+and a tap in the step's zone doesn't move it on. Three steps, each waiting for a tap in its zone: forward
+first ("Tap here for the next page"), the first need and the largest zone; back second ("Tap here to go
+back"), which turns back, and moves on even on the Book's first Page, where it can't turn; the middle last
+("Tap the middle for controls"), which opens the controls and ends it. While the guide shows, the
+walkthrough must be followed: a tap in its step's zone does what it always does and moves it on, a tap in
+another zone does nothing, and the volume keys do nothing either (LightOS still doesn't get them, so the
+volume stays), as it teaches the taps. Both still count as a press for "Keep awake". Once it ends, every
+tap and key does what it always does again. System back leaves the Reader as ever. It is saved as dismissed
+only at that last tap (`readingHintDismissed`): leaving the Book, or the Tool pausing while reading,
+mid-walkthrough saves nothing, and it starts again from the first step, while a pause in Contents leaves it
+at its step. It hides while the controls show and returns at its step when they hide; it never shows on the
+end page, and a tap there doesn't move it on. Never in a dev-start session. The guide takes no taps. To a
+screen reader it is only the line of copy, as plain text, announced as each step appears and too small to
+hide a tap zone's button; while it shows, the two zones its step doesn't point at are disabled buttons, as
+a tap there does nothing.
 
 **Stored.** Every Place write stores `progress` (additive, ADR 0002): the share (0–1) of all the
 Book's characters before the Place, Front matter and Back matter included, to 4 decimals. The Shelf's percent
