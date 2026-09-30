@@ -13,5 +13,18 @@ const val DEFAULT_FONT_STEP = 1
 /** Line height as a multiple of the font size; leak-free on the LP3 with LineHeightStyle(Center, Trim.None). */
 const val LINE_HEIGHT = 1.35f
 
+/**
+ * The reading view's tap zones, full-height columns (DESIGN.md "Reading"): the left 30% turns back, the next
+ * 25% shows the controls, and the rest turns forward, the likeliest tap getting the widest zone.
+ */
+const val TAP_BACK_WIDTH = 0.30f
+const val TAP_CONTROLS_WIDTH = 0.25f
+
+/** The rule between the controls and the Page. */
+val CONTROLS_RULE = 1.dp
+
+/** Each side of a button in the controls' bottom row: "A−" and "A+" sit side by side, so each target is 48 dp or wider. */
+val CONTROL_PADDING = 12.dp
+
 val SIDE_MARGIN = 20.dp
 val TOP_BOTTOM_MARGIN = 14.dp

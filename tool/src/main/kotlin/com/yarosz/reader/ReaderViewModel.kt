@@ -69,12 +69,23 @@ class ReaderViewModel(
     val atEnd = MutableStateFlow(false)
 
     /**
-     * The top line: the title of the Chapter the Page goes by ([pagePoint]), Back matter's included, else
-     * (Front matter, the end page) the Book's Shelf title.
+     * The controls' running head: the Chapter the Page goes by ([pagePoint]), Back matter's included, with
+     * its Part ([runningHeadOf]), else (Front matter, the end page) the Book's Shelf title.
      */
-    val topLine = MutableStateFlow("")
+    val runningHead = MutableStateFlow(RunningHead(null, ""))
 
-    /** The footer's Progress line ([minutesLine]); null for none. */
+    /** Whether the controls show over the Page. Every turn, opening Contents and the Tool pausing hide them. */
+    val controls = MutableStateFlow(false)
+
+    fun showControls() {
+        controls.value = true
+    }
+
+    fun hideControls() {
+        controls.value = false
+    }
+
+    /** The controls' Progress line ([minutesLine]); null for none. */
     val progressLine = MutableStateFlow<ProgressLine?>(null)
 
     /** The title the Shelf shows for the Book. */
@@ -191,9 +202,10 @@ class ReaderViewModel(
      * sets Finished; nothing on the end page or on the Book's last Page, so Back matter never shows a
      * second end page. Leaving a Page for the next one gives a speed sample when
      * it was reached that way too ([PageTimer]); the end page is not a Page, so leaving for it gives none.
-     * The next Page is timed from when it shows, so its layout doesn't count as reading.
+     * The next Page is timed from when it shows, so its layout doesn't count as reading. Any turn hides the controls.
      */
     fun nextPage() {
+        hideControls()
         val shown = frame.value ?: return
         if (atEnd.value) return
         if (reachesEnd(shown)) {
@@ -213,9 +225,10 @@ class ReaderViewModel(
     /**
      * A back turn: from the end page to the last Page, else to the Page before. It clears Finished from the
      * end page, and when it lands on a Page of the text, even on the first Page, which has no Page before
-     * it; a back turn inside Back matter keeps Finished.
+     * it; a back turn inside Back matter keeps Finished. Any turn hides the controls.
      */
     fun previousPage() {
+        hideControls()
         if (frame.value == null) return
         timer.discard()
         if (atEnd.value) {
@@ -230,6 +243,7 @@ class ReaderViewModel(
     /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
     fun openContents(): Contents? {
         timer.discard()
+        hideControls()
         return book.value?.contentsAt(pagePoint, atEnd.value)
     }
 
@@ -272,6 +286,7 @@ class ReaderViewModel(
     /** Activity.onPause: the last hook guaranteed to run before the process can be killed. */
     override fun onAppPause() {
         timer.discard()
+        hideControls()
         saver.flush()
     }
 
@@ -368,7 +383,7 @@ class ReaderViewModel(
         val opened = book.value ?: return
         val point = pagePoint
         val chapter = opened.chapterAt(point).takeUnless { atEnd.value }
-        topLine.value = chapter?.let { opened.chapters[it].title } ?: shelfTitle
+        runningHead.value = chapter?.let { runningHeadOf(opened.chapters[it]) } ?: RunningHead(null, shelfTitle)
         progressLine.value = words?.takeUnless { atEnd.value }?.let { opened.minutesLine(it, point, owner.speed.wpm) }
     }
 
@@ -430,3 +445,9 @@ class ReaderViewModel(
 
     private fun ms(ns: Long) = "%.1f".format(Locale.ROOT, ns / 1e6)
 }
+
+/** The controls' running head: [title], the Chapter's or the Book's, under [part], its Part's title, when it has one. */
+data class RunningHead(val part: String?, val title: String)
+
+/** A Chapter's running head: its title under its nearest Part's, the one its table of contents nests it in last. */
+fun runningHeadOf(chapter: Chapter): RunningHead = RunningHead(chapter.parts.lastOrNull()?.title, chapter.title)

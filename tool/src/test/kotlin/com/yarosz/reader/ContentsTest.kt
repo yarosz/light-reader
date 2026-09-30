@@ -1,10 +1,9 @@
 package com.yarosz.reader
 
-import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** What Contents lists and which row is current ([contentsAt]), and the top line's tap target ([contentsTargetHeight]). */
+/** What Contents lists and which row is current ([contentsAt]). */
 class ContentsTest {
 
     private val spineItems = listOf("front", "one", "two", "license").map { SpineItem(it, listOf(Block(BlockKind.Paragraph, "x".repeat(100)))) }
@@ -45,12 +44,6 @@ class ContentsTest {
         assertEquals(1, twin.contentsAt(SpinePoint(1, 0), atEnd = false).current)
     }
 
-    @Test
-    fun `the tap target is 48 dp from the screen's edge, or the margin, top line and the 4 dp under it when taller`() {
-        assertEquals(48.dp, contentsTargetHeight(margin = 14.dp, topLine = 20.dp))
-        assertEquals(64.dp, contentsTargetHeight(margin = 14.dp, topLine = 46.dp))
-    }
-
     private val partOne = Part("Part One", SpinePoint(1, 0))
     private val bookA = Part("Book A", SpinePoint(2, 0))
 
@@ -77,5 +70,12 @@ class ContentsTest {
         assertEquals(3, nested.contentsAt(SpinePoint(2, 50), atEnd = false).current)
         assertEquals(3, nested.contentsAt(SpinePoint(2, 60), atEnd = true).current)
         assertEquals(4, nested.contentsAt(SpinePoint(3, 0), atEnd = false).current)
+    }
+
+    @Test
+    fun `the running head is the Chapter under its nearest Part, or the Chapter alone`() {
+        val part = Part("BOOK TWO: 1805", SpinePoint(1, 0))
+        assertEquals(RunningHead("BOOK TWO: 1805", "CHAPTER I"), runningHeadOf(Chapter("CHAPTER I", SpinePoint(1, 0), listOf(Part("VOLUME I", SpinePoint(0, 0)), part))))
+        assertEquals(RunningHead(null, "CHAPTER I"), runningHeadOf(Chapter("CHAPTER I", SpinePoint(1, 0))))
     }
 }

@@ -15,6 +15,10 @@ const val MINUTES_UNDER_ONE_SHORT = "under 1 min left"
 const val CONTENTS_TITLE = "Contents"
 const val CONTENTS_HERE = "you're here"
 const val CONTENTS_SHELF = "Shelf"
+const val READING_PREVIOUS_PAGE = "Previous page"
+const val READING_SHOW_CONTROLS = "Show controls"
+const val READING_NEXT_PAGE = "Next page"
+const val READING_HIDE_CONTROLS = "Hide controls"
 
 /** The reading speed, in words per minute, until the reader has given [MEASURED_AFTER] samples. */
 const val PRIOR_WPM = 230.0
@@ -91,8 +95,8 @@ fun OpenBook.placeAt(point: SpinePoint, now: Long): Place =
 fun OpenBook.chapterEnd(index: Int): SpinePoint = chapters.getOrNull(index + 1)?.start?.let { minOf(it, textEnd) } ?: textEnd
 
 /**
- * A Progress line: [full], and the [short] form the footer shows instead when [full] doesn't fit on its one
- * line between "A−" and "A+" (large system text).
+ * A Progress line: [full], and the [short] form the controls show instead when [full] doesn't fit on its one
+ * line, the controls' full width (large system text).
  */
 data class ProgressLine(val full: String, val short: String)
 

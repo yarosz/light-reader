@@ -115,8 +115,7 @@ What fits on the screen at the current font size. Recomputed whenever the layout
 and gone once the reader leaves the Book. A Catalogue's page (one fetch of its list, which "More"
 extends) is not a Page. Each Page goes by one Chapter, or by none in Front matter: the one its top is in,
 or a Chapter that starts later in its first line, or in or right after the headings it opens on. The
-Chapter title shown while reading, the time left, and the Chapter Contents marks as current all follow
-it.
+running head the controls show, the time left, and the Chapter Contents marks as current all follow it.
 _Avoid_: screen
 
 **Progress**:
