@@ -128,11 +128,12 @@ private val WORD = Regex("""[\p{L}\p{N}]+""")
 
 /**
  * A Book's summary on its detail page: the first prose summary (the parser drops metadata dumps,
- * D14.4), unless it only repeats the author, as a Gutenberg list entry's short content does.
+ * D14.4), unless it only repeats the author, as a Gutenberg list entry's short content does, a title
+ * of nobility and all ("graf Leo Tolstoy").
  */
 fun detailSummary(entries: List<CatalogueEntry>, opener: CatalogueEntry? = null): String? {
     val author = detailAuthor(entries, opener)
-    return entries.firstNotNullOfOrNull { it.summary?.takeIf { summary -> summary != author } }
+    return entries.firstNotNullOfOrNull { it.summary?.takeIf { summary -> withoutLeadingTitle(summary) != author } }
 }
 
 /**

@@ -195,6 +195,28 @@ class CatalogueViewModelTest {
     }
 
     @Test
+    fun `a search's results and their More fetch as a search, so a failure logs no path`() {
+        val lines = mutableListOf<String>()
+        val owner = ShelfOwner.of(dir) { ShelfOwner(dir, io, transport, lines::add) { clock } }.also {
+            it.refresh()
+            settle()
+        }
+        val results = "https://books.example.org/opds/search/private%20terms"
+        val search = CatalogueSearch.Ready(SearchTemplate("https://books.example.org/opds/search/{searchTerms}", home))
+        val page = CataloguePageViewModel(owner, GUTENBERG, PageSource.Search(search, "private terms")).also { settle() }
+        assertIs<PageState.Failed>(page.state.value)
+        answers[results] = Answer(body = fixture("gutenberg-popular.xml"))
+        page.load()
+        settle()
+        assertIs<PageState.Listing>(page.state.value)
+        page.more()
+        settle()
+        assertEquals("https://books.example.org/ebooks/search.opds/?sort_order=downloads&start_index=26", transport.asked.last().value)
+        val refused = "catalogue fetch failed: https://books.example.org/…: java.net.ConnectException: refused: https://books.example.org/… -> Unreachable"
+        assertEquals(listOf(refused, refused), lines)
+    }
+
+    @Test
     fun `search terms with reserved and non-ASCII characters reach the server encoded once, as one parameter`() {
         val results = "https://m.gutenberg.org/ebooks/search.opds/?query=Tom%20%26%20Jerry%20%231%20%2B%20caf%C3%A9"
         answers[results] = Answer(body = fixture("gutenberg-popular.xml"))

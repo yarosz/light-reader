@@ -240,6 +240,7 @@ About
 AboutScreen
 AboutSection
 Standard Ebooks (built in)
-Reader has no accounts, no hosted service and no tracking. It uses the network only to fetch a Catalogue and download a Book, and reading works fully offline.
+Reader has no accounts, no service of its own and no tracking. It uses the network only to fetch a Catalogue and download a Book, and reading works fully offline.
+AndroidX, Jetpack Compose, Material Components, Kotlin, kotlinx.coroutines, kotlinx.serialization, Ktor, OkHttp, the UnifiedPush connector, Tink and Guava: Apache License 2.0.
 While you read, the screen stays on until 10 minutes pass without a tap or key press, then follows your phone’s own timeout.
 Reader/$VERSION_NAME (+https://$REPO_URL)

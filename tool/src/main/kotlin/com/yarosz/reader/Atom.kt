@@ -236,8 +236,9 @@ private val OF = Regex("\\bof\\b")
  */
 private val NOBILITY_TITLES = setOf(
     "graf", "gräfin", "count", "countess", "baron", "baroness", "freiherr", "freifrau", "prince", "princess",
-    "knyaz", "knyaginya", "fürst", "fürstin", "duke", "duchess", "marquis", "marquise", "earl", "viscount",
-    "vicomte", "comte", "comtesse", "conte", "contessa",
+    "kniaz", "kniaginia", "knyaz", "knyaginya", "fürst", "fürstin", "duke", "duchess", "duc", "duchesse",
+    "marquis", "marquise", "earl", "viscount", "vicomte", "comte", "comtesse", "conte", "contessa", "conde",
+    "condesa", "principe", "principessa", "hrabia", "hrabina", "gróf", "grófnő", "książę", "księżna",
 )
 
 /** Lowercase words a name may hold between its capitalised ones ("Honoré de Balzac"). */
@@ -257,11 +258,12 @@ internal fun withoutLeadingTitle(name: String): String {
 }
 
 /**
- * An author's name for display. A title of nobility is dropped: a comma-separated part after the
- * first that is one of [NOBILITY_TITLES] ("Tolstoy, Leo, graf, 1828-1910"), or one leading a name in
- * reading order ([withoutLeadingTitle]). Then only the simple inverted form un-inverts: "Austen, Jane"
- * and "Austen, Jane, 1775-1817" are "Jane Austen" (life dates dropped), and "Balzac, Honoré de" is
- * "Honoré de Balzac". Anything else stays as the feed gave it: further commas, "Various",
+ * An author's name for display. A title of nobility is dropped: one of [NOBILITY_TITLES] as a
+ * comma-separated part of the simple inverted form ("Tolstoy, Leo, graf, 1828-1910") or after a name
+ * in reading order ("Leo Tolstoy, graf"), or leading a name in reading order ([withoutLeadingTitle]).
+ * Then only the simple inverted form un-inverts: "Austen, Jane" and "Austen, Jane, 1775-1817" are
+ * "Jane Austen" (life dates dropped), and "Balzac, Honoré de" is "Honoré de Balzac". Anything else
+ * stays as the feed gave it, a title of nobility included: further commas, "Various",
  * organisations, several authors, parenthesised full names, a title that isn't a lowercase title of
  * nobility ("Vicomte de" with its particle, "Sir"), and a title after the comma ("Marcus Aurelius,
  * Emperor of Rome"), which the word "of" gives away.
@@ -273,7 +275,7 @@ fun displayAuthor(name: String): String {
         (parts.size == 2 || LIFE_DATES.matches(parts[2]))
     return when {
         simple -> "${parts[1]} ${parts[0]}"
-        parts.size < all.size -> parts.joinToString(", ")
+        all.size == 2 && parts.size == 1 && PLAIN_NAME.matches(parts[0]) -> parts[0]
         else -> withoutLeadingTitle(name)
     }
 }

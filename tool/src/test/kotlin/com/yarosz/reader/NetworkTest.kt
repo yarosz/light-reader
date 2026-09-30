@@ -211,12 +211,14 @@ class NetworkTest {
         fetchPage(transport, url(results), lines::add, search = true)
         fetchPage(transport, url("$results/page/2"), lines::add, search = true)
         fetchPage(transport, url("https://books.example.org/opds/new/private"), lines::add)
+        fetchPage(transport, url("https://books.example.org?q=private%20terms"), lines::add, search = true)
         assertEquals(
             listOf(
                 "catalogue fetch failed: https://books.example.org/…: HTTP 504 at https://www.example.org/… -> HttpError(status=504)",
                 "catalogue fetch failed: https://books.example.org/…: java.net.ConnectException: refused: https://books.example.org/… -> Unreachable",
                 "catalogue fetch failed: https://books.example.org/opds/new/private: java.net.ConnectException: refused: " +
                     "https://books.example.org/opds/new/private -> Unreachable",
+                "catalogue fetch failed: https://books.example.org?…: java.net.ConnectException: refused: https://books.example.org?… -> Unreachable",
             ),
             lines,
         )

@@ -116,7 +116,7 @@ Ordered. Each item ends on its _done-when_.
   - A label that ends with its Chapter's first heading, after a caption, is titled by the heading
     ("CHAPTER III.").
   - N4 (c), Contents: tapping the top line opens it (the screen's top 48 dp, so the top of the Page no
-    longer turns). One row per Chapter, the current one marked "you're here" (on the end page, the last
+    longer turns). One row per Chapter, the current one marked "you’re here" (on the end page, the last
     Chapter of the text); a jump lands on a Page starting exactly at the Chapter, laid out afresh, as the
     Place, untimed; it clears Finished in the text and keeps it in Back matter. Opening Contents drops
     the Page's timing. The volume keys stay LightOS's there until N5.
@@ -203,7 +203,7 @@ Ordered. Each item ends on its _done-when_.
   Decided before N5: no top line while reading (the controls' top bar takes its job and names the Part as
   a running head, "BOOK TWO: 1805 · CHAPTER I", since set as two lines, the Part over the Chapter); Contents lists Parts as heading rows, as a printed
   contents page does, and a Part row goes to its heading (nested tables of contents keep their Parts; a
-  Part heading row, in nested tables of contents only, is never "you're here"; in flat ones the Part is
+  Part heading row, in nested tables of contents only, is never "you’re here"; in flat ones the Part is
   already a Chapter row, never a second one, and is current like any Chapter); no Light/Dark button in
   v1; "Reader" on the Shelf opens About; the first-run hint shows once ever; a sixth, 15 sp font size.
   Closed: a way to the top or bottom of a long Contents; the scrollbar that shows while swiping does it.
@@ -218,7 +218,14 @@ Ordered. Each item ends on its _done-when_.
   logs no path where a template puts the terms (Calibre's `/opds/search/{searchTerms}`), Contents'
   marker reads "you’re here", and Catalogue authors drop lowercase titles of nobility ("graf Leo
   Tolstoy" reads "Leo Tolstoy"). Decided 2026-09-30: keep-awake stays fixed at 10 minutes, with no
-  setting.
+  setting. From E's review and a licence audit of the release APK: About lists only the places Reader
+  can reach today (the two shipped Catalogues and any Catalogue added over https; the stores list,
+  Smashwords, Humble Bundle, Tor and independent presses, can return with N7's uploads), its licences
+  name every shipped component, and `THIRD_PARTY_NOTICES.md` holds the full texts. The tool module
+  excludes ML Kit, CameraX, Play services, Firebase and Data Transport, which `sdk:ui` pulls in only for
+  its QR scanner (DESIGN "Dependencies"): the release APK goes from 27.1 MB to 5.2 MB. For Light (the
+  owner will raise it upstream): every Tool on `sdk:ui` ships ML Kit and Google's Data Transport, about
+  20 MB of it native code, whether or not it scans a code.
 - **N6 · Performance bar (ADR 0007).** Next after N5 E, before images. Re-measure on the LP3 after N3–N5: first Page at any Place and
   font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
   Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the

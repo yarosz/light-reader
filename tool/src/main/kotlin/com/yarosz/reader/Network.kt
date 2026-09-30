@@ -256,15 +256,15 @@ fun LightConnectivity.reporter(): () -> Boolean? = {
 private const val TAG = "Reader"
 
 /** Logs why a Catalogue fetch failed; "Couldn't open" logs its reason the same way. */
-private fun logFeedFailure(line: String) {
+internal fun logFeedFailure(line: String) {
     Log.w(TAG, line)
 }
 
 /**
  * This URL as a log may keep it: no userinfo, no fragment, and its query replaced by "?…", so a
  * search's terms and any credentials stay out of logcat. A [search]'s URL keeps only its host, the
- * rest shown as "/…", since a search template may put the terms in the path (Calibre's
- * `/opds/search/{searchTerms}`).
+ * rest shown as "/…" (or "?…" when only a query follows the host), since a search template may put
+ * the terms in the path (Calibre's `/opds/search/{searchTerms}`).
  */
 internal fun HttpsUrl.forLog(search: Boolean = false): String = urlForLog(value, search)
 
@@ -274,6 +274,7 @@ private fun urlForLog(url: String, search: Boolean): String {
     val authorityEnd = rest.indexOfFirst { it == '/' || it == '?' }.let { if (it < 0) rest.length else it }
     val tail = rest.substring(authorityEnd)
     return bare.substringBefore("://") + "://" + rest.substring(0, authorityEnd).substringAfterLast('@') + when {
+        search && tail.startsWith('?') -> "?…"
         search && tail.isNotEmpty() -> "/…"
         '?' in tail -> tail.substringBefore('?') + "?…"
         else -> tail
