@@ -544,7 +544,8 @@ fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
  * one a save writes with that size ([legacyFontStep]). Otherwise an older build changed the size since
  * this build last saved, and it is `fontStep`'s size in [LEGACY_FONT_SIZES], a stray index clamped to
  * the list. A `fontSize` that isn't a finite number reads as absent; a `fontStep` that isn't an integer
- * is corruption, as before.
+ * is corruption, as before. 15 sp and 17 sp share `fontStep` 0, so after 15 sp an older build that moves
+ * off 17 sp and back leaves a pair that still agrees, and it reads as 15 sp.
  */
 private fun JsonObject.toSettings(): Settings {
     val step = int("fontStep")?.coerceIn(LEGACY_FONT_SIZES.indices)

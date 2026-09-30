@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
  */
 class ReadingTest {
 
-    private val key = LayoutKey(fontStep = 1, widthPx = 1_000, pageHeightPx = 300)
+    private val key = LayoutKey(fontStep = DEFAULT_FONT_STEP, widthPx = 1_000, pageHeightPx = 300)
 
     /** [count] fake Spine items measured by [FakeSpineItem]'s simulated layout, one window at a time, counting each measure the session asks for. */
     private class Fixture(seed: Int, count: Int, windowChars: Int, textEnd: ((List<SpineItem>) -> SpinePoint)? = null) {
@@ -98,7 +98,7 @@ class ReadingTest {
         while (shown.pass.item == 0) shown = book.reading.next()!!
         val firstPass = shown.pass
         val place = shown.page.start
-        val bigger = key.copy(fontStep = 3)
+        val bigger = key.copy(fontStep = key.fontStep + 2)
         val relaid = book.reading.open(1, place, bigger)
         assertNotSame(firstPass, relaid.pass)
         assertEquals(bigger, relaid.pass.key)
@@ -186,7 +186,7 @@ class ReadingTest {
         val whole = pass(key, windowChars = 1_000).also { p -> p.windows.forEachIndexed { w, window -> p.record(w, tenCharLines(window)) } }
         assertEquals(length, whole.pages.last().end)
         assertEquals(Landing.Cached(whole.pages.last()), backwardLanding(whole, key, length))
-        assertEquals(Landing.Fresh(length), backwardLanding(whole, key.copy(fontStep = 2), length))
+        assertEquals(Landing.Fresh(length), backwardLanding(whole, key.copy(fontStep = key.fontStep + 1), length))
         assertEquals(Landing.Fresh(length), backwardLanding(null, key, length))
         val partial = pass(key, windowChars = 510).also { p -> p.record(0, tenCharLines(p.windows[0])) }
         assertTrue(partial.pages.isNotEmpty() && partial.pages.last().end < length)
@@ -289,7 +289,7 @@ class ReadingTest {
             assertTrue(forward.none { it.pass.item == end.item && end.char in it.page.start + 1 until it.page.end }, "seed $seed: a Page spans $end")
             assertEquals(1, ends.count { it == end }, "seed $seed")
             if (end.char < book.spineItems[end.item].text.length) {
-                book.reading.open(end.item, end.char, key.copy(fontStep = 2))
+                book.reading.open(end.item, end.char, key.copy(fontStep = key.fontStep + 1))
                 val back = book.reading.previous()!!
                 assertEquals(end, SpinePoint(back.pass.item, back.page.end), "seed $seed")
             }

@@ -159,6 +159,15 @@ class ReadingDataTest {
     }
 
     @Test
+    fun `after an older build changes fontStep, the next save writes a pair that agrees`() {
+        val olderBuilds = "{\"schemaVersion\": 1, \"settings\": {\"fontSize\": 15, \"fontStep\": 3}, \"books\": {}}"
+        val disk = decodeReadingData(olderBuilds).getOrThrow()
+        assertEquals(30f, disk.settings.fontSize)
+        val settings = Json.parseToJsonElement(merge(disk, disk).encode()).jsonObject.getValue("settings").jsonObject
+        assertEquals("30" to 3, settings.getValue("fontSize").jsonPrimitive.content to settings.getValue("fontStep").jsonPrimitive.int)
+    }
+
+    @Test
     fun `merge takes fontSize and fontStep together from mine`() {
         val merged = merge(ReadingData(settings = Settings(30f)), ReadingData(settings = Settings(15f)))
         val settings = Json.parseToJsonElement(merged.encode()).jsonObject.getValue("settings").jsonObject

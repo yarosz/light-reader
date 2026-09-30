@@ -520,10 +520,10 @@ class ReaderViewModelTest {
         io.scheduler.runCurrent()
         vm.openBook()
         main.scheduler.runCurrent()
-        assertEquals(3, vm.fontStep.value)
+        assertEquals(24.5f, FONT_SIZES[vm.fontStep.value])
         vm.changeFont(+1)
         settle()
-        assertEquals(4, vm.fontStep.value)
+        assertEquals(30f, FONT_SIZES[vm.fontStep.value])
         assertEquals(30f, ReadingStore(dir).load().settings.fontSize)
     }
 
@@ -531,7 +531,7 @@ class ReaderViewModelTest {
     fun `A− at 17 sp reaches 15 sp, saves it, and stops there`() {
         ReadingStore(dir).save { ReadingData(settings = Settings(fontSize = 17f)) }
         val vm = reading()
-        assertEquals(1, vm.fontStep.value)
+        assertEquals(17f, FONT_SIZES[vm.fontStep.value])
         vm.changeFont(-1)
         settle()
         assertEquals(15f, FONT_SIZES[vm.fontStep.value])
@@ -561,7 +561,7 @@ class ReaderViewModelTest {
         vm.changeFont(-3)
         assertEquals(0, vm.fontStep.value)
         vm.changeFont(+3)
-        assertEquals(3, vm.fontStep.value)
+        assertEquals(24.5f, FONT_SIZES[vm.fontStep.value])
         vm.changeFont(+3)
         assertEquals(FONT_SIZES.lastIndex, vm.fontStep.value)
     }
