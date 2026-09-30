@@ -12,28 +12,21 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.SimpleLightScreen
-import com.thelightphone.sdk.ui.LightBarButton
 import com.thelightphone.sdk.ui.LightText
 import com.thelightphone.sdk.ui.LightTextVariant
 import com.thelightphone.sdk.ui.lightClickable
 
-/** What Contents hands the Reader: a row's start to jump to, a Chapter's start or a Part's, or leaving the Book for the Shelf. */
-sealed interface ContentsChoice {
-    data class Row(val start: SpinePoint) : ContentsChoice
-    data object Shelf : ContentsChoice
-}
-
 /**
  * Contents (DESIGN.md "Contents"): its rows in order, a Part's row a heading, the current row marked
- * "you're here". A tap hands the Reader that row's start, "Shelf" on the bar hands it leaving the Book, and
- * back hands it nothing. It opens with the row before the current one at the top, so the current row is second, or
- * the current row at the top when it is first; the list scrolls there as that row is first placed, so no
- * frame shows it from the top. The volume keys stay LightOS's here.
+ * "you're here". A tap hands the Reader that row's start, a Chapter's or a Part's, and back hands it
+ * nothing; there is no way straight to the Shelf. It opens with the row before the current one at the top,
+ * so the current row is second, or the current row at the top when it is first; the list scrolls there as
+ * that row is first placed, so no frame shows it from the top. The volume keys stay LightOS's here.
  */
 class ContentsScreen(
     sealedActivity: SealedLightActivity,
     private val contents: Contents,
-) : SimpleLightScreen<ContentsChoice>(sealedActivity) {
+) : SimpleLightScreen<SpinePoint>(sealedActivity) {
     @Composable
     override fun Content() {
         val scroll = rememberScrollState()
@@ -42,7 +35,6 @@ class ContentsScreen(
         BackScreen(
             title = CONTENTS_TITLE,
             onBack = { goBack() },
-            right = LightBarButton.Text(CONTENTS_SHELF, onClick = { goBack(ContentsChoice.Shelf) }),
             scrollState = scroll,
         ) {
             contents.rows.forEachIndexed { i, row ->
@@ -52,7 +44,7 @@ class ContentsScreen(
                         scroll.dispatchRawDelta(placed.positionInParent().y)
                     }
                 }
-                val choose = { goBack(ContentsChoice.Row(row.start)) }
+                val choose = { goBack(row.start) }
                 Box(placed) {
                     if (row.isPart) {
                         Box(Modifier.lightClickable(onClick = choose).then(rowPadding()).semantics { heading() }) {

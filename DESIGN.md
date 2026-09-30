@@ -138,7 +138,7 @@ open this Book." (the reason goes to the log), and one with no text reads "This 
 each is "Back to Shelf", as on the end page. System back (the LP3's back gesture) leaves the Reader from
 anywhere, to the Shelf, which the Reader always opens over (see "Catalogues"), but a Tool can't show it,
 so every Reader state has a visible way to the Shelf: "Back to Shelf" where there is no Page, and on a
-Page the controls' back, or "Shelf" in Contents.
+Page the controls' back.
 
 **Layout.** The Page alone: it fills the screen inside the margins, and nothing else shows while reading
 until a centre tap shows the controls. The screen is three full-height columns, margins included: a tap
@@ -220,30 +220,30 @@ PROJECT GUTENBERG EBOOK … ***` lines before its license), else an untitled row
 
 **Contents.** The controls' list icon opens it, from a Page, the end page, Front matter or Back matter,
 and drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
-with the bar's back on the left and "Shelf" on the right, and one row per Chapter in order, each the
-Chapter's title verbatim at full strength, at most two lines, with a row for each Part as below; Back
-matter's rows follow the text's with no divider. As a printed contents page sets them, a Part the table
-of contents nests Chapters under ("What a Book shows") has a row of its own before its first Chapter's,
-outermost first, its title verbatim in the SDK's Heading style, at most two lines, marked as a heading
-for a screen reader (The Brothers Karamazov: "Part I", "Book I: The History of a Family", then "I: Fyodor
-Pavlovitch Karamazov"). A Part listed beside its Chapters is already a row, its Chapter's, so it gets no
-second. The current row alone has the detail line "you're here": the Chapter the Page goes by, as the
-running head names it (of two starting at one point, the later), or on the end page the last Chapter of
-the text. A Part's heading row is never current, and in Front matter no row is. The list opens with the
-row before the current one at the top, so the current row is second, or with the current row at the top
-when it is first; with no current row it opens at the top. When the current Chapter is the first of its
-Part, the row before is the Part's, so the list opens on that Part's heading. The list has a top and a
-bottom; "start" and "end" stay the Book's and a Chapter's. Tapping a row goes to the Page that starts at
-that Chapter's start, or at the Part's heading, laid out afresh from there so its heading tops the Page.
-A Part's heading Page goes by the Part's first Chapter when only headings come between them, else by the
-Chapter before it, or by none in Front matter (a Part's epigraph or introduction reads under the Chapter
-before). Back matter's first row may open on Back matter's opening lines instead. A jump lays out afresh
-even for the current Chapter, and even when that line starts mid-word (a Chapter anchored inside a
-paragraph): a jump never moves the start up to a whole word as a font change does. The Pages before it
-may tile differently, as after a font change. That Page is the Place, it is untimed, and the jump leaves
-the end page. Back, from the bar or the system, changes nothing else. "Shelf" leaves the Reader as system
-back does, straight to the Shelf with no frame of the reading view, and keeps the Place and Finished as
-they were. The volume keys stay LightOS's on this screen.
+with the bar's back on the left, and one row per Chapter in order, each the Chapter's title verbatim at
+full strength, at most two lines, with a row for each Part as below; Back matter's rows follow the text's
+with no divider. As a printed contents page sets them, a Part the table of contents nests Chapters under
+("What a Book shows") has a row of its own before its first Chapter's, outermost first, its title
+verbatim in the SDK's Heading style, at most two lines, marked as a heading for a screen reader (The
+Brothers Karamazov: "Part I", "Book I: The History of a Family", then "I: Fyodor Pavlovitch Karamazov").
+A Part listed beside its Chapters is already a row, its Chapter's, so it gets no second. The current row
+alone has the detail line "you're here": the Chapter the Page goes by, as the running head names it (of
+two starting at one point, the later), or on the end page the last Chapter of the text. A Part's heading
+row is never current, and in Front matter no row is. The list opens with the row before the current one
+at the top, so the current row is second, or with the current row at the top when it is first; with no
+current row it opens at the top. When the current Chapter is the first of its Part, the row before is the
+Part's, so the list opens on that Part's heading. The list has a top and a bottom; "start" and "end" stay
+the Book's and a Chapter's. Tapping a row goes to the Page that starts at that Chapter's start, or at the
+Part's heading, laid out afresh from there so its heading tops the Page. A Part's heading Page goes by
+the Part's first Chapter when only headings come between them, else by the Chapter before it, or by none
+in Front matter (a Part's epigraph or introduction reads under the Chapter before). Back matter's first
+row may open on Back matter's opening lines instead. A jump lays out afresh even for the current Chapter,
+and even when that line starts mid-word (a Chapter anchored inside a paragraph): a jump never moves the
+start up to a whole word as a font change does. The Pages before it may tile differently, as after a font
+change. That Page is the Place, it is untimed, and the jump leaves the end page. Back, from the bar or
+the system, returns to the reading view and changes nothing else; Contents has no way straight to the
+Shelf, so a double tap on the list icon can't leave the Book. The volume keys stay LightOS's on this
+screen.
 
 **Finished.** Showing the end page sets Finished, and the back turn from it clears it; leaving it
 either way keeps it. Setting or clearing it re-stamps the Place, the same Place with a newer time, so
@@ -445,7 +445,7 @@ otherwise wins when the file lands.
 | A download running | "downloading…" in secondary text | |
 
 "Read" closes the Catalogue's pages and "Add a Book", and opens the Reader over the Shelf with no frame
-of them between, so leaving the Reader (system back, "Shelf" in Contents, "Back to Shelf") always lands
+of them between, so leaving the Reader (system back, the controls' back, "Back to Shelf") always lands
 on the Shelf. Where the reader was in the Catalogue (a search, say) isn't kept: "Add" opens the list
 afresh. The page stays while a download runs and follows it: "downloading…", then "Read" when it lands.
 The download belongs to the Shelf, so leaving the page doesn't stop it, and the Shelf shows it as a row
