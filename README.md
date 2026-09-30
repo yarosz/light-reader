@@ -13,8 +13,8 @@ Works offline, with no account and nothing tracked. Copy-protected books from Ki
 > Not yet signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>
-  <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: the chapter's name on the top line, its heading above the first paragraph, and the minutes left in the chapter at the bottom">
-  <img src="docs/screenshots/italics.png" width="30%" alt="A page with 'Down, down, down.' and the word 'never' set in Literata's true italic">
+  <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: its heading above the first paragraph, the page filling the screen with nothing else on it">
+  <img src="docs/screenshots/controls.png" width="30%" alt="The reading controls over a page: back and the chapter's name at the top; the minutes left in the chapter, A−, A+ and Contents at the bottom; the word 'never' in Literata's true italic">
   <img src="docs/screenshots/caption.png" width="30%" alt="An illustration's description shown as a grey italic caption, followed by the story text">
 </p>
 

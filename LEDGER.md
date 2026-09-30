@@ -200,13 +200,13 @@ Ordered. Each item ends on its _done-when_.
   so separate Books once added) want a telling detail; Catalogue author forms keep titles of nobility
   ("graf Leo Tolstoy"), which could be dropped as life dates are.
   Decided before N5: no top line while reading (the controls' top bar takes its job and names the Part as
-  a running head, "BOOK TWO: 1805 · CHAPTER I"); Contents lists Parts as heading rows, as a printed
+  a running head, "BOOK TWO: 1805 · CHAPTER I", since set as two lines, the Part over the Chapter); Contents lists Parts as heading rows, as a printed
   contents page does, and a Part row goes to its heading (nested tables of contents keep their Parts; a
   Part heading row, in nested tables of contents only, is never "you're here"; in flat ones the Part is
   already a Chapter row, never a second one, and is current like any Chapter); no Light/Dark button in
   v1; "Reader" on the Shelf opens About; the first-run hint shows once ever; a sixth, 15 sp font size.
   Still open: a way to the top or bottom of a long Contents (measure the scrollbar's track tap first).
-  Parts in Contents (nested tables of contents) landed first (#40). Decided 2026-09-30 (Nicolas): the
+  Parts in Contents (nested tables of contents) landed first (#40). Decided 2026-09-29 (Nicolas): the
   running head names a Part only when the table of contents nests it; a flat table of contents names none,
   with no guessing (a wrong running head is worse than a missing one). The survey's R2h rule is dropped,
   and CONTEXT's Part entry keeps no rule for Chapters under a listed Part.

@@ -171,10 +171,11 @@ on its own Pages. In Front matter, and on the end page, it is the Book's title a
 the smallest size "A−", and at the largest "A+", is drawn in secondary text, ignores taps, and is a
 disabled button to a screen reader. The Progress line is one line, in Detail and secondary text, centred;
 when its full form, measured as drawn, doesn't fit the width (large system text), it shows its short form
-(below), ellipsised only if even that doesn't fit; with no line (Front matter, the end page, Back matter)
-the row stands alone. A tap anywhere else, the Page included, hides the controls without turning (to a
-screen reader, "Hide controls", the one button over the Page while they show); every turn hides them, so
-a volume key turns and hides them; a font change keeps them; opening Contents, or the Tool pausing, hides
+(below), ellipsised only if even that doesn't fit; with no line (in Front matter, on the end page, in
+Back matter, or in a Chapter that reads in under a minute) the row stands alone. A tap anywhere else, the
+Page included, hides the controls without turning (to a screen reader, "Hide controls", the one button
+over the Page while they show); every turn hides them, so a volume key turns and hides them (on the end
+page volume down only hides them); a font change keeps them; opening Contents, or the Tool pausing, hides
 them, and the reading view always opens without them. Showing them keeps the Page's timing, the time they
 show counting as time on the Page. "Chrome" and "overlay" are not names for them.
 
