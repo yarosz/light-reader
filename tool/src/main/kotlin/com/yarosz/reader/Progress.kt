@@ -96,7 +96,7 @@ fun OpenBook.chapterEnd(index: Int): SpinePoint = chapters.getOrNull(index + 1)?
 
 /**
  * A Progress line: [full], and the [short] form the controls show instead when [full] doesn't fit on its one
- * line, the controls' full width (large system text).
+ * line between "A−" and "A+" (large system text).
  */
 data class ProgressLine(val full: String, val short: String)
 

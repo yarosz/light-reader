@@ -23,7 +23,7 @@ const val TAP_CONTROLS_WIDTH = 0.25f
 /** The rule between the controls and the Page. */
 val CONTROLS_RULE = 1.dp
 
-/** Each side of a button in the controls' bottom row: "A−" and "A+" sit side by side, so each target is 48 dp or wider. */
+/** Each side of "A−" and "A+" in the controls' bottom row, so each target is 48 dp or wider. */
 val CONTROL_PADDING = 12.dp
 
 val SIDE_MARGIN = 20.dp

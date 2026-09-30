@@ -151,10 +151,10 @@ leave_check() {  # serial: from a Page, the controls' "Contents" opens Contents 
                  # dev-start when it opened the Book, so it stays on the Shelf.
   local s=$1 mark="ci-leave-check-$$-$RANDOM-$(date +%s)" shown=""
   "$adb" -s "$s" shell log -p i -t Reader "$mark" || { echo "could not write the logcat marker"; return 1; }
-  if ! ANDROID_SERIAL=$s mise run ui 2>/dev/null | grep -qE '^ +\* "Contents"  \('; then
+  if ! ANDROID_SERIAL=$s mise run ui 2>/dev/null | grep -qE '^ +\* ~Contents  \('; then
     ANDROID_SERIAL=$s mise run ui tap "Show controls" >/dev/null 2>&1 || { echo "could not show the controls"; return 1; }
   fi
-  ANDROID_SERIAL=$s mise run ui tap "Contents" >/dev/null 2>&1 || { echo "could not tap Contents in the controls"; return 1; }
+  ANDROID_SERIAL=$s mise run ui tap "Contents" >/dev/null 2>&1 || { echo "could not tap the controls' Contents icon"; return 1; }
   for _ in $(seq 1 10); do
     ANDROID_SERIAL=$s mise run ui 2>/dev/null | grep -qE '^ +"Shelf"  \(' && { shown=1; break; }
     sleep 1

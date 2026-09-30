@@ -173,10 +173,10 @@ class ReaderScreen(
     }
 
     /**
-     * The controls (DESIGN.md "Reading"), over the Page: the top bar, back to the Shelf and the running head
-     * (the Part on a line over the Chapter when there is one), and at the bottom the Progress line over "A−"
-     * and "A+" at the left and "Contents" at the right, each block ruled off from the Page, with no Progress
-     * line when there is none. A tap on a block's blank space does nothing; a tap anywhere else hides them.
+     * The controls (DESIGN.md "Reading"), over the Page: the top bar, back to the Shelf, the running head (the
+     * Part on a line over the Chapter when there is one) and the list icon that opens Contents, and at the
+     * bottom one row, "A−", the Progress line (blank when there is none) and "A+", each block ruled off from
+     * the Page. A tap on a block's blank space does nothing; a tap anywhere else hides them.
      */
     @Composable
     private fun Controls() {
@@ -195,6 +195,7 @@ class ReaderScreen(
             LightTopBar(
                 leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = { goBack() }, contentDescription = BACK_TO_SHELF),
                 center = runningHead.part?.let { LightTopBarCenter.TwoLineDetail(it, runningHead.title) } ?: LightTopBarCenter.Text(runningHead.title),
+                rightButton = LightBarButton.LightIcon(icon = LightIcons.LIST, onClick = { openContents() }, contentDescription = CONTENTS_TITLE),
                 modifier = Modifier.align(Alignment.TopCenter).background(background).then(TAKES_TAPS).drawBehind {
                     val y = size.height - CONTROLS_RULE.toPx() / 2
                     drawLine(rule, Offset(0f, y), Offset(size.width, y), CONTROLS_RULE.toPx())
@@ -210,14 +211,12 @@ class ReaderScreen(
                         val y = CONTROLS_RULE.toPx() / 2
                         drawLine(rule, Offset(0f, y), Offset(size.width, y), CONTROLS_RULE.toPx())
                     }
-                    .padding(start = SIDE_MARGIN, end = SIDE_MARGIN, top = 8.dp, bottom = TOP_BOTTOM_MARGIN),
+                    .padding(start = SIDE_MARGIN, end = SIDE_MARGIN, bottom = TOP_BOTTOM_MARGIN),
             ) {
-                progressLine?.let { ProgressText(it, Modifier.fillMaxWidth()) }
                 Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
                     FontButton("A−", -1, fontStep)
+                    progressLine?.let { ProgressText(it, Modifier.weight(1f)) } ?: Spacer(Modifier.weight(1f))
                     FontButton("A+", +1, fontStep)
-                    Spacer(Modifier.weight(1f))
-                    ControlButton(CONTENTS_TITLE, enabled = true) { openContents() }
                 }
             }
         }
@@ -300,7 +299,7 @@ fun progressForm(fullWidthPx: Int, availableWidthPx: Int): ProgressForm =
  * the width, measured as drawn at the system font scale, else its short form, ellipsised if even that
  * doesn't fit. The form not shown isn't placed, so a screen reader hears only the one on screen. Its
  * intrinsic sizes come from Compose's default (measuring at unbounded width), which gives the full form's
- * width: fine for its one caller, a full-width slot, which never asks.
+ * width: fine for its one caller, a weighted Row slot, which never asks.
  */
 @Composable
 private fun ProgressText(line: ProgressLine, modifier: Modifier) {
