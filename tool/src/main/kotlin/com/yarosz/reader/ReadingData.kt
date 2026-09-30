@@ -23,10 +23,11 @@ private const val TAG = "Reader"
  * a page turn creates a fresh Place, so a newer build's Place-level extras describe the old Place and
  * are dropped with it. Extras at the top level, in settings, and on a Book survive.
  *
- * Fields added since schema 1: `catalogues` (N3), a Place's `progress` (N4), and `settings.fontSize`.
- * `progress` is how far through the Book the Place is, for the Shelf's percent; the minutes left in a
- * Chapter are never stored, because they depend on the reader's speed. `fontSize` is the font size in
- * sp; `fontStep` keeps its meaning beside it (see [Settings]).
+ * Fields added since schema 1: `catalogues` (N3), a Place's `progress` (N4), `settings.fontSize`, and
+ * `settings.readingHintDismissed`. `progress` is how far through the Book the Place is, for the Shelf's
+ * percent; the minutes left in a Chapter are never stored, because they depend on the reader's speed.
+ * `fontSize` is the font size in sp; `fontStep` keeps its meaning beside it (see [Settings]).
+ * `readingHintDismissed` is whether the reader has finished the first-run hint (DESIGN.md "Reading").
  */
 const val CURRENT_SCHEMA = 1
 
@@ -84,8 +85,13 @@ data class Book(
 /**
  * The reader's settings. [fontSize] is the reading font size in sp, one of [FONT_SIZES]. The file stores it
  * as `fontSize` and, for older builds, as `fontStep`, the nearest size's index in [LEGACY_FONT_SIZES].
+ * [readingHintDismissed] is whether the reader has finished the first-run hint, which then never shows again.
  */
-data class Settings(val fontSize: Float = FONT_SIZES[DEFAULT_FONT_STEP], val extras: Map<String, JsonElement> = emptyMap())
+data class Settings(
+    val fontSize: Float = FONT_SIZES[DEFAULT_FONT_STEP],
+    val readingHintDismissed: Boolean = false,
+    val extras: Map<String, JsonElement> = emptyMap(),
+)
 
 /**
  * The reader's last change to one Catalogue, keyed by its [CatalogueKey] in [ReadingData.catalogues]:
@@ -374,6 +380,7 @@ private val LINE_BREAK_RUN = Regex("\n+")
  * - schemaVersion: the higher, so an older build never downgrades the file.
  * - books: both sides' Books. For a Book on both sides, see [mergeBook].
  * - settings: fontSize and fontStep together from [mine]; unknown fields from both, [mine] winning a clash.
+ * - settings: readingHintDismissed is true if either side's is.
  * - catalogues: both sides' records; for a Catalogue on both sides, see [mergeRecord]. A removal is a
  *   record too, so it survives a merge with a file that still lists the Catalogue, and adding it
  *   back later wins over the removal the same way.
@@ -386,7 +393,11 @@ fun merge(disk: ReadingData, mine: ReadingData): ReadingData = ReadingData(
         val m = mine.books[id]
         if (d != null && m != null) mergeBook(d, m) else m ?: d!!
     },
-    settings = Settings(mine.settings.fontSize, disk.settings.extras + mine.settings.extras),
+    settings = Settings(
+        fontSize = mine.settings.fontSize,
+        readingHintDismissed = disk.settings.readingHintDismissed || mine.settings.readingHintDismissed,
+        extras = disk.settings.extras + mine.settings.extras,
+    ),
     catalogues = (disk.catalogues.keys + mine.catalogues.keys).associateWith { key ->
         val d = disk.catalogues[key]
         val m = mine.catalogues[key]
@@ -440,7 +451,7 @@ private val Book.placeTime get() = place?.updatedAt ?: Long.MIN_VALUE
 private val prettyJson = Json { prettyPrint = true }
 
 private val TOP_FIELDS = setOf("schemaVersion", "settings", "books", "catalogues")
-private val SETTINGS_FIELDS = setOf("fontSize", "fontStep")
+private val SETTINGS_FIELDS = setOf("fontSize", "fontStep", "readingHintDismissed")
 private val ENTRY_FIELDS = setOf("title", "file", "place", "finished", "onShelf", "author", "source", "addedAt")
 private val PLACE_FIELDS = setOf("spineId", "block", "offset", "snippet", "updatedAt", "progress")
 private val CATALOGUE_FIELDS = setOf("name", "url", "removed", "updatedAt")
@@ -459,6 +470,7 @@ private fun legacyFontStep(size: Float) = nearestFontStep(size, LEGACY_FONT_SIZE
  * The file's text. Absent Places, progress, files, authors, sources, dates, names and URLs are
  * omitted, and so is an empty `catalogues`; unknown fields are written back as they came. The font size
  * is written twice: as `fontSize`, a whole number where it is one, and as `fontStep` ([legacyFontStep]).
+ * `readingHintDismissed` is always written, as a Book's `finished` is.
  */
 fun ReadingData.encode(): String = prettyJson.encodeToString(
     JsonElement.serializer(),
@@ -471,6 +483,7 @@ fun ReadingData.encode(): String = prettyJson.encodeToString(
             settings.extras,
             "fontSize" to JsonPrimitive(settings.fontSize.let { if (it % 1f == 0f) it.toInt() else it }),
             "fontStep" to JsonPrimitive(legacyFontStep(settings.fontSize)),
+            "readingHintDismissed" to JsonPrimitive(settings.readingHintDismissed),
         ),
         "books" to JsonObject(books.mapValues { (_, book) -> book.toJson() }),
         "catalogues" to catalogues.takeIf { it.isNotEmpty() }?.let { records ->
@@ -545,14 +558,16 @@ fun decodeReadingData(text: String): Result<ReadingData> = runCatching {
  * this build last saved, and it is `fontStep`'s size in [LEGACY_FONT_SIZES], a stray index clamped to
  * the list. A `fontSize` that isn't a finite number reads as absent; a `fontStep` that isn't an integer
  * is corruption, as before. 15 sp and 17 sp share `fontStep` 0, so after 15 sp an older build that moves
- * off 17 sp and back leaves a pair that still agrees, and it reads as 15 sp.
+ * off 17 sp and back leaves a pair that still agrees, and it reads as 15 sp. A `readingHintDismissed` that
+ * isn't a boolean reads as absent, false, so the worst a stray value does is show the hint once more.
  */
 private fun JsonObject.toSettings(): Settings {
     val step = int("fontStep")?.coerceIn(LEGACY_FONT_SIZES.indices)
     val size = (present("fontSize") as? JsonPrimitive)?.takeUnless { it.isString }?.floatOrNull?.takeIf { it.isFinite() }
         ?.let { FONT_SIZES[nearestFontStep(it)] }
     val fontSize = size?.takeIf { step == null || legacyFontStep(it) == step } ?: step?.let(LEGACY_FONT_SIZES::get)
-    return Settings(fontSize ?: Settings().fontSize, unknown(SETTINGS_FIELDS))
+    val dismissed = (present("readingHintDismissed") as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: false
+    return Settings(fontSize ?: Settings().fontSize, dismissed, unknown(SETTINGS_FIELDS))
 }
 
 private fun catalogueRecords(records: JsonObject): Map<CatalogueKey, CatalogueRecord> =

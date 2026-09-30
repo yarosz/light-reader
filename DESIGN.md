@@ -131,6 +131,9 @@ and capitalised only in a "Chapter N" title; Edition, Spine item and Place-as-a-
 copy. In the Tool, copy says "copy-protected" and "without copy protection", never "DRM" or "DRM-free"
 (ADR 0005); the README and the store listing may say "DRM-free".
 
+The first-run hint's lines, one per step (see "Reading"): "Tap here for the next page", "Tap here to go
+back", "Tap the middle for controls".
+
 ## Reading
 
 Product rulings from the advisor (N4 and N5, 2026-09-29); copy is verbatim, and `Progress.kt` holds it. A
@@ -142,7 +145,7 @@ so every Reader state has a visible way to the Shelf: "Back to Shelf" where ther
 Page the controls' back.
 
 **Layout.** The Page alone: it fills the screen inside the margins, and nothing else shows while reading
-until a centre tap shows the controls. The screen is three full-height columns, margins included: a tap
+until a centre tap shows the controls, but for the first-run hint (below). The screen is three full-height columns, margins included: a tap
 in the left 30% turns back, one in the right 45% turns forward, and one in the 25% between shows the
 controls (`Typesetting.kt`); to a screen reader they are the buttons "Previous page", "Show controls" and
 "Next page". They are there once a Page or the end page shows, and not while the controls show. The
@@ -256,6 +259,28 @@ Finished; the one onto the last Page of the text clears it. A font change keeps 
 reopening the Book and leaving at once. At
 another font size a Finished Book's Place may land before the last Page, and forward turns reach the
 end page without clearing it.
+
+**Keep awake.** The screen stays on while the reading view shows a Page or the end page, until 10 minutes
+pass with no tap or volume key press there, then follows the phone's own timeout. It never stays on while
+the Tool is paused.
+
+**First-run hint.** A walkthrough of the three tap zones on the reading view, until the reader has taken it
+once across all Books: a touch dot, like Android's "Show taps", pressing in a zone at mid-height (a filled circle 40 dp
+across in the content colour at 62%, with a faint 1 dp ring, fading in, pressing to 82% and back, then resting
+at 75%, every 2.4 s), and one line of copy just below it in the SDK's Detail style, in a box with a 1 dp rule
+in secondary text, centred on the dot but kept inside the margins. It appears 1 s after its step can show:
+once the Book's first Page shows, after each step moves on, and when the controls hide or the end page is
+left. A tap in the step's zone before it appears does what it always does but doesn't move it on.
+Three steps, each waiting for a tap in its zone: forward first ("Tap here for the next page"), the first
+need and the largest zone; back second ("Tap here to go back"), which returns to the starting Page, and
+moves on even on the Book's first Page, where it can't turn; the middle last ("Tap the middle for
+controls"), which opens the controls and ends it. Every tap does what it always does, and a tap in another
+zone leaves the step where it is; the volume keys turn but never move it on, as it teaches the taps. It is
+saved as dismissed only at that last tap (`readingHintDismissed`): leaving the Book, or the Tool pausing,
+mid-walkthrough saves nothing, and it starts again from the first step. It hides while the controls show
+and returns at its step when they hide; it never shows on the end page, and a tap there doesn't move it
+on. Never in a dev-start session. The guide takes no taps, and to a screen reader it is only the line of
+copy, as plain text, too small to hide a tap zone's button.
 
 **Stored.** Every Place write stores `progress` (additive, ADR 0002): the share (0–1) of all the
 Book's characters before the Place, Front matter and Back matter included, to 4 decimals. The Shelf's percent

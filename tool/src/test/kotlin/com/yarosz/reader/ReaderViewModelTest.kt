@@ -43,6 +43,9 @@ class ReaderViewModelTest {
     private val main = StandardTestDispatcher(TestCoroutineScheduler())
     private val io = StandardTestDispatcher(TestCoroutineScheduler())
 
+    /** Where the keep-awake times out: its own scheduler, so [settle] never runs its [KEEP_AWAKE_MS] out. */
+    private val idle = StandardTestDispatcher(TestCoroutineScheduler())
+
     @BeforeTest
     fun setUp() {
         Dispatchers.setMain(main)
@@ -71,8 +74,16 @@ class ReaderViewModelTest {
         val owner = ShelfOwner.of(dir) { ShelfOwner(dir, io, FakeTransport(emptyMap())) }
         owner.refresh()
         settle()
-        return ReaderViewModel(File(dir, "alice.epub"), owner, start, io) { clock }
+        return ReaderViewModel(File(dir, "alice.epub"), owner, start, io, idle) { clock }
     }
+
+    /** Lets [ms] pass on the keep-awake's scheduler, running what falls due by then. */
+    private fun idleFor(ms: Long) {
+        idle.scheduler.advanceTimeBy(ms)
+        idle.scheduler.runCurrent()
+    }
+
+    private fun ReaderViewModel.press(keyCode: Int) = onKeyDown(keyCode, KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
 
     /**
      * Lays a window out as 30 px lines of 1,000 / (font step + 1) characters, each a legal Page end: [pageHeightPx] / 30 lines to a
@@ -443,6 +454,309 @@ class ReaderViewModelTest {
         vm.showControls()
         vm.onAppPause()
         assertFalse(vm.controls.value)
+    }
+
+    @Test
+    fun `the reading view keeps the screen on from showing until KEEP_AWAKE_MS pass with no tap or key`() {
+        val vm = reading()
+        assertFalse(vm.keepAwake.value)
+        vm.shown()
+        assertTrue(vm.keepAwake.value)
+        idleFor(KEEP_AWAKE_MS - 1)
+        assertTrue(vm.keepAwake.value)
+        idleFor(1)
+        assertFalse(vm.keepAwake.value)
+    }
+
+    @Test
+    fun `a tap or a volume key restarts the time, and after it runs out the next one takes the screen again`() {
+        val vm = reading()
+        vm.shown()
+        idleFor(KEEP_AWAKE_MS - 1)
+        vm.stayAwake()
+        idleFor(KEEP_AWAKE_MS - 1)
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        idleFor(KEEP_AWAKE_MS - 1)
+        vm.press(KeyEvent.KEYCODE_VOLUME_UP)
+        idleFor(KEEP_AWAKE_MS - 1)
+        assertTrue(vm.keepAwake.value)
+        idleFor(1)
+        assertFalse(vm.keepAwake.value)
+        vm.stayAwake()
+        assertTrue(vm.keepAwake.value)
+        idleFor(KEEP_AWAKE_MS)
+        assertFalse(vm.keepAwake.value)
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        assertTrue(vm.keepAwake.value)
+    }
+
+    @Test
+    fun `the end page keeps the screen on too, and volume down there restarts the time though it doesn't turn`() {
+        val vm = reading()
+        vm.toLastPage()
+        vm.nextPage()
+        assertTrue(vm.atEnd.value)
+        vm.shown()
+        idleFor(KEEP_AWAKE_MS - 1)
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        assertTrue(vm.atEnd.value)
+        idleFor(KEEP_AWAKE_MS - 1)
+        assertTrue(vm.keepAwake.value)
+        idleFor(1)
+        assertFalse(vm.keepAwake.value)
+    }
+
+    @Test
+    fun `the Tool pausing lets the screen go, no tap or key takes it while paused, and resuming takes it for a fresh KEEP_AWAKE_MS`() {
+        val vm = reading()
+        vm.stayAwake()
+        assertFalse(vm.keepAwake.value, "the reading view hasn't shown yet")
+        vm.shown()
+        idleFor(KEEP_AWAKE_MS / 2)
+        vm.onAppPause()
+        assertFalse(vm.keepAwake.value)
+        vm.stayAwake()
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        assertFalse(vm.keepAwake.value)
+        vm.shown()
+        assertTrue(vm.keepAwake.value)
+        idleFor(KEEP_AWAKE_MS - 1)
+        assertTrue(vm.keepAwake.value)
+        idleFor(1)
+        assertFalse(vm.keepAwake.value)
+    }
+
+    private val hintSaved: Boolean get() = ReadingStore(dir).load().settings.readingHintDismissed
+
+    /** A [reading] reader whose view shows, [HINT_DELAY_MS] on, so the hint's first step is on screen. */
+    private fun guided(): ReaderViewModel = reading().also {
+        it.shown()
+        idleFor(HINT_DELAY_MS)
+    }
+
+    @Test
+    fun `the first-run hint walks next, back, then the middle, each step moved on only by its own zone's tap`() {
+        val vm = reader()
+        assertNull(vm.readingHint.value)
+        vm.shown()
+        settle()
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value, "not while Opening…, before a Page shows")
+        vm.bind(LineMeasurer())
+        settle()
+        idleFor(HINT_DELAY_MS - 1)
+        assertNull(vm.readingHint.value)
+        idleFor(1)
+        assertEquals(HintStep.Next, vm.readingHint.value)
+        val first = vm.spinePoint.value
+        vm.tapNext()
+        assertNotEquals(first, vm.spinePoint.value)
+        assertNull(vm.readingHint.value, "the next step waits HINT_DELAY_MS too")
+        idleFor(HINT_DELAY_MS - 1)
+        assertNull(vm.readingHint.value)
+        idleFor(1)
+        assertEquals(HintStep.Back, vm.readingHint.value)
+        vm.tapBack()
+        assertEquals(first, vm.spinePoint.value)
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Controls, vm.readingHint.value)
+        settle()
+        assertFalse(hintSaved, "saved only at the middle tap")
+        vm.tapMiddle()
+        assertTrue(vm.controls.value)
+        assertNull(vm.readingHint.value)
+        settle()
+        assertTrue(hintSaved)
+        vm.hideControls()
+        idleFor(HINT_DELAY_MS)
+        vm.tapNext()
+        vm.tapBack()
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value)
+    }
+
+    @Test
+    fun `a tap in the step's zone before the guide appears does what it always does but doesn't move the hint on`() {
+        val vm = reading()
+        vm.shown()
+        idleFor(HINT_DELAY_MS - 1)
+        assertNull(vm.readingHint.value)
+        val first = vm.spinePoint.value
+        vm.tapNext()
+        assertNotEquals(first, vm.spinePoint.value, "the tap still turns")
+        idleFor(1)
+        assertEquals(HintStep.Next, vm.readingHint.value, "on time, and still the first step")
+        vm.tapNext()
+        idleFor(HINT_DELAY_MS - 1)
+        val second = vm.spinePoint.value
+        vm.tapBack()
+        assertNotEquals(second, vm.spinePoint.value)
+        idleFor(1)
+        assertEquals(HintStep.Back, vm.readingHint.value)
+        vm.tapBack()
+        idleFor(HINT_DELAY_MS - 1)
+        vm.tapMiddle()
+        assertTrue(vm.controls.value, "the tap still shows the controls")
+        vm.hideControls()
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Controls, vm.readingHint.value)
+        settle()
+        assertFalse(hintSaved)
+    }
+
+    @Test
+    fun `the controls hiding waits HINT_DELAY_MS again before the step shows`() {
+        val vm = guided()
+        assertEquals(HintStep.Next, vm.readingHint.value)
+        vm.showControls()
+        assertNull(vm.readingHint.value)
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value, "never while the controls show")
+        vm.hideControls()
+        idleFor(HINT_DELAY_MS - 1)
+        assertNull(vm.readingHint.value)
+        vm.tapNext()
+        idleFor(1)
+        assertEquals(HintStep.Next, vm.readingHint.value, "a tap before it showed didn't move it on")
+    }
+
+    @Test
+    fun `a tap on another zone than the step's acts as usual and the step stays, hidden while the controls show`() {
+        val vm = guided()
+        val first = vm.spinePoint.value
+        vm.tapMiddle()
+        assertTrue(vm.controls.value)
+        assertNull(vm.readingHint.value)
+        vm.hideControls()
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Next, vm.readingHint.value)
+        vm.tapNext()
+        val second = vm.spinePoint.value
+        idleFor(HINT_DELAY_MS)
+        vm.tapNext()
+        assertNotEquals(second, vm.spinePoint.value)
+        assertEquals(HintStep.Back, vm.readingHint.value)
+        vm.tapMiddle()
+        vm.hideControls()
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Back, vm.readingHint.value)
+        vm.tapBack()
+        assertEquals(second, vm.spinePoint.value)
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Controls, vm.readingHint.value)
+        vm.tapBack()
+        assertEquals(first, vm.spinePoint.value)
+        vm.tapNext()
+        assertEquals(second, vm.spinePoint.value)
+        assertEquals(HintStep.Controls, vm.readingHint.value)
+        settle()
+        assertFalse(hintSaved)
+    }
+
+    @Test
+    fun `the volume keys turn but never move the hint on`() {
+        val vm = guided()
+        val first = vm.spinePoint.value
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        assertNotEquals(first, vm.spinePoint.value)
+        assertEquals(HintStep.Next, vm.readingHint.value)
+        vm.tapNext()
+        idleFor(HINT_DELAY_MS)
+        vm.press(KeyEvent.KEYCODE_VOLUME_UP)
+        assertEquals(HintStep.Back, vm.readingHint.value)
+    }
+
+    @Test
+    fun `a back tap at step two on the Book's first Page moves the hint on, though it can't turn`() {
+        val vm = guided()
+        vm.tapNext()
+        idleFor(HINT_DELAY_MS)
+        vm.jumpTo(SpinePoint(0, 0))
+        val first = vm.spinePoint.value
+        vm.tapBack()
+        assertEquals(first, vm.spinePoint.value)
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Controls, vm.readingHint.value)
+    }
+
+    @Test
+    fun `once dismissed at the middle tap the hint never shows again, for any Book`() {
+        val vm = guided()
+        vm.tapNext()
+        idleFor(HINT_DELAY_MS)
+        vm.tapBack()
+        idleFor(HINT_DELAY_MS)
+        vm.tapMiddle()
+        settle()
+        vm.onAppPause()
+        settle()
+        ShelfOwner.forget(dir)
+        val next = guided()
+        assertNull(next.readingHint.value)
+        next.tapNext()
+        next.tapBack()
+        next.tapMiddle()
+        next.onAppPause()
+        settle()
+        next.shown()
+        idleFor(HINT_DELAY_MS)
+        assertNull(next.readingHint.value)
+        assertTrue(hintSaved)
+    }
+
+    @Test
+    fun `the Tool pausing mid-walkthrough saves nothing, and the hint starts again from its first step`() {
+        val vm = guided()
+        vm.tapNext()
+        idleFor(HINT_DELAY_MS)
+        vm.tapBack()
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Controls, vm.readingHint.value)
+        vm.onAppPause()
+        assertNull(vm.readingHint.value)
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value, "never while paused")
+        settle()
+        assertFalse(hintSaved)
+        vm.shown()
+        idleFor(HINT_DELAY_MS - 1)
+        assertNull(vm.readingHint.value)
+        idleFor(1)
+        assertEquals(HintStep.Next, vm.readingHint.value)
+        ShelfOwner.forget(dir)
+        assertEquals(HintStep.Next, guided().readingHint.value)
+    }
+
+    @Test
+    fun `a dev-start session never shows the hint`() {
+        val vm = reader(DevStart(2))
+        vm.shown()
+        settle()
+        vm.bind(LineMeasurer())
+        settle()
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value)
+        vm.tapNext()
+        vm.tapBack()
+        vm.tapMiddle()
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value)
+    }
+
+    @Test
+    fun `the end page shows no hint, and a tap there doesn't move it on, which the back turn off it shows again`() {
+        val vm = guided()
+        vm.toLastPage()
+        vm.tapNext()
+        assertTrue(vm.atEnd.value)
+        assertNull(vm.readingHint.value)
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value)
+        vm.tapBack()
+        assertFalse(vm.atEnd.value)
+        assertNull(vm.readingHint.value)
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Back, vm.readingHint.value)
     }
 
     @Test
