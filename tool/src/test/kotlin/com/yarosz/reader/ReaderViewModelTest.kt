@@ -620,50 +620,98 @@ class ReaderViewModelTest {
         assertEquals(HintStep.Next, vm.readingHint.value, "a tap before it showed didn't move it on")
     }
 
-    @Test
-    fun `a tap on another zone than the step's acts as usual and the step stays, hidden while the controls show`() {
-        val vm = guided()
-        val first = vm.spinePoint.value
-        vm.tapMiddle()
-        assertTrue(vm.controls.value)
-        assertNull(vm.readingHint.value)
-        vm.hideControls()
-        idleFor(HINT_DELAY_MS)
-        assertEquals(HintStep.Next, vm.readingHint.value)
-        vm.tapNext()
-        val second = vm.spinePoint.value
-        idleFor(HINT_DELAY_MS)
-        vm.tapNext()
-        assertNotEquals(second, vm.spinePoint.value)
-        assertEquals(HintStep.Back, vm.readingHint.value)
-        vm.tapMiddle()
-        vm.hideControls()
-        idleFor(HINT_DELAY_MS)
-        assertEquals(HintStep.Back, vm.readingHint.value)
-        vm.tapBack()
-        assertEquals(second, vm.spinePoint.value)
-        idleFor(HINT_DELAY_MS)
-        assertEquals(HintStep.Controls, vm.readingHint.value)
-        vm.tapBack()
-        assertEquals(first, vm.spinePoint.value)
-        vm.tapNext()
-        assertEquals(second, vm.spinePoint.value)
-        assertEquals(HintStep.Controls, vm.readingHint.value)
-        settle()
-        assertFalse(hintSaved)
+    /** Asserts a press did nothing: [vm] still at [point] with the stored Place [place], no controls, at [step]. */
+    private fun assertUnmoved(vm: ReaderViewModel, point: SpinePoint, place: Place?, step: HintStep) {
+        assertEquals(point, vm.spinePoint.value)
+        assertEquals(place, stored(vm).place)
+        assertFalse(vm.controls.value)
+        assertEquals(step, vm.readingHint.value)
     }
 
     @Test
-    fun `the volume keys turn but never move the hint on`() {
+    fun `while the guide shows a tap on another zone does nothing, and the step's own zone acts and moves it on`() {
         val vm = guided()
         val first = vm.spinePoint.value
-        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
-        assertNotEquals(first, vm.spinePoint.value)
-        assertEquals(HintStep.Next, vm.readingHint.value)
+        val firstPlace = stored(vm).place
+        vm.tapBack()
+        vm.tapMiddle()
+        assertUnmoved(vm, first, firstPlace, HintStep.Next)
+        vm.tapNext()
+        val second = vm.spinePoint.value
+        assertNotEquals(first, second)
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Back, vm.readingHint.value)
+        val secondPlace = stored(vm).place
+        vm.tapNext()
+        vm.tapMiddle()
+        assertUnmoved(vm, second, secondPlace, HintStep.Back)
+        vm.tapBack()
+        assertEquals(first, vm.spinePoint.value)
+        idleFor(HINT_DELAY_MS)
+        assertEquals(HintStep.Controls, vm.readingHint.value)
+        val backPlace = stored(vm).place
+        vm.tapNext()
+        vm.tapBack()
+        assertUnmoved(vm, first, backPlace, HintStep.Controls)
+        assertFalse(hintSaved)
+        vm.tapMiddle()
+        assertTrue(vm.controls.value)
+        settle()
+        assertTrue(hintSaved)
+    }
+
+    @Test
+    fun `while the guide shows the volume keys do nothing, yet are still consumed and keep the screen on`() {
+        val vm = guided()
+        val first = vm.spinePoint.value
+        val place = stored(vm).place
+        idleFor(KEEP_AWAKE_MS - HINT_DELAY_MS - 1)
+        assertTrue(vm.keepAwake.value)
+        for (key in listOf(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_UP)) {
+            assertTrue(vm.onKeyDown(key, KeyEvent(KeyEvent.ACTION_DOWN, key)))
+            assertTrue(vm.onKeyUp(key, KeyEvent(KeyEvent.ACTION_UP, key)))
+            assertTrue(vm.onKeyMultiple(key, 2, KeyEvent(KeyEvent.ACTION_MULTIPLE, key)))
+        }
+        assertUnmoved(vm, first, place, HintStep.Next)
+        idleFor(KEEP_AWAKE_MS - 1)
+        assertTrue(vm.keepAwake.value, "a blocked key still restarts the time")
+        idleFor(1)
+        assertFalse(vm.keepAwake.value)
         vm.tapNext()
         idleFor(HINT_DELAY_MS)
+        val second = vm.spinePoint.value
         vm.press(KeyEvent.KEYCODE_VOLUME_UP)
+        assertEquals(second, vm.spinePoint.value)
         assertEquals(HintStep.Back, vm.readingHint.value)
+    }
+
+    @Test
+    fun `the volume keys turn before the guide appears and after the hint ends`() {
+        val vm = reading()
+        vm.shown()
+        idleFor(HINT_DELAY_MS - 1)
+        val first = vm.spinePoint.value
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        val second = vm.spinePoint.value
+        assertNotEquals(first, second)
+        vm.press(KeyEvent.KEYCODE_VOLUME_UP)
+        assertEquals(first, vm.spinePoint.value)
+        idleFor(1)
+        assertEquals(HintStep.Next, vm.readingHint.value, "the keys didn't move it on")
+        vm.tapNext()
+        idleFor(HINT_DELAY_MS)
+        vm.tapBack()
+        idleFor(HINT_DELAY_MS)
+        vm.tapMiddle()
+        vm.hideControls()
+        idleFor(HINT_DELAY_MS)
+        assertNull(vm.readingHint.value)
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        assertEquals(second, vm.spinePoint.value)
+        vm.press(KeyEvent.KEYCODE_VOLUME_UP)
+        assertEquals(first, vm.spinePoint.value)
+        vm.tapMiddle()
+        assertTrue(vm.controls.value, "every tap acts again")
     }
 
     @Test

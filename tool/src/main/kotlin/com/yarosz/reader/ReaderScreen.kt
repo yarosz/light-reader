@@ -6,7 +6,6 @@ import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -161,9 +160,10 @@ class ReaderScreen(
     /**
      * The first-run hint's guide at [step] (DESIGN.md "Reading"), over the Page, from the moment
      * [ReaderViewModel.readingHint] has it, which is already [HINT_DELAY_MS] after the step can show: a touch dot
-     * centred in the step's tap zone at mid-height, pressing, and the step's line of copy in a
-     * ruled box just below it, centred on the dot but kept inside the side margins. It takes no taps, so each
-     * reaches the tap zone under it; to a screen reader only the copy is there, as plain text, and it is too
+     * centred in the step's tap zone at mid-height, pressing, and the step's line of copy just below it in a box
+     * inverted from the Page (the content colour its fill, the background colour its text), centred on the dot
+     * but kept inside the side margins. It takes no taps, so each reaches the tap zone under it, which acts only
+     * when it is the step's ([ReaderViewModel.tapNext]); to a screen reader only the copy is there, as plain text, and it is too
      * small to cover a tap zone and drop it from the accessibility tree.
      */
     @Composable
@@ -198,9 +198,9 @@ class ReaderScreen(
                     text = copy,
                     variant = LightTextVariant.Detail,
                     maxLines = 1,
+                    color = colors.background,
                     modifier = Modifier
-                        .background(colors.background)
-                        .border(CONTROLS_RULE, colors.contentSecondary)
+                        .background(colors.content)
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                 )
             },

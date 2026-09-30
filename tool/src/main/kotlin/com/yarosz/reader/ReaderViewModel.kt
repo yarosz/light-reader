@@ -126,8 +126,9 @@ class ReaderViewModel(
     /**
      * The first-run hint's step on screen (DESIGN.md "Reading"), [HINT_DELAY_MS] after it can show: the reading
      * view showing a Page (not "Opening…", not the end page) with the controls hidden. Null for none, at once
-     * when it can't show, and once the hint is dismissed or in a dev-start session. A step waiting out its delay
-     * isn't on screen, so a tap in its zone then doesn't move it on ([tapped]).
+     * when it can't show, and once the hint is dismissed or in a dev-start session. While a step is on screen only
+     * a tap in its zone acts ([tapped]) and the volume keys don't turn ([turnFor]); a step waiting out its delay
+     * isn't on screen, so every tap and key then acts as usual, and a tap in its zone doesn't move it on.
      */
     val readingHint = MutableStateFlow<HintStep?>(null)
 
@@ -165,13 +166,15 @@ class ReaderViewModel(
     fun tapMiddle() = tapped(HintStep.Controls) { showControls() }
 
     /**
-     * A tap on [zone]'s tap zone, doing [action]. Only while the hint shows [zone] does it move on, to the next
-     * step, or from the last one to none, dismissing it ([dismissReadingHint]). A volume key never moves it.
+     * A tap on [zone]'s tap zone, doing [action] while no guide is on screen. While the guide shows, the walkthrough
+     * is followed: a tap on another zone does nothing, and a tap on [zone] acts and moves it on, to the next step,
+     * or from the last one to none, dismissing it ([dismissReadingHint]). A volume key never moves it.
      */
     private fun tapped(zone: HintStep, action: () -> Unit) {
-        val moves = readingHint.value == zone
+        val guide = readingHint.value
+        if (guide != null && guide != zone) return
         action()
-        if (!moves) return
+        if (guide == null) return
         hintStep = HintStep.entries.getOrNull(zone.ordinal + 1)
         if (hintStep == null) dismissReadingHint() else publishHint()
     }
@@ -372,16 +375,25 @@ class ReaderViewModel(
         stamp(finished = if (clears) false else null)
     }
 
-    /** The page turn a key press makes, keeping the screen on ([stayAwake]): volume down forward, volume up back; null for any other key. */
+    /**
+     * What a page key's press does, keeping the screen on ([stayAwake]): volume down turns forward, volume up back,
+     * but neither turns while the first-run hint's guide shows ([readingHint]), as it teaches the taps. Null for any
+     * other key.
+     */
     private fun turnFor(keyCode: Int): (() -> Unit)? = when (keyCode) {
-        KeyEvent.KEYCODE_VOLUME_DOWN -> { { stayAwake(); nextPage() } }
-        KeyEvent.KEYCODE_VOLUME_UP -> { { stayAwake(); previousPage() } }
+        KeyEvent.KEYCODE_VOLUME_DOWN -> keyTurn(::nextPage)
+        KeyEvent.KEYCODE_VOLUME_UP -> keyTurn(::previousPage)
         else -> null
     }
 
+    private fun keyTurn(turn: () -> Unit): () -> Unit = {
+        stayAwake()
+        if (readingHint.value == null) turn()
+    }
+
     /**
-     * A page key turns on key-down (a held key repeats there) and is consumed on key-up and key-multiple too,
-     * or LightActivity forwards it to LightOS, as it does any Light Phone key a screen declines (the wheel's
+     * A page key turns on key-down (a held key repeats there) and is consumed on key-up and key-multiple too, even
+     * while the guide keeps it from turning, or LightActivity forwards it to LightOS, as it does any Light Phone key a screen declines (the wheel's
      * click lights the flashlight that way). Any other key is declined everywhere and stays LightOS's.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = turnFor(keyCode)?.let { it(); true } ?: false

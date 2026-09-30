@@ -267,16 +267,20 @@ the Tool is paused.
 **First-run hint.** A walkthrough of the three tap zones on the reading view, until the reader has taken it
 once across all Books: a touch dot, like Android's "Show taps", pressing in a zone at mid-height (a filled circle 40 dp
 across in the content colour at 62%, with a faint 1 dp ring, fading in, pressing to 82% and back, then resting
-at 75%, every 2.4 s), and one line of copy just below it in the SDK's Detail style, in a box with a 1 dp rule
-in secondary text, centred on the dot but kept inside the margins. It appears 1 s after its step can show:
+at 75%, every 2.4 s), and one line of copy just below it in the SDK's Detail style, in a box inverted from
+the Page: the content colour as its fill and the background colour as its text, so white with black text on
+the LP3's black, and no rule. It is centred on the dot but kept inside the margins. It appears 1 s after its step can show:
 once the Book's first Page shows, after each step moves on, and when the controls hide or the end page is
-left. A tap in the step's zone before it appears does what it always does but doesn't move it on.
+left. Before it appears every tap and key does what it always does, and a tap in the step's zone doesn't
+move it on.
 Three steps, each waiting for a tap in its zone: forward first ("Tap here for the next page"), the first
 need and the largest zone; back second ("Tap here to go back"), which returns to the starting Page, and
 moves on even on the Book's first Page, where it can't turn; the middle last ("Tap the middle for
-controls"), which opens the controls and ends it. Every tap does what it always does, and a tap in another
-zone leaves the step where it is; the volume keys turn but never move it on, as it teaches the taps. It is
-saved as dismissed only at that last tap (`readingHintDismissed`): leaving the Book, or the Tool pausing,
+controls"), which opens the controls and ends it. While the guide shows, the walkthrough must be followed:
+a tap in its step's zone does what it always does and moves it on, a tap in another zone does nothing, and
+the volume keys do nothing either (LightOS still doesn't get them, so the volume stays), as it teaches the
+taps. Both still count as a press for "Keep awake". Once it ends, every tap and key does what it always
+does again. System back leaves the Reader as ever. It is saved as dismissed only at that last tap (`readingHintDismissed`): leaving the Book, or the Tool pausing,
 mid-walkthrough saves nothing, and it starts again from the first step. It hides while the controls show
 and returns at its step when they hide; it never shows on the end page, and a tap there doesn't move it
 on. Never in a dev-start session. The guide takes no taps, and to a screen reader it is only the line of
