@@ -210,8 +210,8 @@ Ordered. Each item ends on its _done-when_.
   (the running head's "BOOK TWO: 1805" in a flat table of contents) lands with the controls: the survey's
   R2h rule (a page of only headings, in a run of two or more; a repeating title or a uniquely titled peer
   ends it) leaves a Book numbered straight through its Parts ("CHAPTER I" to "CHAPTER LXXXVI" under
-  "BOOK I" to "BOOK VIII") with no Parts, since every title is unique; settle that, and the CONTEXT Part
-  entry's "falls under the Part listed last before it", against what the running head shows.
+  "BOOK I" to "BOOK VIII") with no Parts, since every title is unique; settle that against what the
+  running head shows, and give the CONTEXT Part entry back the rule for Chapters under a listed Part.
   Found at v0.1.0: a failed search on a Catalogue whose search template puts the terms in the URL path
   (Calibre's `/opds/search/{searchTerms}`) logs them, since the log redaction strips only the query;
   cut the path of a search result's URL too (`Network.kt`), and DESIGN's fetch-failure line then holds.

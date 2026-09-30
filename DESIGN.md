@@ -90,11 +90,13 @@ flush, judged on block kinds, never on window boundaries.
 - Spine items marked `linear="no"` (auxiliary content, such as a cover wrapper) are skipped, unless a
   table of contents lists them as a Chapter (an entry with none nested under it) or every one is. A
   publisher's EPUB may mark its notes `linear="no"`; listed, they stay, in Spine order, so a contents entry
-  pointing at them still works. An unlisted one is gone: a Place stored in it opens at the Book's start. `parseEpub` in `Epub.kt`.
+  pointing at them still works. An unlisted one is gone: a Place stored in it opens at the Book's start.
+  `parseEpub` in `Epub.kt`.
 - Parts. A table of contents entry with entries nested under it is a Part over the Chapters among them,
   never a Chapter itself. Its heading is where its href points, or its first Chapter's start when it has
   no href, when the href names no Spine item kept (an image-only divider page, a `linear="no"` one), when
-  its fragment isn't there, or when where it points isn't after the Chapter before and before its first. It is no Part when it has no label, is named for
+  its fragment isn't there, or when where it points isn't after the Chapter before and at or before its
+  first. It is no Part when it has no label, is named for
   the Book, or names a Spine item dropped as not reading matter: Standard Ebooks nests every Book under its
   half title. One over no Chapter is dropped, and a Chapter keeps only the outermost 8 Parts nesting it, so
   a crafted table of contents nested thousands deep still opens quickly. A Part listed beside its Chapters
