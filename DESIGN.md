@@ -100,8 +100,8 @@ flush, judged on block kinds, never on window boundaries.
   the Book, or names a Spine item dropped as not reading matter: Standard Ebooks nests every Book under its
   half title. One over no Chapter is dropped, and a Chapter keeps only the outermost 8 Parts nesting it, so
   a crafted table of contents nested thousands deep still opens quickly. A Part listed beside its Chapters
-  in the table of contents is a Chapter like any other for now; the controls' running head will need to
-  tell such Parts apart. `parseEpub` in `Epub.kt`.
+  in the table of contents is a Chapter like any other: the running head names no Part over the Chapters
+  after it (see "Reading"), as nothing in a flat list says which Chapters it holds. `parseEpub` in `Epub.kt`.
 - Every piece of text in a kept Spine item reaches a Page, except what is never shown: `<head>`,
   `<script>`, `<style>`, `<svg>`, `<math>`, `<noscript>`, `<template>`, and any element marked `hidden` or
   `aria-hidden="true"`, with everything in them. The known blocks are paragraphs, headings, list items,
@@ -140,37 +140,43 @@ anywhere, to the Shelf, which the Reader always opens over (see "Catalogues"), b
 so every Reader state has a visible way to the Shelf: "Back to Shelf" where there is no Page, and on a
 Page the controls' back, or "Shelf" in Contents.
 
-**Layout.** The Page alone: it fills the screen inside the margins, and nothing else shows while reading.
-The screen is three full-height columns, margins included: a tap in the left 30% turns back, one in the
-right 45% turns forward, and one in the 25% between shows the controls (`Typesetting.kt`); to a screen
-reader they are the buttons "Previous page", "Show controls" and "Next page". The volume keys turn too,
-down forward and up back. A Page goes by its start, or, when a Chapter starts later in its first line (a
-table of contents may point mid-line, or at a Part's heading right above its first Chapter's), by the
-last Chapter starting there, so a jump names the Chapter chosen. A Page that opens on headings, with no
-Chapter starting in its first line, goes by the first Chapter starting in them (of two starting at one
-point, the later), else by its first line under them: a Page opening on an unlisted heading ("VOLUME I",
-or an illustration's caption) above a Part's heading goes by the Part, and a Page opening on a Chapter's
-heading, with the Chapter's start on the next line, goes by that Chapter. A Page of only headings goes by
-the Chapter starting where it ends, whose headings they are, unless Back matter starts there; the end of
-a Spine item counts as the next one's start, so a Part's title page that is a Spine item of its own goes
-by the Part's first Chapter. The Page takes the whole height, so Pages re-pack at the Place, which a
-layout change never moves.
+**Layout.** The Page alone: it fills the screen inside the margins, and nothing else shows while reading
+until a centre tap shows the controls. The screen is three full-height columns, margins included: a tap
+in the left 30% turns back, one in the right 45% turns forward, and one in the 25% between shows the
+controls (`Typesetting.kt`); to a screen reader they are the buttons "Previous page", "Show controls" and
+"Next page". They are there once a Page or the end page shows, and not while the controls show. The
+volume keys turn too, down forward and up back. A Page goes by its start, or, when a Chapter starts later
+in its first line (a table of contents may point mid-line, or at a Part's heading right above its first
+Chapter's), by the last Chapter starting there, so a jump names the Chapter chosen. A Page that opens on
+headings, with no Chapter starting in its first line, goes by the first Chapter starting in them (of two
+starting at one point, the later), else by its first line under them: a Page opening on an unlisted
+heading ("VOLUME I", or an illustration's caption) above a Part's heading goes by the Part, and a Page
+opening on a Chapter's heading, with the Chapter's start on the next line, goes by that Chapter. A Page
+of only headings goes by the Chapter starting where it ends, whose headings they are, unless Back matter
+starts there; the end of a Spine item counts as the next one's start, so a Part's title page that is a
+Spine item of its own goes by the Part's first Chapter. The Page takes the whole height, so Pages re-pack
+at the Place, which a layout change never moves.
 
-**Controls.** A centre tap shows the controls over the Page, which never moves: a top bar (the SDK's
-`LightTopBar`: back on the left, which leaves the Reader as system back does, and the running head in the
-centre), and at the bottom the Progress line over a 48 dp row, "A−" and "A+" at its left and "Contents"
-at its right, each with 8 dp of padding at the sides and filling the row's height as its tap target. A 1
-dp rule in secondary text parts each from the Page. The running head is the title of the Chapter the Page
-goes by, verbatim, after its Part's title and " · " when the table of contents nests it in a Part ("BOOK
-TWO: 1805 · CHAPTER I", the nearest Part only; a Part listed beside its Chapters is never named), on one
-line, ellipsised at the end; in Front matter, and on the end page, it is the Book's title as the Shelf
-shows it. At the smallest size "A−", and at the largest "A+", is drawn in secondary text, ignores taps,
-and is a disabled button to a screen reader. The Progress line is one line, in Detail and secondary text,
-centred; when its full form, measured as drawn, doesn't fit the width (large system text), it shows its
-short form (below), ellipsised only if even that doesn't fit. A tap anywhere else, the Page included,
-hides the controls without turning (to a screen reader, "Hide controls"); a volume key turns and hides
-them; a font change keeps them; opening Contents hides them. Showing them keeps the Page's timing.
-"Chrome" and "overlay" are not names for them.
+**Controls.** A centre tap shows the controls over the Page, which stays as it is under them: a top bar
+(the SDK's `LightTopBar`: back on the left, which leaves the Reader as system back does and is "Back to
+Shelf" to a screen reader, and the running head in the centre), and at the bottom the Progress line over
+a 48 dp row, "A−" and "A+" at its left and "Contents" at its right, each with 12 dp of padding at the
+sides (so the two side by side are 48 dp targets or wider) and filling the row's height as its tap
+target. A 1 dp rule in secondary text parts each block from the Page, and a tap on a block's blank space
+does nothing. The running head names the Chapter the Page goes by, verbatim: its title on one line, in
+the SDK's one-line title, ellipsised at the end; when the table of contents nests the Chapter in a Part,
+the nearest Part's title is a line above it, the two in the SDK's two-line title, each ellipsised, so a
+long Part never hides the Chapter. A Part listed beside its Chapters is a Chapter of its own, named only
+on its own Pages. In Front matter, and on the end page, it is the Book's title as the Shelf shows it. At
+the smallest size "A−", and at the largest "A+", is drawn in secondary text, ignores taps, and is a
+disabled button to a screen reader. The Progress line is one line, in Detail and secondary text, centred;
+when its full form, measured as drawn, doesn't fit the width (large system text), it shows its short form
+(below), ellipsised only if even that doesn't fit; with no line (Front matter, the end page, Back matter)
+the row stands alone. A tap anywhere else, the Page included, hides the controls without turning (to a
+screen reader, "Hide controls", the one button over the Page while they show); every turn hides them, so
+a volume key turns and hides them; a font change keeps them; opening Contents, or the Tool pausing, hides
+them, and the reading view always opens without them. Showing them keeps the Page's timing, the time they
+show counting as time on the Page. "Chrome" and "overlay" are not names for them.
 
 **Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
 end (the next Chapter's start, or the end of the Book's text if that comes first), divided by the
@@ -196,11 +202,12 @@ reopening the Book, or the Tool pausing drops the running timing. Samples belong
 shared across Books, kept in memory for as long as the Tool runs, and never saved.
 
 **End page.** A forward turn (a tap in the right 45%, or volume down) from the Page that reaches the end
-of the Book's text shows the end page: "The end." centred, and under it "Back to Shelf", which leaves the
-Reader as system back does. The controls' running head shows the Book's title, with no Progress line.
-Forward does nothing there; back (a tap in the left 30%, or volume up) returns to the last Page. The end
-page is not a Page, so the Place stays on the last Page. The last Page of the text ends where Back matter
-starts, however short that leaves it, so Back matter never shares a Page with the text.
+of the Book's text shows the end page: "The end." centred, and at the bottom "Back to Shelf", which
+leaves the Reader as system back does, kept out of the middle so a centre tap there shows the controls.
+The controls' running head shows the Book's title, with no Progress line. Forward does nothing there;
+back (a tap in the left 30%, or volume up) returns to the last Page. The end page is not a Page, so the
+Place stays on the last Page. The last Page of the text ends where Back matter starts, however short that
+leaves it, so Back matter never shares a Page with the text.
 
 **Back matter.** From the text, reached only through Contents, never by turning past the end page. Inside
 it, turns work as anywhere else: the running head shows its Chapter's title, the controls have no
@@ -218,15 +225,15 @@ of contents nests Chapters under ("What a Book shows") has a row of its own befo
 outermost first, its title verbatim in the SDK's Heading style, at most two lines, marked as a heading
 for a screen reader (The Brothers Karamazov: "Part I", "Book I: The History of a Family", then "I: Fyodor
 Pavlovitch Karamazov"). A Part listed beside its Chapters is already a row, its Chapter's, so it gets no
-second. The current row alone has the detail line "you're here": the Chapter the Page goes by, as the top
-line names it (of two starting at one point, the later), or on the end page the last Chapter of the text.
-A Part's heading row is never current, and in Front matter no row is. The list opens with the row before
-the current one at the top, so the current row is second, or with the current row at the top when it is
-first; with no current row it opens at the top. When the current Chapter is the first of its Part, the
-row before is the Part's, so the list opens on that Part's heading. The list has a top and a bottom;
-"start" and "end" stay the Book's and a Chapter's. Tapping a row goes to the Page that starts at that
-Chapter's start, or at the Part's heading, laid out afresh from there so its heading tops the Page. A
-Part's heading Page goes by the Part's first Chapter when only headings come between them, else by the
+second. The current row alone has the detail line "you're here": the Chapter the Page goes by, as the
+running head names it (of two starting at one point, the later), or on the end page the last Chapter of
+the text. A Part's heading row is never current, and in Front matter no row is. The list opens with the
+row before the current one at the top, so the current row is second, or with the current row at the top
+when it is first; with no current row it opens at the top. When the current Chapter is the first of its
+Part, the row before is the Part's, so the list opens on that Part's heading. The list has a top and a
+bottom; "start" and "end" stay the Book's and a Chapter's. Tapping a row goes to the Page that starts at
+that Chapter's start, or at the Part's heading, laid out afresh from there so its heading tops the Page.
+A Part's heading Page goes by the Part's first Chapter when only headings come between them, else by the
 Chapter before it, or by none in Front matter (a Part's epigraph or introduction reads under the Chapter
 before). Back matter's first row may open on Back matter's opening lines instead. A jump lays out afresh
 even for the current Chapter, and even when that line starts mid-word (a Chapter anchored inside a

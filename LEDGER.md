@@ -11,7 +11,7 @@ LAST SESSION: 2026-09-29
    "Add a Catalogue".
 3. **Catalogue** → search and browse as text → a Book's detail page → **Add to Shelf** (downloads it).
 4. **Reading**: tap the right side or press volume down to turn the page. A centre tap shows the
-   controls: back to the Shelf, the Chapter title, time left, A− A+, **Contents**.
+   controls: back to the Shelf, the running head, time left, A− A+, **Contents**.
 5. **Contents** lists the Chapters under their Parts; tap one to jump there.
 
 Everything above is v1 (N2–N5 below). v2 adds the tap-a-word dictionary.
@@ -195,7 +195,7 @@ Ordered. Each item ends on its _done-when_.
   From the N4 QA walkthrough, for N5 to settle: long Books' Contents (War and Peace: 385 rows, "CHAPTER
   I" ×17 with no Part named on the row or the top line, ~70 flings end to end; show the enclosing Part
   where titles repeat, and a way to the top or bottom; settled below); and the top line doesn't read as a
-  control (the overlay's top bar replaces its job, or a cue until then). Parked: identical rows in search
+  control (settled: the controls' top bar replaces it). Parked: identical rows in search
   results and on the Shelf ("Alice's Adventures in Wonderland / Lewis Carroll" ×3: different identifiers,
   so separate Books once added) want a telling detail; Catalogue author forms keep titles of nobility
   ("graf Leo Tolstoy"), which could be dropped as life dates are.
@@ -206,12 +206,10 @@ Ordered. Each item ends on its _done-when_.
   already a Chapter row, never a second one, and is current like any Chapter); no Light/Dark button in
   v1; "Reader" on the Shelf opens About; the first-run hint shows once ever; a sixth, 15 sp font size.
   Still open: a way to the top or bottom of a long Contents (measure the scrollbar's track tap first).
-  Parts in Contents (nested tables of contents) landed first. Finding Parts listed beside their Chapters
-  (the running head's "BOOK TWO: 1805" in a flat table of contents) lands with the controls: the survey's
-  R2h rule (a page of only headings, in a run of two or more; a repeating title or a uniquely titled peer
-  ends it) leaves a Book numbered straight through its Parts ("CHAPTER I" to "CHAPTER LXXXVI" under
-  "BOOK I" to "BOOK VIII") with no Parts, since every title is unique; settle that against what the
-  running head shows, and give the CONTEXT Part entry back the rule for Chapters under a listed Part.
+  Parts in Contents (nested tables of contents) landed first (#40). Decided 2026-09-30 (Nicolas): the
+  running head names a Part only when the table of contents nests it; a flat table of contents names none,
+  with no guessing (a wrong running head is worse than a missing one). The survey's R2h rule is dropped,
+  and CONTEXT's Part entry keeps no rule for Chapters under a listed Part.
   Found at v0.1.0: a failed search on a Catalogue whose search template puts the terms in the URL path
   (Calibre's `/opds/search/{searchTerms}`) logs them, since the log redaction strips only the query;
   cut the path of a search result's URL too (`Network.kt`), and DESIGN's fetch-failure line then holds.

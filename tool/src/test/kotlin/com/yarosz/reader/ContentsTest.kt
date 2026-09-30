@@ -73,9 +73,9 @@ class ContentsTest {
     }
 
     @Test
-    fun `the running head is the Chapter's Part, then the Chapter, or the Chapter alone`() {
+    fun `the running head is the Chapter under its nearest Part, or the Chapter alone`() {
         val part = Part("BOOK TWO: 1805", SpinePoint(1, 0))
-        assertEquals("BOOK TWO: 1805 · CHAPTER I", runningHeadOf(Chapter("CHAPTER I", SpinePoint(1, 0), listOf(Part("VOLUME I", SpinePoint(0, 0)), part))))
-        assertEquals("CHAPTER I", runningHeadOf(Chapter("CHAPTER I", SpinePoint(1, 0))))
+        assertEquals(RunningHead("BOOK TWO: 1805", "CHAPTER I"), runningHeadOf(Chapter("CHAPTER I", SpinePoint(1, 0), listOf(Part("VOLUME I", SpinePoint(0, 0)), part))))
+        assertEquals(RunningHead(null, "CHAPTER I"), runningHeadOf(Chapter("CHAPTER I", SpinePoint(1, 0))))
     }
 }

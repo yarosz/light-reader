@@ -20,5 +20,11 @@ const val LINE_HEIGHT = 1.35f
 const val TAP_BACK_WIDTH = 0.30f
 const val TAP_CONTROLS_WIDTH = 0.25f
 
+/** The rule between the controls and the Page. */
+val CONTROLS_RULE = 1.dp
+
+/** Each side of a button in the controls' bottom row: "A−" and "A+" sit side by side, so each target is 48 dp or wider. */
+val CONTROL_PADDING = 12.dp
+
 val SIDE_MARGIN = 20.dp
 val TOP_BOTTOM_MARGIN = 14.dp

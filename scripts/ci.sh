@@ -72,16 +72,22 @@ fail_ctx() {  # context, step description
 # the Page's start (the Place) but moves its end, so the length is what makes the first A+ change the
 # state. Every read must find both the title and the Page, so an unresponsive screen or a lost device
 # can never pass as "unchanged".
-state() {  # serial -> "title|first 40 chars|length", or return 1
-  # The Page's text holds newlines, so its "   ~" node spans lines up to the one ending in "(x,y)";
-  # it is by far the longest label on screen. The running head is the top bar's text, the first text
-  # node within 150 px of the top ('   "title"  (x,y)'); a "|" in it becomes "/" so the fields still
-  # split. C locale: the counts only have to agree between reads.
-  ANDROID_SERIAL="$1" mise run ui 2>/dev/null | LC_ALL=C awk '
+state() {  # serial, with the controls showing -> "title|first 40 chars|length", or return 1; they show again after
+  # The running head is read with the controls up: the top bar's text nodes within 150 px of the top
+  # ('   "title"  (x,y)'), a Part's line and the Chapter's joined by " / "; a "|" in it becomes "/" so the
+  # fields still split. The controls cover the Page, which then leaves the accessibility tree, so the
+  # Page is read after hiding them: its text holds newlines, so its "   ~" node spans lines up to the one
+  # ending in "(x,y)"; it is by far the longest label on screen. C locale: the counts only have to agree.
+  { ANDROID_SERIAL="$1" mise run ui 2>/dev/null
+    ANDROID_SERIAL="$1" mise run ui tap "Hide controls" >/dev/null 2>&1
+    ANDROID_SERIAL="$1" mise run ui 2>/dev/null
+    ANDROID_SERIAL="$1" mise run ui tap "Show controls" >/dev/null 2>&1
+    ANDROID_SERIAL="$1" mise run ui wait "A+" >/dev/null 2>&1
+  } | LC_ALL=C awk '
     inb { blk = blk "\n" $0 }
-    !inb && title == "" && /^   ".*"  \([0-9]+,[0-9]+\)$/ {
+    !inb && /^   ".*"  \([0-9]+,[0-9]+\)$/ {
       y = $0; sub(/.*,/, "", y); sub(/\)$/, "", y)
-      if (y + 0 < 150) { title = $0; sub(/^   "/, "", title); sub(/"  \([0-9]+,[0-9]+\)$/, "", title) }
+      if (y + 0 < 150) { t = $0; sub(/^   "/, "", t); sub(/"  \([0-9]+,[0-9]+\)$/, "", t); title = title (title == "" ? "" : " / ") t }
       next
     }
     !inb && /^   ~/ { inb = 1; blk = substr($0, 5) }
@@ -114,6 +120,12 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
   dismiss_anr "$s"
   ANDROID_SERIAL=$s mise run ui wait "Show controls" >/dev/null 2>&1 || { dismiss_anr "$s"; ANDROID_SERIAL=$s mise run ui wait "Show controls" >/dev/null 2>&1; } \
     || { echo "reader never showed a Page"; return 1; }
+  local paged=""
+  for _ in $(seq 1 20); do
+    ANDROID_SERIAL=$s mise run ui 2>/dev/null | grep -q '^   ~' && { paged=1; break; }
+    sleep 1
+  done
+  [ -n "$paged" ] || { echo "reader never laid out a Page"; return 1; }
   for _ in 1 2 3 4; do "$adb" -s "$s" shell input keyevent KEYCODE_VOLUME_DOWN || { echo "page turn failed"; return 1; }; done
   sleep 1
   ANDROID_SERIAL=$s mise run ui tap "Show controls" >/dev/null 2>&1 || { echo "could not show the controls"; return 1; }

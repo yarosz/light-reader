@@ -29,14 +29,14 @@ class ProgressTest {
     }
 
     @Test
-    fun `the short form drops the chapter, for a footer too narrow for the full line`() {
+    fun `the short form drops the chapter, for a Progress line too narrow for the full line`() {
         assertEquals(ProgressLine(MINUTES_ALMOST_DONE, "under 1 min left"), minutesLeftCopy(0.5))
         assertEquals(ProgressLine("about 10 min left in this chapter", "about 10 min left"), minutesLeftCopy(9.2))
         assertEquals(ProgressLine("about 20 min left in this chapter", "about 20 min left"), minutesLeftCopy(15.01))
     }
 
     @Test
-    fun `the footer shows the full form only when it fits, to the pixel`() {
+    fun `the controls show the full form only when it fits, to the pixel`() {
         assertEquals(ProgressForm.Full, progressForm(fullWidthPx = 300, availableWidthPx = 300))
         assertEquals(ProgressForm.Short, progressForm(fullWidthPx = 301, availableWidthPx = 300))
         assertEquals(ProgressForm.Full, progressForm(fullWidthPx = 0, availableWidthPx = 300), "no line")

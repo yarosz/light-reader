@@ -95,7 +95,7 @@ fun OpenBook.placeAt(point: SpinePoint, now: Long): Place =
 fun OpenBook.chapterEnd(index: Int): SpinePoint = chapters.getOrNull(index + 1)?.start?.let { minOf(it, textEnd) } ?: textEnd
 
 /**
- * A Progress line: [full], and the [short] form the footer shows instead when [full] doesn't fit on its one
+ * A Progress line: [full], and the [short] form the controls show instead when [full] doesn't fit on its one
  * line between "A−" and "A+" (large system text).
  */
 data class ProgressLine(val full: String, val short: String)

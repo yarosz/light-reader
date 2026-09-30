@@ -256,7 +256,7 @@ class ReaderViewModelTest {
         assertTrue(vm.atEnd.value)
         assertSame(last, vm.frame.value)
         assertEquals(place, vm.spinePoint.value)
-        assertEquals(vm.book.value!!.title, vm.runningHead.value)
+        assertEquals(vm.book.value!!.title, vm.runningHead.value.title)
         assertNull(vm.progressLine.value)
         vm.nextPage()
         vm.onKeyDown(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN))
@@ -340,14 +340,14 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `the top line names the Chapter holding the Page's start, and every turn stores the Place's progress`() {
+    fun `the running head names the Chapter holding the Page's start, and every turn stores the Place's progress`() {
         val vm = reading()
         val book = vm.book.value!!
         vm.nextPage()
         vm.nextPage()
         val shown = vm.frame.value!!
         val start = SpinePoint(shown.pass.item, shown.page.start)
-        assertEquals(book.chapterAt(start)?.let { book.chapters[it].title } ?: book.title, vm.runningHead.value)
+        assertEquals(book.chapterAt(start)?.let { book.chapters[it].title } ?: book.title, vm.runningHead.value.title)
         assertEquals(book.progressAt(start), stored(vm).place?.progress)
     }
 
@@ -363,7 +363,7 @@ class ReaderViewModelTest {
         assertTrue(shown.pass.item == place.item && place.char in shown.page.start until shown.page.end)
         assertEquals(place, vm.spinePoint.value)
         val book = vm.book.value!!
-        assertEquals(book.chapters[book.chapterAt(place)!!].title, vm.runningHead.value)
+        assertEquals(book.chapters[book.chapterAt(place)!!].title, vm.runningHead.value.title)
         assertTrue(stored(vm).finished)
         vm.toLastPage()
         assertTrue(stored(vm).finished)
@@ -388,7 +388,7 @@ class ReaderViewModelTest {
             relayout(vm)
             assertTrue(vm.atEnd.value)
             assertTrue(vm.onLastPage)
-            assertEquals(vm.book.value!!.title, vm.runningHead.value)
+            assertEquals(vm.book.value!!.title, vm.runningHead.value.title)
             assertNull(vm.progressLine.value)
             vm.previousPage()
             vm.changeFont(+1)
@@ -415,15 +415,15 @@ class ReaderViewModelTest {
     fun `a volume key turns and hides the controls, and opening Contents hides them, but a font change keeps them`() {
         val vm = reading()
         val first = vm.pageStart
-        vm.controls.value = true
+        vm.showControls()
         vm.onKeyDown(KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_DOWN))
         assertFalse(vm.controls.value)
         assertTrue(vm.pageStart > first)
-        vm.controls.value = true
+        vm.showControls()
         vm.onKeyDown(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_VOLUME_UP))
         assertFalse(vm.controls.value)
         assertEquals(first, vm.pageStart)
-        vm.controls.value = true
+        vm.showControls()
         vm.changeFont(+1)
         settle()
         assertTrue(vm.controls.value)
@@ -432,13 +432,17 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `showing the controls keeps the Page's timing`() {
+    fun `a tap turn and the Tool pausing hide the controls`() {
         val vm = reading()
-        vm.fourSamples()
-        vm.controls.value = true
-        vm.controls.value = false
-        vm.readThenTurn()
-        assertNotEquals(PRIOR_WPM, speed.wpm)
+        vm.showControls()
+        vm.nextPage()
+        assertFalse(vm.controls.value)
+        vm.showControls()
+        vm.previousPage()
+        assertFalse(vm.controls.value)
+        vm.showControls()
+        vm.onAppPause()
+        assertFalse(vm.controls.value)
     }
 
     @Test
@@ -524,7 +528,7 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `A− does nothing at the smallest size and A+ nothing at the largest, so the footer shows them disabled`() {
+    fun `A− does nothing at the smallest size and A+ nothing at the largest, so the controls show them disabled`() {
         assertFalse(canChangeFont(0, -1))
         assertTrue(canChangeFont(0, +1))
         assertTrue(canChangeFont(FONT_SIZES.lastIndex, -1))
@@ -579,7 +583,7 @@ class ReaderViewModelTest {
     private val ReaderViewModel.inBackMatter: Boolean get() = pageStart >= book.value!!.textEnd
 
     private fun ReaderViewModel.assertBackMatterLines() {
-        assertEquals(BackMatterTest.LICENSE_HEADING, runningHead.value)
+        assertEquals(BackMatterTest.LICENSE_HEADING, runningHead.value.title)
         assertNull(progressLine.value)
     }
 
@@ -601,7 +605,7 @@ class ReaderViewModelTest {
         assertTrue(vm.atEnd.value)
         assertSame(last, vm.frame.value)
         assertTrue(stored(vm).finished)
-        assertEquals(book.title, vm.runningHead.value)
+        assertEquals(book.title, vm.runningHead.value.title)
         assertNull(vm.progressLine.value)
         vm.nextPage()
         assertTrue(vm.atEnd.value)
@@ -682,7 +686,7 @@ class ReaderViewModelTest {
         assertFalse(vm.atEnd.value)
         assertEquals(book.chapters[1].start, vm.pageStart)
         assertEquals(vm.pageStart, vm.spinePoint.value)
-        assertEquals("Chapter I.", vm.runningHead.value)
+        assertEquals("Chapter I.", vm.runningHead.value.title)
         assertNotNull(vm.progressLine.value)
         assertFalse(stored(vm).finished)
         assertEquals(vm.pageStart, vm.storedPlace())
@@ -734,7 +738,7 @@ class ReaderViewModelTest {
         vm.jumpTo(contents.rows[0].start)
         assertEquals(SpinePoint(0, 0), vm.pageStart)
         assertEquals(vm.pageStart, vm.storedPlace())
-        assertEquals("BOOK ONE · Chapter I.", vm.runningHead.value)
+        assertEquals(RunningHead("BOOK ONE", "Chapter I."), vm.runningHead.value)
         assertEquals(1, vm.openContents()!!.current)
     }
 
@@ -788,7 +792,7 @@ class ReaderViewModelTest {
         vm.jumpToChapter(1)
         val shown = vm.frame.value!!
         assertTrue(vm.pageStart < two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
         val landed = vm.frame.value!!
         vm.jumpToChapter(1)
@@ -798,7 +802,7 @@ class ReaderViewModelTest {
     /**
      * The same Chapter, its line now starting mid-word (the tail of a hyphenated word): a jump is exempt
      * from moving a Page's start up to a whole word, so the Page still starts on the Chapter's line, the
-     * top line and Contents name the Chapter, and the Place is that line.
+     * running head and Contents name the Chapter, and the Place is that line.
      */
     @Test
     fun `a jump to a Chapter whose line starts mid-word still lands on the Page starting on that line`() {
@@ -817,7 +821,7 @@ class ReaderViewModelTest {
         vm.jumpToChapter(1)
         val shown = vm.frame.value!!
         assertTrue(vm.pageStart <= two && two.char < shown.pass.firstLineEnd(shown.page), "lands on the Page whose first line holds $two")
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
         assertEquals(vm.pageStart, vm.spinePoint.value)
     }
@@ -825,10 +829,10 @@ class ReaderViewModelTest {
     /**
      * After that jump a font change re-packs at the Place, the Chapter's start, on a line that starts
      * mid-word again. The walk up to a whole word stops at the line holding the Chapter's start, so the
-     * Page doesn't open in the Chapter before: the top line, Contents and the Place stay the Chapter's.
+     * Page doesn't open in the Chapter before: the running head, Contents and the Place stay the Chapter's.
      */
     @Test
-    fun `a font change after a jump to a Chapter keeps its Page, top line and Contents on that Chapter`() {
+    fun `a font change after a jump to a Chapter keeps its Page, running head and Contents on that Chapter`() {
         val bodies = listOf(
             "<h1>One</h1><p>First.</p>",
             "<p>${"word ".repeat(400)}<span id=\"two\">Two starts</span> ${"word ".repeat(600)}</p>",
@@ -843,12 +847,12 @@ class ReaderViewModelTest {
         settle()
         vm.jumpToChapter(1)
         assertEquals(two, vm.pageStart)
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         vm.changeFont(+1)
         settle()
         val shown = vm.frame.value!!
         assertTrue(vm.pageStart <= two && two.char < shown.pass.firstLineEnd(shown.page), "the Page's first line holds $two")
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
         assertEquals(two, vm.spinePoint.value)
     }
@@ -874,11 +878,11 @@ class ReaderViewModelTest {
         settle()
         vm.jumpToChapter(1)
         assertEquals(two, vm.pageStart)
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         vm.changeFont(+1)
         settle()
         assertEquals(SpinePoint(0, heading), vm.pageStart)
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
         assertEquals(two, vm.spinePoint.value)
     }
@@ -933,7 +937,7 @@ class ReaderViewModelTest {
         vm.jumpToChapter(1)
         val first = vm.frame.value!!.page
         assertEquals(2, vm.openContents()!!.current)
-        assertEquals("Chapter I.", vm.runningHead.value)
+        assertEquals("Chapter I.", vm.runningHead.value.title)
         vm.jumpToChapter(3)
         vm.jumpToChapter(2)
         assertEquals(first, vm.frame.value!!.page)
@@ -958,10 +962,10 @@ class ReaderViewModelTest {
         settle()
         vm.jumpToChapter(1)
         assertEquals(opened.chapters[1].start, vm.pageStart)
-        assertEquals("Book One", vm.runningHead.value)
+        assertEquals("Book One", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
         vm.jumpToChapter(2)
-        assertEquals("Chapter I", vm.runningHead.value)
+        assertEquals("Chapter I", vm.runningHead.value.title)
         assertEquals(2, vm.openContents()!!.current)
     }
 
@@ -993,11 +997,11 @@ class ReaderViewModelTest {
         vm.bind(LineMeasurer(byBlock = true))
         settle()
         vm.jumpToChapter(1)
-        assertEquals("Book One", vm.runningHead.value)
+        assertEquals("Book One", vm.runningHead.value.title)
         vm.changeFont(+1)
         settle()
         assertTrue(vm.pageStart < opened.chapters[1].start, "the Page opens on the heading above the Part's")
-        assertEquals("Book One", vm.runningHead.value)
+        assertEquals("Book One", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
     }
 
@@ -1017,7 +1021,7 @@ class ReaderViewModelTest {
         vm.jumpToChapter(0)
         vm.nextPage()
         assertEquals(SpinePoint(1, 0), vm.pageStart, "the Page is the Part's title page")
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
     }
 
@@ -1038,7 +1042,7 @@ class ReaderViewModelTest {
         settle()
         vm.nextPage()
         assertEquals(two, vm.pageEnd, "the Page holds only Two's headings")
-        assertEquals("Two", vm.runningHead.value)
+        assertEquals("Two", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
     }
 
@@ -1062,7 +1066,7 @@ class ReaderViewModelTest {
         vm.jumpToChapter(1)
         vm.nextPage()
         assertEquals(opened.textEnd, vm.pageEnd, "the last Page of the text holds only headings")
-        assertEquals("One", vm.runningHead.value)
+        assertEquals("One", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
     }
 }

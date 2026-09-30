@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 
-/** Book text face (ADR 0006); chrome keeps Light's typeface. */
+/** Book text face (ADR 0006); the rest of the UI keeps Light's typeface. */
 private val Literata = FontFamily(
     Font(R.font.literata_regular, FontWeight.Normal, FontStyle.Normal),
     Font(R.font.literata_italic, FontWeight.Normal, FontStyle.Italic),

@@ -220,10 +220,7 @@ Match
 # What the Reader's open hands from the io thread to the main one (ReaderViewModel.openBook).
 Opened
 
-# N5 (B1): the controls' DESIGN.md "Reading" heading, and the tap zones' and controls' screen-reader
-# labels (DESIGN.md "Reading" > "Layout" and "Controls").
+# N5: the controls' DESIGN.md "Reading" heading, and the controls' running head (DESIGN.md "Reading" >
+# "Controls"), UI vocabulary rather than a glossary term.
 Controls
-Previous page
-Show controls
-Next page
-Hide controls
+RunningHead

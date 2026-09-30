@@ -2,6 +2,7 @@ package com.yarosz.reader
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
@@ -76,6 +78,7 @@ class ReaderScreen(
         val book by viewModel.book.collectAsState()
         val status by viewModel.status.collectAsState()
         val controls by viewModel.controls.collectAsState()
+        val frame by viewModel.frame.collectAsState()
         val measurer = rememberTextMeasurer(cacheSize = 0)
         val source = MeasurerSource(LocalDensity.current, LocalFontFamilyResolver.current, LocalLayoutDirection.current)
         LaunchedEffect(measurer) { viewModel.warmUp(measurer) }
@@ -84,7 +87,7 @@ class ReaderScreen(
             Box(Modifier.fillMaxSize().background(LightThemeTokens.colors.background)) {
                 val opened = book
                 val reading = opened != null && opened.spineItems.isNotEmpty()
-                if (reading) TapZones()
+                if (reading && frame != null && !controls) TapZones()
                 Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
                     when {
                         opened == null -> NoPage(status)
@@ -117,12 +120,14 @@ class ReaderScreen(
      * The tap zones (DESIGN.md "Reading"): full-height columns across the whole screen, margins included, the
      * left [TAP_BACK_WIDTH] turning back, the next [TAP_CONTROLS_WIDTH] showing the controls, the rest turning
      * forward. They lie under the Page, which takes no taps, so the end page's "Back to Shelf" still does.
+     * They are there once a Page or the end page shows and while the controls don't, so a screen reader can't
+     * turn under the controls.
      */
     @Composable
     private fun TapZones() {
         Row(Modifier.fillMaxSize()) {
             TapZone(READING_PREVIOUS_PAGE, TAP_BACK_WIDTH) { viewModel.previousPage() }
-            TapZone(READING_SHOW_CONTROLS, TAP_CONTROLS_WIDTH) { viewModel.controls.value = true }
+            TapZone(READING_SHOW_CONTROLS, TAP_CONTROLS_WIDTH) { viewModel.showControls() }
             TapZone(READING_NEXT_PAGE, 1f - TAP_BACK_WIDTH - TAP_CONTROLS_WIDTH) { viewModel.nextPage() }
         }
     }
@@ -140,8 +145,8 @@ class ReaderScreen(
     }
 
     /**
-     * The Page, or the end page, filling the reading view inside its margins; it never moves, and the controls
-     * draw over it. The Pages re-pack at the Place when its size changes.
+     * The Page, or the end page, filling the reading view inside its margins; showing or hiding the controls,
+     * which draw over it, leaves it as it is. The Pages re-pack at the Place when its size changes.
      */
     @Composable
     private fun Reader(measurer: TextMeasurer, source: MeasurerSource) {
@@ -168,9 +173,10 @@ class ReaderScreen(
     }
 
     /**
-     * The controls (DESIGN.md "Reading"), over the Page: the top bar, back to the Shelf and the running head,
-     * and at the bottom the Progress line over "A−" and "A+" at the left and "Contents" at the right, each
-     * block ruled off from the Page. A tap anywhere else hides them.
+     * The controls (DESIGN.md "Reading"), over the Page: the top bar, back to the Shelf and the running head
+     * (the Part on a line over the Chapter when there is one), and at the bottom the Progress line over "A−"
+     * and "A+" at the left and "Contents" at the right, each block ruled off from the Page, with no Progress
+     * line when there is none. A tap on a block's blank space does nothing; a tap anywhere else hides them.
      */
     @Composable
     private fun Controls() {
@@ -184,13 +190,14 @@ class ReaderScreen(
                 Modifier
                     .fillMaxSize()
                     .semantics { contentDescription = READING_HIDE_CONTROLS }
-                    .lightClickable(hapticsEnabled = false, role = Role.Button) { viewModel.controls.value = false }
+                    .lightClickable(hapticsEnabled = false, role = Role.Button) { viewModel.hideControls() }
             )
             LightTopBar(
-                leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = { goBack() }),
-                center = LightTopBarCenter.Text(runningHead),
-                modifier = Modifier.align(Alignment.TopCenter).background(background).drawBehind {
-                    drawLine(rule, Offset(0f, size.height), Offset(size.width, size.height), CONTROLS_RULE.toPx())
+                leftButton = LightBarButton.LightIcon(icon = LightIcons.BACK, onClick = { goBack() }, contentDescription = BACK_TO_SHELF),
+                center = runningHead.part?.let { LightTopBarCenter.TwoLineDetail(it, runningHead.title) } ?: LightTopBarCenter.Text(runningHead.title),
+                modifier = Modifier.align(Alignment.TopCenter).background(background).then(TAKES_TAPS).drawBehind {
+                    val y = size.height - CONTROLS_RULE.toPx() / 2
+                    drawLine(rule, Offset(0f, y), Offset(size.width, y), CONTROLS_RULE.toPx())
                 },
             )
             Column(
@@ -198,10 +205,14 @@ class ReaderScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(background)
-                    .drawBehind { drawLine(rule, Offset.Zero, Offset(size.width, 0f), CONTROLS_RULE.toPx()) }
+                    .then(TAKES_TAPS)
+                    .drawBehind {
+                        val y = CONTROLS_RULE.toPx() / 2
+                        drawLine(rule, Offset(0f, y), Offset(size.width, y), CONTROLS_RULE.toPx())
+                    }
                     .padding(start = SIDE_MARGIN, end = SIDE_MARGIN, top = 8.dp, bottom = TOP_BOTTOM_MARGIN),
             ) {
-                ProgressText(progressLine, Modifier.fillMaxWidth())
+                progressLine?.let { ProgressText(it, Modifier.fillMaxWidth()) }
                 Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
                     FontButton("A−", -1, fontStep)
                     FontButton("A+", +1, fontStep)
@@ -220,7 +231,7 @@ class ReaderScreen(
     private fun FontButton(label: String, delta: Int, fontStep: Int) =
         ControlButton(label, canChangeFont(fontStep, delta)) { viewModel.changeFont(delta) }
 
-    /** A text button of the controls' bottom row, filling its height, with 8 dp of padding at the sides. */
+    /** A text button of the controls' bottom row, filling its height, [CONTROL_PADDING] at each side. */
     @Composable
     private fun ControlButton(label: String, enabled: Boolean, onClick: () -> Unit) {
         LightText(
@@ -229,22 +240,21 @@ class ReaderScreen(
             modifier = Modifier
                 .fillMaxHeight()
                 .lightClickable(enabled = enabled, role = Role.Button, onClick = onClick)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = CONTROL_PADDING)
                 .wrapContentHeight(),
             lighten = !enabled,
         )
     }
 
-    /** "The end." and "Back to Shelf", which leaves the Reader as system back does. Taps elsewhere turn as on a Page. */
+    /**
+     * "The end." centred, and at the bottom "Back to Shelf", which leaves the Reader as system back does, kept
+     * out of the middle so a centre tap shows the controls. Taps elsewhere reach the tap zones, as on a Page.
+     */
     @Composable
     private fun EndPage() {
-        Column(
-            Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            LightText(text = END_PAGE_TEXT, variant = LightTextVariant.Copy, align = TextAlign.Center)
-            BackToShelf()
+        Box(Modifier.fillMaxSize()) {
+            LightText(text = END_PAGE_TEXT, variant = LightTextVariant.Copy, align = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
+            BackToShelf(Modifier.align(Alignment.BottomCenter))
         }
     }
 
@@ -278,7 +288,7 @@ class ReaderScreen(
  */
 fun canChangeFont(step: Int, delta: Int): Boolean = step + delta.sign in FONT_SIZES.indices
 
-/** Which of a [ProgressLine]'s forms the footer shows. */
+/** Which of a [ProgressLine]'s forms the controls show. */
 enum class ProgressForm { Full, Short }
 
 /** The full form when its one line, [fullWidthPx] wide as drawn, fits in [availableWidthPx], else the short. */
@@ -293,7 +303,7 @@ fun progressForm(fullWidthPx: Int, availableWidthPx: Int): ProgressForm =
  * width: fine for its one caller, a full-width slot, which never asks.
  */
 @Composable
-private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
+private fun ProgressText(line: ProgressLine, modifier: Modifier) {
     @Composable
     fun Form(text: String) = LightText(
         text = text,
@@ -303,7 +313,7 @@ private fun ProgressText(line: ProgressLine?, modifier: Modifier) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
-    Layout(content = { Form(line?.full.orEmpty()); Form(line?.short.orEmpty()) }, modifier = modifier) { measurables, constraints ->
+    Layout(content = { Form(line.full); Form(line.short) }, modifier = modifier) { measurables, constraints ->
         val full = measurables[0].measure(constraints.copy(minWidth = 0, maxWidth = Constraints.Infinity))
         val shown = when (progressForm(full.width, constraints.maxWidth)) {
             ProgressForm.Full -> full
@@ -327,5 +337,5 @@ private fun DrawScope.drawPage(shown: Shown<WindowLayout>, color: Color) {
     }
 }
 
-/** The rule between the controls and the Page. */
-private val CONTROLS_RULE = 1.dp
+/** Takes the taps on the controls' blocks, so one missing a button does nothing rather than hiding the controls. */
+private val TAKES_TAPS = Modifier.pointerInput(Unit) { detectTapGestures { } }
