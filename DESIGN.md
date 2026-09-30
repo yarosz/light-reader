@@ -91,6 +91,17 @@ flush, judged on block kinds, never on window boundaries.
   table of contents lists them or every one is. A publisher's EPUB may mark its notes `linear="no"`;
   listed, they stay, in Spine order, so a contents entry pointing at them still works. An unlisted one is
   gone: a Place stored in it opens at the Book's start. `parseEpub` in `Epub.kt`.
+- Parts. A table of contents entry with entries nested under it is a Part over the Chapters among them,
+  never a Chapter itself, its heading where its href points, or at its first Chapter's start when it has
+  no href. One whose href names a Spine item the Book drops is no Part: Standard Ebooks nests every Book
+  under its half title, named for the Book. In a flat table of contents, a Chapter whose text, up to the
+  next Chapter, is only headings ("BOOK ONE: 1805") is a Part when another such Chapter falls under the
+  same Parts, as Parts come in runs and a lone title page doesn't. It is over the Chapters after it until
+  the next such Part at its depth or above, or Back matter. It ends sooner at a title repeating under it,
+  where the numbering restarted at a Part boundary it missed, or at a Chapter under the same Parts whose
+  title no other Chapter has, a peer such as an Epilogue. So a uniquely titled Chapter in a Part, such as a
+  Book's one "CHAPTER XXXIX", falls under none. Heading levels are ignored: in a survey of 19 Gutenberg and
+  Standard Ebooks Books (3,819 Chapters) they changed the Parts of 2 Chapters. `chaptersOf` in `Chapters.kt`.
 - Every piece of text in a kept Spine item reaches a Page, except what is never shown: `<head>`,
   `<script>`, `<style>`, `<svg>`, `<math>`, `<noscript>`, `<template>`, and any element marked `hidden` or
   `aria-hidden="true"`, with everything in them. The known blocks are paragraphs, headings, list items,
@@ -198,14 +209,20 @@ Chapter starts there and no heading comes between (Gutenberg's `*** END OF THE P
 **Contents.** Tapping the top line opens it, from a Page, the end page, Front matter or Back matter, and
 drops the running timing even when back then returns without a jump. It is a screen titled "Contents"
 with the bar's back on the left and "Shelf" on the right, and one row per Chapter in order, each the
-Chapter's title verbatim at full strength; Back matter's rows follow the text's with no divider. The
-current row alone has the detail line "you're here": the Chapter the Page goes by, as the top line names
-it (of two starting at one point, the later), or on the end page the last Chapter of the text. In Front
-matter no row is current. The list opens with the row before the current one at the top, so the current
-row is second, or with the current row at the top when it is first; with no current row it opens at the
-top. The list has a top and a bottom; "start" and "end" stay the Book's and a Chapter's. Tapping a row
-goes to the Page that starts at that Chapter's start, laid out afresh from there so its heading tops the
-Page (Back matter's first row may open on Back matter's opening lines instead), even for the current
+Chapter's title verbatim at full strength; Back matter's rows follow the text's with no divider. As a
+printed contents page sets them, a Part the table of contents nests Chapters under has a row of its own
+before its first Chapter's, its title verbatim in the SDK's Heading style, marked as a heading for a
+screen reader, outermost first (The Brothers Karamazov: "Part I", "Book I: The History of a Family", then
+"I: Fyodor Pavlovitch Karamazov"). A Part listed beside its Chapters is already a row, its Chapter's, so
+it gets no second. The current row alone has the detail line "you're here": the Chapter the Page goes by,
+as the top line names it (of two starting at one point, the later), or on the end page the last Chapter
+of the text. A Part's row is never current, and in Front matter no row is. The list opens with the row
+before the current one at the top, so the current row is second, or with the current row at the top when
+it is first; with no current row it opens at the top. The row before may be a Part's, so the list opens
+on the Part the reader is in. The list has a top and a bottom; "start" and "end" stay the Book's and a
+Chapter's. Tapping a row goes to the Page that starts at that Chapter's start, or at the Part's heading,
+laid out afresh from there so its heading tops the Page; a Part's heading Page goes by the Part's first
+Chapter (Back matter's first row may open on Back matter's opening lines instead), even for the current
 Chapter, and even when that line starts mid-word (a Chapter anchored inside a paragraph): a jump never
 moves the start up to a whole word as a font change does. The Pages before it may tile differently, as
 after a font change. That Page is the Place, it is untimed, and the jump leaves the end page. Back, from

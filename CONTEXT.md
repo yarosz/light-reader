@@ -106,8 +106,8 @@ _Avoid_: file, chapter
 Where the reader is in a Book: the spot in the text at the top of the Page being read. A Book gets its
 Place when it is first opened; until then it hasn't been started. Font or layout changes never move it,
 though after one it may sit a few lines down its Page, so the Page doesn't start mid-word or part a
-heading from its text, and never goes by a Chapter before the Place's own. Going to a Chapter from
-Contents puts the Place at the top of the Page the Chapter starts on. The reader never sees it as a
+heading from its text, and never goes by a Chapter before the Place's own. Going to a Chapter or a Part
+from Contents puts the Place at the top of the Page the Chapter, or the Part's heading, starts on. The reader never sees it as a
 number; the Book simply opens there.
 _Avoid_: position, anchor, offset, location
 
@@ -126,9 +126,10 @@ left in this chapter"). On the Shelf, it is how far through the Book the Place i
 _Avoid_: position, page number
 
 **Contents**:
-The list of a Book's Chapters, in order, opened from the reading view. Choosing one goes to the start of
-that Chapter; it is the only way from the text into Back matter. Front matter has no row; the first row
-is the first Chapter.
+The list of a Book's Chapters, in order, each under the Parts it falls under, as a printed contents page
+lists them; opened from the reading view. Choosing a Chapter goes to its start, and choosing a Part to its
+heading; it is the only way from the text into Back matter. Front matter has no row; the first row is the
+first Part or Chapter.
 _Avoid_: table of contents (that is the Book's own list, which Contents is built from), TOC, index, chapters list
 
 **Finished**:

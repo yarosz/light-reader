@@ -79,10 +79,13 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
  * the first of those, as a Gutenberg Book opens on its title page. Back matter, Project Gutenberg's
  * license or a trailing run of Spine items marked as back matter (Standard Ebooks' colophon and
  * uncopyright), starts at [OpenBook.textEnd].
- * Chapters come from its first table of contents ([readTablesOfContents]) with an entry naming one of the
- * Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
- * its Spine item doesn't have starts at that Spine item's start, or at the previous entry's start if that
- * is later in the same Spine item.
+ * Chapters come from its first table of contents ([readTablesOfContents]) with a leaf entry naming one of
+ * the Spine items it keeps: an entry naming a dropped Spine item is dropped with it. An entry whose fragment
+ * its Spine item doesn't have starts at that Spine item's start, or at the previous Chapter's start if that
+ * is later in the same Spine item. An entry with entries nested under it is a Part over the Chapters among
+ * them when it has a label and no href or one naming a Spine item the Book keeps (so not Standard Ebooks'
+ * half title, named for the Book), its heading where its href names, else at its first Chapter's start; one
+ * over no Chapter is dropped.
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
@@ -90,7 +93,7 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     val pkg = readPackage(zip, fallbackTitle)
     val tables = readTablesOfContents(zip, pkg)
     val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
-    val listedPaths = tables.flatten().mapTo(hashSetOf()) { it.path }
+    val listedPaths = tables.flatten().mapNotNullTo(hashSetOf()) { it.path }
     val docs = pkg.spine.filter { it.linear || it.path in listedPaths }.ifEmpty { pkg.spine }.map { item ->
         item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) }
     }
@@ -100,18 +103,34 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
     val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
     val listed = tables.firstNotNullOfOrNull { entries ->
         val resolved = mutableListOf<Chapter>()
-        for (entry in entries) {
-            val index = indexOfPath[entry.path] ?: continue
-            val char = entry.fragment?.let { fragment ->
-                body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
-            } ?: 0
-            resolved += Chapter(entry.label, SpinePoint(index, char))
+        val open = ArrayDeque<ListedPart>()
+        entries.forEachIndexed { i, entry ->
+            val start = entry.path?.let(indexOfPath::get)?.let { index ->
+                val char = entry.fragment?.let { fragment ->
+                    body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
+                } ?: 0
+                SpinePoint(index, char)
+            }
+            while (open.lastOrNull()?.let { it.depth >= entry.depth } == true) open.removeLast()
+            when {
+                (entries.getOrNull(i + 1)?.depth ?: -1) > entry.depth ->
+                    open += ListedPart(entry.depth, entry.label.takeIf { it.isNotEmpty() && (entry.path == null || start != null) }, start)
+                start != null -> resolved += Chapter(entry.label, start, open.mapNotNull { it.over(start) })
+            }
         }
         resolved.ifEmpty { null }
     }.orEmpty()
     val footer = body.withIndex().firstNotNullOfOrNull { (i, doc) -> doc.second.anchors[PG_FOOTER]?.let { SpinePoint(i, it) } }
     val textEnd = textEndOf(spineItems, footer, backMatter = body.indexOfLast { !it.second.isBackMatter } + 1)
     OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems, textEnd), textEnd)
+}
+
+/** A table of contents entry with entries nested under it, [depth] deep: the Part [label] names, or none when null, made at its first Chapter. */
+private class ListedPart(val depth: Int, private val label: String?, private val start: SpinePoint?) {
+    private var part: Part? = null
+
+    /** The Part, for a Chapter under it starting at [chapter]. */
+    fun over(chapter: SpinePoint): Part? = part ?: label?.let { Part(it, start ?: chapter) }?.also { part = it }
 }
 
 /** The id of the element holding Project Gutenberg's license, the start of a Gutenberg Book's Back matter. */

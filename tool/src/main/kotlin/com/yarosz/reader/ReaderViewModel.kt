@@ -234,15 +234,14 @@ class ReaderViewModel(
     }
 
     /**
-     * A jump from Contents to Chapter [chapter]: leaves the end page and shows the Page starting at the
-     * Chapter's start ([Reading.jump]), even the Chapter already current, recording it as the Place, stamped.
-     * It clears Finished when the Chapter is text, keeps it when the Chapter is Back matter, and never sets
-     * it. The running timing is dropped and the landed Page is untimed, so it gives no sample.
+     * A jump from Contents to [start], a Chapter's start or a Part's heading: leaves the end page and shows the
+     * Page starting there ([Reading.jump]), even for the Chapter already current, recording it as the Place,
+     * stamped. It clears Finished when [start] is in the text, keeps it in Back matter, and never sets it. The
+     * running timing is dropped and the landed Page is untimed, so it gives no sample.
      */
-    fun jumpTo(chapter: Int) {
+    fun jumpTo(start: SpinePoint) {
         val opened = book.value ?: return
         val measurer = measurer ?: return
-        val start = opened.chapters.getOrNull(chapter)?.start ?: return
         timer.discard()
         atEnd.value = false
         val shown = show("jump") { it.jump(start.item, start.char, measurer.key(fontStep.value)) } ?: return

@@ -509,4 +509,123 @@ class ChaptersTest {
         assertEquals(0, pageFloor(listOf(SpinePoint(0, 5)), item, 1, 35))
         assertEquals(0, pageFloor(emptyList(), item, 1, 35))
     }
+
+    @Test
+    fun `a Chapter falls under every entry nesting it, outermost first, each a Part at its heading or else its first Chapter`() {
+        val book = open(
+            listOf(
+                "<h1>Part One</h1>",
+                "<h2>Book I</h2><h3 id=\"one\">Chapter 1</h3><p>First</p>",
+                "<h3>Chapter 2</h3><p>Second</p>",
+                "<h3>Chapter 3</h3><p>Third</p>",
+                "<p>Afterword</p>",
+            ),
+            nav = nav(
+                li("Part One", "text/c0.xhtml",
+                    li("Book I", "text/c1.xhtml", li("Chapter 1", "text/c1.xhtml#one"), li("Chapter 2", "text/c2.xhtml")),
+                    li("Book II", null, li("Chapter 3", "text/c3.xhtml")),
+                ),
+                li("Afterword", "text/c4.xhtml"),
+            ),
+        )
+        val partOne = Part("Part One", SpinePoint(0, 0))
+        val bookOne = Part("Book I", SpinePoint(1, 0))
+        assertEquals(
+            listOf(listOf(partOne, bookOne), listOf(partOne, bookOne), listOf(partOne, Part("Book II", SpinePoint(3, 0))), emptyList()),
+            book.chapters.map { it.parts },
+        )
+    }
+
+    @Test
+    fun `an entry naming a Spine item the Book drops, as Standard Ebooks' half title is, is no Part`() {
+        val bodies = listOf("<h2>The Book</h2>", "<h2>Part I</h2>", "<h3>I</h3><p>First</p>", "<h3>II</h3><p>Second</p>")
+        val nav = nav(li("The Book", "text/c0.xhtml", li("Part I", "text/c1.xhtml", li("I", "text/c2.xhtml"), li("II", "text/c3.xhtml"))))
+        val marks = mapOf(0 to "epub:type=\"frontmatter halftitlepage\"", 1 to "epub:type=\"bodymatter part\"", 2 to "epub:type=\"bodymatter chapter\"", 3 to "epub:type=\"bodymatter chapter\"")
+        val book = parseEpub(File(dir, "book.epub").writeEpub(tocEpubFiles(bodies, nav, bodyAttributes = marks)))
+        val partOne = Part("Part I", SpinePoint(0, 0))
+        assertEquals(listOf(listOf(partOne), listOf(partOne)), book.chapters.map { it.parts })
+    }
+
+    @Test
+    fun `a Chapter of Back matter falls under no Part, even one nesting it`() {
+        val book = open(
+            listOf("<h2>One</h2><p>Text</p>", "<h2>Two</h2><p>The end.</p><div id=\"pg-footer\"><h2 id=\"license\">LICENSE</h2><p>Terms</p></div>"),
+            nav = nav(li("Part One", null, li("One", "text/c0.xhtml"), li("Two", "text/c1.xhtml"), li("LICENSE", "text/c1.xhtml#license"))),
+        )
+        assertEquals(listOf("One", "Two", "LICENSE"), book.chapters.map { it.title })
+        assertEquals(listOf(1, 1, 0), book.chapters.map { it.parts.size })
+    }
+
+    /** A Book whose flat table of contents lists [chapters], each a Spine item: a title ending in "*" is a page of only its heading. */
+    private fun flat(vararg chapters: String): OpenBook = open(
+        chapters.map { if (it.endsWith("*")) "<h2>${it.dropLast(1)}</h2>" else "<h2>$it</h2><p>Text of $it</p>" },
+        nav = nav(*chapters.mapIndexed { i, title -> li(title.removeSuffix("*"), "text/c$i.xhtml") }.toTypedArray()),
+    )
+
+    /** Each Chapter's title, then the Parts it falls under, marked "*" when listed beside their Chapters. */
+    private fun OpenBook.partsOf(): List<String> =
+        chapters.map { chapter -> (listOf(chapter.title) + chapter.parts.map { it.title + if (it.isChapter) "*" else "" }).joinToString(" < ") }
+
+    @Test
+    fun `listed beside its Chapters, a page of only a heading is a Part over the Chapters after it, until the next`() {
+        val book = open(
+            listOf(
+                "<h2>Foreword</h2><p>Words first.</p>", "<h2>BOOK ONE: 1805</h2>", "<h2>CHAPTER I</h2><p>A</p>", "<h2>CHAPTER II</h2><p>B</p>",
+                "<h2>BOOK TWO: 1806</h2>", "<h2>CHAPTER I</h2><p>C</p>", "<h2>CHAPTER II</h2><p>D</p><div id=\"pg-footer\"><h2 id=\"license\">LICENSE</h2><p>Terms</p></div>",
+            ),
+            nav = nav(
+                li("Foreword", "text/c0.xhtml"), li("BOOK ONE: 1805", "text/c1.xhtml"), li("CHAPTER I", "text/c2.xhtml"), li("CHAPTER II", "text/c3.xhtml"),
+                li("BOOK TWO: 1806", "text/c4.xhtml"), li("CHAPTER I", "text/c5.xhtml"), li("CHAPTER II", "text/c6.xhtml"), li("LICENSE", "text/c6.xhtml#license"),
+            ),
+        )
+        assertEquals(
+            listOf(
+                "Foreword", "BOOK ONE: 1805", "CHAPTER I < BOOK ONE: 1805*", "CHAPTER II < BOOK ONE: 1805*",
+                "BOOK TWO: 1806", "CHAPTER I < BOOK TWO: 1806*", "CHAPTER II < BOOK TWO: 1806*", "LICENSE",
+            ),
+            book.partsOf(),
+        )
+        assertEquals(Part("BOOK ONE: 1805", book.chapters[1].start, isChapter = true), book.chapters[2].parts.single())
+    }
+
+    @Test
+    fun `a lone page of only a heading, like a title page, is no Part`() {
+        assertEquals(listOf("THE TITLE", "CHAPTER I", "CHAPTER II"), flat("THE TITLE*", "CHAPTER I", "CHAPTER II").partsOf())
+    }
+
+    @Test
+    fun `a title repeating under a listed Part ends it, a boundary missed`() {
+        assertEquals(
+            listOf("BOOK ONE", "I < BOOK ONE*", "II < BOOK ONE*", "I", "II", "BOOK TWO", "I < BOOK TWO*", "II < BOOK TWO*"),
+            flat("BOOK ONE*", "I", "II", "I", "II", "BOOK TWO*", "I", "II").partsOf(),
+        )
+    }
+
+    @Test
+    fun `a title no other Chapter has, beside a listed Part's Chapters, ends it`() {
+        assertEquals(
+            listOf("BOOK ONE", "I < BOOK ONE*", "II < BOOK ONE*", "Epilogue", "BOOK TWO", "I < BOOK TWO*", "II < BOOK TWO*"),
+            flat("BOOK ONE*", "I", "II", "Epilogue", "BOOK TWO*", "I", "II").partsOf(),
+        )
+    }
+
+    @Test
+    fun `listed Parts go inside the Parts nesting them`() {
+        val book = open(
+            listOf("<h2>ACT I</h2>", "<h3>SCENE I</h3><p>A</p>", "<h3>SCENE II</h3><p>B</p>", "<h2>ACT II</h2>", "<h3>SCENE I</h3><p>C</p>", "<h3>SCENE II</h3><p>D</p>"),
+            nav = nav(
+                li("THE PLAY", null,
+                    li("ACT I", "text/c0.xhtml"), li("SCENE I", "text/c1.xhtml"), li("SCENE II", "text/c2.xhtml"),
+                    li("ACT II", "text/c3.xhtml"), li("SCENE I", "text/c4.xhtml"), li("SCENE II", "text/c5.xhtml"),
+                ),
+            ),
+        )
+        assertEquals(
+            listOf(
+                "ACT I < THE PLAY", "SCENE I < THE PLAY < ACT I*", "SCENE II < THE PLAY < ACT I*",
+                "ACT II < THE PLAY", "SCENE I < THE PLAY < ACT II*", "SCENE II < THE PLAY < ACT II*",
+            ),
+            book.partsOf(),
+        )
+    }
 }
