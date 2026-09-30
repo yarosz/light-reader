@@ -6,26 +6,31 @@ Books from Project Gutenberg and Standard Ebooks are built in, or add your own c
 Tap or press a volume key to turn the page. Your place is kept, at any font size.
 Works offline, with no account and nothing tracked. Copy-protected books from Kindle, Apple Books or Libby won't open.
 
-> **Status: early development (0.1.0).** Reader downloads books from catalogues onto a Shelf, turns
-> pages by tap or volume key, keeps your place in each book at any font size, and lists each book's
-> chapters, with reading controls a centre tap shows. "Reader" on the Shelf opens About, which lists where
-> to find books without copy protection. Next: measuring speed on the phone, then illustrations.
+> **Status: early development (0.2.0).** Reader downloads books from catalogues onto a Shelf, turns
+> pages by tap or volume key, keeps your place in each book at any of six font sizes, and lists each
+> book's chapters under their parts. The page fills the screen; a centre tap shows the reading controls,
+> and a first-run walkthrough shows the taps. "Reader" on the Shelf opens About, which lists where to
+> find books without copy protection. Next: measuring speed on the phone, then illustrations.
 > Not yet signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>
   <img src="docs/screenshots/chapter-opening.png" width="30%" alt="Chapter one opening: its heading above the first paragraph, the page filling the screen with nothing else on it">
-  <img src="docs/screenshots/controls.png" width="30%" alt="The reading controls over a page: back and the chapter's name at the top; the minutes left in the chapter, A−, A+ and Contents at the bottom; the word 'never' in Literata's true italic">
+  <img src="docs/screenshots/controls.png" width="30%" alt="The reading controls over a page of War and Peace: back, the running head 'Part III: 1805' over the chapter 'I', and the Contents icon at the top; A−, the minutes left in the chapter and A+ at the bottom">
   <img src="docs/screenshots/caption.png" width="30%" alt="An illustration's description shown as a grey italic caption, followed by the story text">
+</p>
+
+<p>
+  <img src="docs/screenshots/walkthrough.gif" width="30%" alt="First-run walkthrough: next page, back, then the controls">
 </p>
 
 <p>
   <img src="docs/screenshots/shelf.png" width="30%" alt="The Shelf: a list of four books, with War and Peace at 99%">
   <img src="docs/screenshots/catalogue-page.png" width="30%" alt="Standard Ebooks' new releases: a search field above a list of titles and authors">
-  <img src="docs/screenshots/contents.png" width="30%" alt="Contents: Alice's chapters in order, Chapter I marked 'you’re here', with Shelf at the top right">
+  <img src="docs/screenshots/contents.png" width="30%" alt="Contents of War and Peace: 'Part III: 1805' as a heading above its chapters, Chapter I marked 'you’re here'">
 </p>
 
-<sub>Reading and Contents on a Light Phone III; the Shelf and a Catalogue on the emulator at the LP3's
-size. Book text is set in Literata; illustrations appear as their descriptions for now.</sub>
+<sub>Reading, the first-run walkthrough and Contents on a Light Phone III; the Shelf and a Catalogue on the
+emulator at the LP3's size. Book text is set in Literata; illustrations appear as their descriptions for now.</sub>
 
 ## Where to find DRM-free books
 
