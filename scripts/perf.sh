@@ -34,8 +34,8 @@
 #                   the activity and the Shelf aren't in it. Its parts' P50s are alongside: parseMs, wordsMs (the
 #                   word index), then from the open start bookMs (the Book parsed, indexed and its Place found) and
 #                   passStartMs (the view composed and bound: the layout pass starts), and firstPageMs. The open
-#                   starts once the Shelf has drawn, after LightActivity's splash (held for the Activity's first
-#                   second, and every draw and measure with it), so it costs what a tap on the Shelf does.
+#                   starts once the Shelf has drawn, after LightActivity's splash (which cancels every draw, and
+#                   with it Compose's layout of new content), so it costs about what a tap on the Shelf does.
 #   window          each window measure logged within 1 s of an open or font pass.
 #   memory          dumpsys meminfo's App Summary, in MiB: total PSS, the Java and native heaps, and Graphics (GL and
 #                   gfx buffers). Since Android 8 decoded bitmaps live in the native heap, so images show in native

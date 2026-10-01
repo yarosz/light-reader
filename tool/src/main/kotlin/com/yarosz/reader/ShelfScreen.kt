@@ -58,8 +58,8 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
         val mode by viewModel.mode.collectAsState()
         val devStart by viewModel.devStart.collectAsState()
 
-        // A dev-start session opens once the Shelf has drawn: LightActivity's splash holds every draw, and with it
-        // Compose's measure, for its first second, which would otherwise land in the open's timing.
+        // A dev-start session opens once the Shelf has drawn: LightActivity's splash cancels every draw, and Compose
+        // lays out new content in its draw, so an open started under the splash would wait for it in its timing.
         var drawn by remember { mutableStateOf(false) }
         LaunchedEffect(devStart, drawn) {
             if (!drawn) return@LaunchedEffect
@@ -72,7 +72,12 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
         }
 
         LightTheme(colors = themeColors) {
-            Column(Modifier.fillMaxSize().background(LightThemeTokens.colors.background).drawBehind { if (!drawn) drawn = true }) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(LightThemeTokens.colors.background)
+                    .then(if (devStart != null && !drawn) Modifier.drawBehind { drawn = true } else Modifier)
+            ) {
                 val shown = rows
                 LightTopBar(
                     leftButton = if (shown.isNullOrEmpty()) null else LightBarButton.Text(
