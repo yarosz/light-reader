@@ -19,8 +19,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * Logcat tag for layout timings; `scripts/perf.sh` parses these lines (book, windows, warmup, pass, window,
- * turn, shown), so their keys stay as they are: `chapters=` counts Spine items, `tocChapters=` the Book's
- * Chapters.
+ * and in a dev-start session turn, shown, record), so their keys stay as they are: `chapters=` counts Spine
+ * items, `tocChapters=` the Book's Chapters.
  */
 private const val PERF_TAG = "ReaderPerf"
 
@@ -216,12 +216,19 @@ class ReaderViewModel(
     private var windowChars = WINDOW_CHARS
 
     /**
-     * Of [syncWindows], those a background measure ([prefetch]) was measuring at the time, for the `turn` line.
-     * A step never waits for one: it measures the window again on this thread, and the late copy is dropped.
+     * Whether this is a dev-start session, the only kind `scripts/perf.sh` reads: only then are the `turn`, `shown`
+     * and `record` lines logged and their state kept, so normal reading pays a check per step.
+     */
+    private val perf = start != null
+
+    /**
+     * Of [syncWindows], those a background measure ([prefetch]) was measuring at the time, for the `turn` line:
+     * the very window of the very pass, which a step measures again on this thread rather than wait for, and whose
+     * late copy [Pass.record] drops. Background measures of other windows, competing for the CPU, aren't counted.
      */
     private var raced = 0
 
-    /** The pass and window [prefetching] is measuring; null while it measures none. */
+    /** The pass and window [prefetching] is measuring, in a dev-start session; null while it measures none. */
     private var prefetchingWindow: Pair<Pass<WindowLayout>, Int>? = null
 
     /**
@@ -238,7 +245,7 @@ class ReaderViewModel(
     /** When the last step put its Page in [frame] ([System.nanoTime]). */
     private var framedAt = 0L
 
-    /** The Page [drawn] waits for; null once logged. */
+    /** The Page [drawn] waits for; null once logged, and outside a dev-start session. */
     private var undrawn: Undrawn? = null
 
     private var loading: Job? = null
@@ -517,19 +524,22 @@ class ReaderViewModel(
     /**
      * Shows the Page [step] finds and records it as the Place. A [back] turn clears Finished too when it
      * lands on a Page of the text ([inText]), re-stamping the Place even when [step] finds no Page (the
-     * first Page, which is text). A turn that shows a Page logs a `turn` line: the ms from [begun], when the
-     * turn reached the view model, to the Page being in [frame], and the windows it measured on this thread
-     * (ADR 0007: none), [raced] among them.
+     * first Page, which is text). In a dev-start session, a turn that shows a Page logs a `turn` line: the window
+     * its first band is drawn from, stateMs from [begun] (the turn reaching the view model) to the Page being in
+     * [frame], ms to the turn's main-thread work being done (the running head, Progress and hint published, the
+     * Place stamped; the background measures it starts run later, off it), and the windows it measured on this
+     * thread (ADR 0007: none), [raced] among them.
      */
     private fun turn(back: Boolean, begun: Long, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
         val shown = show("turn", begun, step)
-        if (shown != null) {
-            spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
-            Log.i(PERF_TAG, "turn dir=${if (back) "back" else "next"} item=${shown.pass.item} ms=${ms(framedAt - begun)} " +
-                "syncWindows=$syncWindows raced=$raced")
-        }
+        if (shown != null) spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
         val clears = back && (shown == null || inText(shown)) && book.value?.let { saver.data.books[it.identifier]?.finished } == true
         if (shown != null || clears) stamp(finished = if (clears) false else null)
+        if (perf && shown != null) {
+            val done = System.nanoTime()
+            Log.i(PERF_TAG, "turn dir=${if (back) "back" else "next"} item=${shown.pass.item} window=${shown.page.bands.first().window} " +
+                "stateMs=${ms(framedAt - begun)} ms=${ms(done - begun)} syncWindows=$syncWindows raced=$raced")
+        }
         return shown
     }
 
@@ -586,8 +596,9 @@ class ReaderViewModel(
      * Runs one step of the session, publishes what it shows, logs the pass when the step started one
      * (re-entering a cached pass logs nothing), and keeps the neighbouring windows coming. firstPageMs
      * runs from the step's start to the Page being ready to draw: the windows' styled text, their
-     * measures and the packing, on this thread. [begun] is when the action behind the step began: the
-     * `shown` line runs from it to the Page's first draw ([drawn]).
+     * measures and the packing, on this thread. [begun] is when the action behind the step began: in a
+     * dev-start session the `shown` line runs from it to the Page's first draw ([drawn]). A step finding the
+     * Page already in [frame] waits for no draw: an equal [Shown] doesn't emit, so nothing redraws for it.
      */
     private fun show(reason: String, begun: Long, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
         val reading = reading ?: return null
@@ -598,6 +609,7 @@ class ReaderViewModel(
         val start = System.nanoTime()
         val shown = step(reading) ?: return null
         val elapsed = System.nanoTime() - start
+        val framed = frame.value != shown
         frame.value = shown
         framedAt = System.nanoTime()
         publishLines()
@@ -609,10 +621,12 @@ class ReaderViewModel(
             Log.i(PERF_TAG, "pass reason=$reason item=${pass.item} chars=${pass.length} font=${FONT_SIZES[pass.key.fontStep]} " +
                 "windows=${pass.windows.size} syncWindows=$syncWindows firstPageMs=${ms(elapsed)}")
         }
-        val opening = if (reason != "open") "" else
-            " parseMs=$openParseMs wordsMs=$openWordsMs bookMs=${ms(bookAt - begun)} passStartMs=${ms(start - begun)}"
-        val extra = opening + if (passStarted) " firstPageMs=${ms(elapsed)}" else ""
-        undrawn = frame.value?.let { Undrawn(it, reason, begun, extra) }
+        if (perf) {
+            val opening = if (reason != "open") "" else
+                " parseMs=$openParseMs wordsMs=$openWordsMs bookMs=${ms(bookAt - begun)} passStartMs=${ms(start - begun)}"
+            val extra = opening + if (passStarted) " firstPageMs=${ms(elapsed)}" else ""
+            undrawn = if (framed) Undrawn(shown, reason, begun, extra) else null
+        }
         prefetch()
         return shown
     }
@@ -621,23 +635,36 @@ class ReaderViewModel(
      * Measures the next window the shown pass wants, off the main thread, one at a time, until it is
      * covered. A cancel can't interrupt a measure already running, so the next one starts only once it
      * returns: rapid font taps never stack measures. A turn that needs the window being measured here
-     * measures it on the main thread, and [Pass.record] then drops this late copy.
+     * measures it on the main thread, and [Pass.record] then drops this late copy. A window that lands is
+     * recorded on the main thread ([record]).
      */
     private fun prefetch() {
         if (prefetching != null) return
         val measurer = measurer ?: return
         val (pass, window) = reading?.prefetchTarget() ?: return
-        prefetchingWindow = pass to window
+        if (perf) prefetchingWindow = pass to window
         prefetching = viewModelScope.launch {
             try {
                 val layout = withContext(Dispatchers.Default) { measure(measurer, pass, window, sync = false) }
-                if (frame.value?.pass === pass) pass.record(window, layout)
+                if (frame.value?.pass === pass) record(pass, window, layout)
             } finally {
                 prefetchingWindow = null
                 prefetching = null
                 prefetch()
             }
         }
+    }
+
+    /**
+     * Records a background measure of [window] in [pass], which re-packs the pass on this thread. In a dev-start
+     * session it logs a `record` line with the re-pack's ms: a tap arriving meanwhile waits in the input queue, which
+     * no `turn` line shows. A window a step already measured again ([raced]) is dropped, unlogged.
+     */
+    private fun record(pass: Pass<WindowLayout>, window: Int, layout: WindowLayout) {
+        if (!perf || pass.measured(window) != null) return pass.record(window, layout)
+        val start = System.nanoTime()
+        pass.record(window, layout)
+        Log.i(PERF_TAG, "record pass=${pass.id} item=${pass.item} window=$window repackMs=${ms(System.nanoTime() - start)}")
     }
 
     private fun measure(measurer: WindowMeasurer, pass: Pass<WindowLayout>, window: Int, sync: Boolean): WindowLayout {
@@ -653,11 +680,12 @@ class ReaderViewModel(
     }
 
     /**
-     * The view drew [shown]: logs the `shown` line once for the step that put it in [frame], with the ms from
-     * that step's start (for an open, [openBook]'s, before the parse) to this draw. Called from the draw
-     * phase, so it leaves out the render thread and the display. An open's line adds where the time went:
-     * parseMs and wordsMs; from the open's start, bookMs to the Book being in [book] and passStartMs to its
-     * layout pass's start (the view composing and binding its measurer); and the pass's firstPageMs.
+     * The view drew [shown]: in a dev-start session, logs the `shown` line once for the step that put it in
+     * [frame], with the ms from that step's start (for an open, [openBook]'s, before the parse) to this draw.
+     * Called from the draw phase, so it leaves out the render thread and the display. An open's line adds where
+     * the time went: parseMs and wordsMs; from the open's start, bookMs to the Book being in [book] and
+     * passStartMs to its layout pass's start (the view composing and binding its measurer); and the pass's
+     * firstPageMs.
      */
     fun drawn(shown: Shown<WindowLayout>) {
         val step = undrawn?.takeIf { it.shown === shown } ?: return

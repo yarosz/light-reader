@@ -1,22 +1,31 @@
 #!/usr/bin/env bash
 # Measure the Reader on a device against ADR 0007's bar (first Page at any Place, and any font change, <= 300 ms
-# P90 on the SM4450, warm; page turns do no layout work), from the app's "ReaderPerf" logcat lines. At one Place
-# (by default the start of the EPUB's largest Spine item) it times N opens (fresh process each: force-stop +
-# start), N font changes, and two sessions of page turns from a fresh open, then reads the app's memory.
+# P90 on the SM4450, warm; page turns do no layout work), from the "ReaderPerf" logcat lines a dev-start session
+# logs. At one Place (by default the start of the EPUB's largest Spine item) it times N opens (fresh process each:
+# force-stop + start) and N font changes; then two sessions of page turns across a window seam of that Spine item,
+# reading the app's memory after the font changes and after each session.
 #
-#   scripts/perf.sh [-s serial] [-n runs] [-r] [-i item] [-w | -o offset] [-c chars] <epub path or URL>
+#   scripts/perf.sh [-s serial] [-n runs] [-r [-u]] [-i item] [-w | -o offset] [-c chars] <epub path or URL>
 #
 # The report's rows:
 #   open, font      firstPageMs, the bar's own figure: a layout pass's start to the anchor Page ready to draw
 #                   (the AnnotatedString build for the window(s), their measure, and packing). It excludes the
 #                   EPUB parse, composition and the first frame.
-#   next, retrace,  ms from a turn reaching the view model to its Page in state. syncWindows counts the windows
-#   back            it measured on the main thread (the bar says none); raced, those a background measure was
-#                   measuring at the time (a turn never waits for one: it measures the window again). Each
-#                   session taps from a fresh open at the Place as soon as its Page is drawn, while neighbouring
-#                   windows may still be measuring, about 0.5 s between taps: N forward (next), then N back over
-#                   the same Pages (retrace, from the pass's cache); then, from a second fresh open, N back from
-#                   the Place into earlier windows, packed backward (back).
+#   next, retrace,  turns within the Spine item: ms from the turn reaching the view model to its main-thread work
+#   back            done (the Page in state, the running head, Progress and hint published, the Place stamped;
+#                   P50 stateMs, to the Page in state, alongside). syncWindows counts the windows a turn measured
+#                   on the main thread (the bar says none); raced, those of them a background measure was measuring
+#                   at that moment (the same window of the same pass: the turn measures it again rather than wait;
+#                   background measures of other windows compete for the CPU but aren't counted). "windows" is the
+#                   range of windows the Pages turned to start in. The forward session opens ~1,500 characters
+#                   (about 3 Pages) before the end of a window and turns forward over the seam (next), then back
+#                   over the same Pages, from the pass's cache (retrace); the back session opens at the next
+#                   window's start and turns back, packing backward into the earlier window (back).
+#   cross           turns from either session into another Spine item. Those start a fresh pass, which measures
+#                   its window on the main thread by design (prefetch covers only the shown pass): syncWindows > 0
+#                   there is no regression.
+#   repack          a background window landing re-packs its pass on the main thread (repackMs); a tap arriving
+#                   meanwhile waits in the input queue, which no other row shows.
 #   drawn …         the same actions timed to the first draw of their Page (the draw phase, before the render
 #                   thread and the display). An open's runs from the view model's open start, before the EPUB
 #                   parse: process start, the activity and the Shelf aren't in it. Its parts' P50s are alongside:
@@ -24,8 +33,14 @@
 #                   and its Place found) and passStartMs (the view composed and bound: the layout pass starts),
 #                   and firstPageMs.
 #   window          each window measure logged within 1 s of an open or font pass.
-#   memory          dumpsys meminfo's App Summary after the opens and after the turns: total PSS, the Java and
-#                   native heaps, and Graphics, where decoded images will show.
+#   memory          dumpsys meminfo's App Summary, in MiB: total PSS, the Java and native heaps, and Graphics (GL and
+#                   gfx buffers). Since Android 8 decoded bitmaps live in the native heap, so images show in native
+#                   heap + graphics.
+#
+# Each turn session starts from a fresh open at its Place and taps as soon as the Page is drawn, while neighbouring
+# windows may still be measuring: max(N, 6) taps each way, sent in one burst from a device-side shell ("input tap;
+# sleep 0.3"). `input` starts a process per tap, so taps land further apart than 0.3 s; the report gives the real
+# spacing. A Spine item of one window has no seam, and the turn sessions are skipped.
 #
 # -i sets the Spine item (as the app counts them: its "book" line's chapters=), -o the character offset into it.
 # -w puts the Place near a window seam instead: 150 characters before the Spine item's first window end, as the
@@ -36,28 +51,33 @@
 # -r times the minified release APK. A release build isn't debuggable, so `run-as` fails: each step writing the
 # app's files (the EPUB, files/dev-start, the restore) runs with the debug APK installed, and the release APK goes
 # back in over it before anything is timed. Both are signed with one key and share a versionCode, so the app's
-# data survives each swap. Either way the run leaves the debug APK installed.
+# data survives each swap. Each time the release APK goes in, its bundled baseline profile is installed and the
+# app compiled to it (`cmd package compile -m speed-profile`), the state a phone reaches after its idle background
+# compile; -u skips that, to time the APK as installed. The report gives the dexopt status.
 #
 # The serial defaults to the attached non-emulator device. The EPUB and the start Place go into the app's files
-# through `run-as`. The app's own book and the device's stay-awake setting are restored on exit, after a failure
-# too. If that restore fails (say the device drops off), files/dev-start and the perf book can stay behind, with
-# the real book kept in files/alice.epub.perf; the next successful run cleans both, except that a perf book left
-# on a device that had no alice.epub stays as its book.
+# through `run-as`, the real book kept in files/alice.epub.perf meanwhile. On exit, after a failure or Ctrl-C too
+# (a second Ctrl-C doesn't stop it), the restore wakes the device, removes files/dev-start, puts the real book
+# back, reinstalls the APK that was installed before the run (a copy is pulled first; the debug APK stays when
+# none was) and restores the stay-awake setting. If a step fails, it prints the commands to finish by hand. A
+# perf book left on a device that had no alice.epub, by a restore that failed, stays as its book.
 set -euo pipefail
 
 serial=""
 runs=10
 release=false
+warm=true
 item=""
 seam=false
 offset=""
 chars=""
-usage="usage: scripts/perf.sh [-s serial] [-n runs] [-r] [-i item] [-w | -o offset] [-c chars] <epub path or URL>"
-while getopts "s:n:ri:wo:c:" opt; do
+usage="usage: scripts/perf.sh [-s serial] [-n runs] [-r [-u]] [-i item] [-w | -o offset] [-c chars] <epub path or URL>"
+while getopts "s:n:rui:wo:c:" opt; do
   case "$opt" in
     s) serial=$OPTARG ;;
     n) runs=$OPTARG ;;
     r) release=true ;;
+    u) warm=false ;;
     i) item=$OPTARG ;;
     w) seam=true ;;
     o) offset=$OPTARG ;;
@@ -74,6 +94,7 @@ die() { echo "perf: $1" >&2; exit 1; }
 [ -z "$offset" ] || [[ $offset =~ ^(0|[1-9][0-9]{0,8})$ ]] || die "-o wants a character offset, got '$offset'"
 [ -z "$chars" ] || [[ $chars =~ ^[1-9][0-9]{0,8}$ ]] || die "-c wants a positive integer, got '$chars'"
 if $seam && [ -n "$offset" ]; then die "-w and -o both set the offset; pass one"; fi
+if ! $warm && ! $release; then die "-u leaves the release APK uncompiled; pass it with -r"; fi
 case "$src" in
   http://*|https://*|/*) ;;
   *) src=$PWD/$src ;;
@@ -90,15 +111,116 @@ fi
 export ANDROID_SERIAL=$serial
 a() { "$adb" -s "$serial" "$@"; }
 
+# What the restore undoes: each flag is set before the step it covers.
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+swapped=false
+files_touched=false
+wrote_book=false
+stay_set=false
+orig_apk=""
+orig_debuggable=""
+orig_version=""
+stay_on=""
+activity=""
+debug_apk=tool/build/outputs/apk/debug/tool-debug.apk
+
+installed_flags() {  # -> the installed package's flags=[ … ] and versionName=…, one per line
+  { a shell dumpsys package $pkg | tr -d '\r' | grep -m2 -oE '(^ +flags=\[[^]]*\]|versionName=[^ ]+)' || true; } | sed 's/^ *//'
+}
+
+# The LP3 drops off USB while asleep: wake it, wait up to 30 s for adb, clear a PIN-less lock screen.
+wake() {
+  for _ in $(seq 1 15); do
+    if a shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1; then break; fi
+    sleep 2
+  done
+  a shell wm dismiss-keyguard >/dev/null 2>&1
+}
+
+# The restore: on any exit, interrupts ignored. The app's files are cleaned with the debug APK in (run-as) and
+# checked, and only then does the APK installed before the run go back in. A step failing skips the relaunch and
+# prints the commands to finish by hand; $work is then kept for the pulled APK.
+cleanup() {  # -> the run-as script putting the real book back; the perf book is deleted only once it was written
+  printf '%s' "rm -f files/dev-start files/alice.epub.perf.tmp; if [ -f files/alice.epub.perf ]; then mv files/alice.epub.perf files/alice.epub"
+  if $wrote_book; then printf '%s' "; else rm -f files/alice.epub"; fi
+  printf '%s' "; fi"
+}
+retry() {  # command…: up to 3 tries
+  local _
+  for _ in 1 2 3; do "$@" && return 0; sleep 2; done
+  return 1
+}
+restore() {
+  trap '' INT TERM HUP
+  set +e
+  local failed=() cleaned=true debuggable
+  if $swapped || $files_touched || $stay_set; then
+    echo "perf: restoring the device" >&2
+    wake 2>/dev/null || failed+=("the device isn't reachable over adb")
+  fi
+  if $files_touched; then
+    cleaned=false
+    if ! retry a install -r "$debug_apk" >/dev/null 2>&1; then
+      failed+=("installing the debug APK for run-as")
+    elif ! a shell run-as $pkg sh -c "'$(cleanup)'" 2>/dev/null ||
+        ! a shell run-as $pkg sh -c "'[ ! -f files/dev-start ] && [ ! -f files/alice.epub.perf ]'" 2>/dev/null; then
+      failed+=("removing files/dev-start and putting the real book back")
+    else
+      cleaned=true
+    fi
+  fi
+  if $swapped && $cleaned && [ -n "$orig_apk" ] && ! cmp -s "$orig_apk" "$debug_apk"; then
+    if ! retry a install -r "$orig_apk" >/dev/null 2>&1; then
+      failed+=("reinstalling the APK installed before the run")
+    else
+      debuggable=no
+      [[ $(installed_flags 2>/dev/null) == *DEBUGGABLE* ]] && debuggable=yes
+      if [ "$debuggable" != "$orig_debuggable" ]; then
+        failed+=("the reinstalled APK is debuggable: $debuggable, but was $orig_debuggable before the run")
+      fi
+    fi
+  fi
+  if $stay_set; then
+    if [ "$stay_on" = null ]; then
+      a shell settings delete global stay_on_while_plugged_in >/dev/null 2>&1
+    else
+      a shell settings put global stay_on_while_plugged_in "$stay_on" 2>/dev/null
+    fi || failed+=("restoring stay_on_while_plugged_in")
+  fi
+  if [ ${#failed[@]} -eq 0 ]; then
+    if $swapped && [ -n "$activity" ]; then
+      a shell am force-stop $pkg 2>/dev/null
+      a shell am start -n "$activity" >/dev/null 2>&1
+    fi
+    rm -rf "$work"
+    return
+  fi
+  local stay_cmd="settings put global stay_on_while_plugged_in $stay_on"
+  [ "$stay_on" = null ] && stay_cmd="settings delete global stay_on_while_plugged_in"
+  {
+    echo
+    echo "perf: RESTORE FAILED:"
+    printf 'perf:   %s\n' "${failed[@]}"
+    echo "perf: Reader isn't relaunched. To finish the restore by hand, with the device awake:"
+    echo "  $adb -s $serial install -r $PWD/$debug_apk"
+    echo "  $adb -s $serial shell run-as $pkg sh -c \"'$(cleanup)'\""
+    if [ -n "$orig_apk" ]; then echo "  $adb -s $serial install -r $orig_apk   # Reader $orig_version as installed before the run"; fi
+    if $stay_set; then echo "  $adb -s $serial shell $stay_cmd"; fi
+    echo "perf: $work is kept for the APKs above; delete it afterwards"
+  } >&2
+}
+
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+trap restore EXIT
+
 epub=$work/book.epub
 case "$src" in
   http://*|https://*) curl -fsSL -o "$epub" "$src" || die "download failed" ;;
   *) [ -f "$src" ] || die "no such file: $src"; cp "$src" "$epub" ;;
 esac
 
-debug_apk=tool/build/outputs/apk/debug/tool-debug.apk
 measured_apk=$debug_apk
 build="debug"
 tasks=(:tool:assembleDebug)
@@ -113,38 +235,41 @@ case "$serial" in
 esac
 installed=""
 put_apk() {  # apk: installs it over whichever is in, keeping the app's data; nothing when it already is
+  local out
   [ "$installed" = "$1" ] && return
-  a install -r "$1" >/dev/null
+  out=$(a install -r "$1" 2>&1) || die "installing $1 failed: $out"
   installed=$1
+  if [ "$1" = "$measured_apk" ] && $release && $warm; then
+    # The bundled baseline profile in (androidx.profileinstaller does this on a first start), then compiled to it.
+    a shell am broadcast -a androidx.profileinstaller.action.INSTALL_PROFILE -n $pkg/androidx.profileinstaller.ProfileInstallReceiver >/dev/null
+    a shell cmd package compile -f -m speed-profile $pkg >/dev/null
+  fi
 }
 
-# The LP3 drops off USB while asleep: wake it, wait up to 30 s for adb, clear a PIN-less lock screen.
-for _ in $(seq 1 15); do
-  if a shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1; then break; fi
-  sleep 2
-done
-a shell wm dismiss-keyguard >/dev/null 2>&1 || die "device not reachable over adb"
+wake || die "device not reachable over adb"
+
+# The APK installed now goes back in at the end; a split install can't be pulled whole.
+paths=$(a shell pm path $pkg 2>/dev/null | tr -d '\r' || true)
+if [ -n "$paths" ]; then
+  [ "$(grep -c . <<<"$paths")" -eq 1 ] || die "$pkg is installed as split APKs; perf.sh can't put it back afterwards"
+  a pull "${paths#package:}" "$work/installed.apk" >/dev/null 2>&1 || die "couldn't copy the installed APK off the device"
+  orig_apk=$work/installed.apk
+  flags=$(installed_flags)
+  orig_version=$(grep -oE 'versionName=[^ ]+' <<<"$flags" | cut -d= -f2 || true)
+  if [[ $flags == *DEBUGGABLE* ]]; then orig_debuggable=yes; else orig_debuggable=no; fi
+  echo "perf: Reader $orig_version (debuggable: $orig_debuggable) is installed; it goes back in at the end"
+fi
+swapped=true
 put_apk "$debug_apk"
 activity=$(a shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $pkg | tail -1 | tr -d '\r')
 
 stay_on=$(a shell settings get global stay_on_while_plugged_in | tr -d '\r')
-a shell run-as $pkg sh -c "'[ -f files/alice.epub.perf ] || [ ! -f files/alice.epub ] || cp files/alice.epub files/alice.epub.perf'"
-restore() {
-  {
-    if $release; then a install -r "$debug_apk" >/dev/null || true; fi
-    a shell run-as $pkg sh -c "'rm -f files/dev-start; [ -f files/alice.epub.perf ] && mv files/alice.epub.perf files/alice.epub || rm -f files/alice.epub'" || true
-    if [ "$stay_on" = null ]; then
-      a shell settings delete global stay_on_while_plugged_in >/dev/null || true
-    else
-      a shell settings put global stay_on_while_plugged_in "$stay_on" || true
-    fi
-    a shell am force-stop $pkg || true
-    a shell am start -n "$activity" >/dev/null || true
-  } 2>/dev/null
-  rm -rf "$work"
-}
-trap restore EXIT
+# The real book is copied aside atomically, and only when no earlier run left its copy there.
+files_touched=true
+a shell run-as $pkg sh -c "'rm -f files/alice.epub.perf.tmp; [ -f files/alice.epub.perf ] || [ ! -f files/alice.epub ] || { cp files/alice.epub files/alice.epub.perf.tmp && mv files/alice.epub.perf.tmp files/alice.epub.perf; }'"
+stay_set=true
 a shell settings put global stay_on_while_plugged_in 7
+wrote_book=true
 a shell run-as $pkg sh -c "'cat > files/alice.epub'" <"$epub"
 a shell run-as $pkg rm -f files/dev-start
 
@@ -162,7 +287,7 @@ await() {  # pattern [poll seconds] -> prints the first ReaderPerf line matching
   done
   die "no ReaderPerf line matching '$1' within 60 s"
 }
-field() { grep -oE "(^| )$1=[^ ]+" | head -1 | cut -d= -f2; }
+field() { grep -oE "(^| )$1=[^ ]+" | head -1 | cut -d= -f2 || true; }
 # The focused window, not the top activity: an ANR dialog ("Application Not Responding: <pkg>") or the
 # notification shade takes focus while Reader stays the top resumed activity.
 reader_on_top() {
@@ -212,24 +337,42 @@ else
   offset=0
 fi
 echo "perf: Spine item $item, $length chars, windows of $(field windowChars <<<"$cut") chars end at $ends; Place at offset $offset"
+# The turn sessions' seam: the end of the first window, but the last, at least 2,100 characters in, so the forward
+# session's Place, 1,500 characters before it, isn't in the Spine item's first Page.
+IFS=, read -r -a window_ends <<<"$ends"
+seam_window=""
+for ((k = 0; k + 1 < ${#window_ends[@]}; k++)); do
+  if [ "${window_ends[k]}" -ge 2100 ]; then seam_window=$k; break; fi
+done
+taps=$((runs > 6 ? runs : 6))
 dev_start "$item" "$offset" ${chars:+"$chars"}
 
 samples=$work/samples
 windows=$work/windows
+records=$work/records
 drawn=$work/drawn
 memory=$work/memory
 : >"$samples"
 : >"$windows"
+: >"$records"
 : >"$drawn"
 : >"$memory"
-pass() {  # reason: record its pass and shown lines, then the window lines, which trail them by up to a second
+pass() {  # reason: record its pass and shown lines, then the window and record lines, which trail them by up to a second
+  local lines
   await "pass reason=$1 " >>"$samples"
   await "shown reason=$1 " >>"$drawn"
   sleep 1
-  a logcat -d -s ReaderPerf:I | grep ' window ' >>"$windows" || true
+  lines=$(a logcat -d -s ReaderPerf:I)
+  grep ' window ' <<<"$lines" >>"$windows" || true
+  grep ' record ' <<<"$lines" >>"$records" || true
 }
-mem() {  # when -> one line from dumpsys meminfo's App Summary, in MB
-  a shell dumpsys meminfo $pkg | tr -d '\r' | LC_ALL=C awk -v when="$1" '
+mem() {  # when -> one line from dumpsys meminfo's App Summary, in MiB, for Reader's one process
+  local pids line
+  pids=$(a shell pidof $pkg | tr -d '\r' || true)
+  read -r -a pids <<<"$pids"
+  [ ${#pids[@]} -gt 0 ] || die "memory $1: Reader isn't running"
+  [ ${#pids[@]} -eq 1 ] || die "memory $1: ${#pids[@]} processes are named $pkg (${pids[*]})"
+  line=$(a shell dumpsys meminfo "${pids[0]}" | tr -d '\r' | LC_ALL=C awk -v when="$1" '
     function kb(name,   s) { s = $0; sub(".*" name ":[ \t]*", "", s); return s + 0 }
     /App Summary/ { on = 1 }
     on && /Java Heap:/ { java = kb("Java Heap") }
@@ -238,9 +381,11 @@ mem() {  # when -> one line from dumpsys meminfo's App Summary, in MB
     on && /TOTAL PSS:/ { pss = kb("TOTAL PSS") }
     on && /^ *TOTAL:/ && pss == "" { pss = kb("TOTAL") }
     END {
-      if (pss == "") { printf "%-11s %-12s no App Summary (is the app running?)\n", "memory", when; exit }
-      printf "%-11s %-12s PSS %6.1f MB  Java heap %5.1f  native heap %5.1f  graphics %5.1f\n", "memory", when, pss / 1024, java / 1024, native / 1024, gfx / 1024
-    }' >>"$memory"
+      if (pss == "") exit
+      printf "%-11s %-13s PSS %6.1f MiB  Java heap %5.1f  native heap %5.1f  graphics %5.1f  native+graphics %5.1f\n", "memory", when, pss / 1024, java / 1024, native / 1024, gfx / 1024, (native + gfx) / 1024
+    }' || true)
+  [ -n "$line" ] || die "memory $1: no TOTAL PSS in dumpsys meminfo's App Summary for pid ${pids[0]}"
+  echo "$line" >>"$memory"
 }
 
 open_reader
@@ -250,20 +395,20 @@ for i in $(seq 1 "$runs"); do
   pass open
   echo "perf: open $i/$runs"
 done
-mem "after opens"
 
-# The controls start hidden: the tap zones are on screen, and the middle one shows the controls with A+/A−.
-coords() { grep -F -- "$1" <<<"$tree" | grep -oE '\([0-9]+,[0-9]+\)' | tail -1 | tr -d '()' | tr , ' '; }
+# The controls start hidden: the tap zones are on screen, and the middle one shows the controls with A+/A−. A
+# node's line starts with its flags, then its text in quotes or its label after "~" (the Page's label is its text).
+coords() { grep -E -- "^ *[^ \"~#]* $1" <<<"$tree" | grep -oE '\([0-9]+,[0-9]+\)' | tail -1 | tr -d '()' | tr , ' ' || true; }
 tree=$(mise run ui)
-back_zone=$(coords "~Previous page")
-show_zone=$(coords "~Show controls")
-next_zone=$(coords "~Next page")
+back_zone=$(coords '~Previous page  \(')
+show_zone=$(coords '~Show controls  \(')
+next_zone=$(coords '~Next page  \(')
 [ -n "$back_zone" ] && [ -n "$show_zone" ] && [ -n "$next_zone" ] || die "the tap zones are not on screen"
 tap "$show_zone"
 sleep 1.5
 tree=$(mise run ui)
-plus=$(coords '"A+"')
-minus=$(coords '"A−"')
+plus=$(coords '"A\+"( |$)')
+minus=$(coords '"A−"( |$)')
 [ -n "$plus" ] && [ -n "$minus" ] || die "A+/A− not on screen"
 i=0
 while [ "$i" -lt "$runs" ]; do
@@ -276,46 +421,58 @@ while [ "$i" -lt "$runs" ]; do
     echo "perf: font $i/$runs"
   done
 done
+mem "after fonts"
 
-turns() {  # file, then the zones to tap: a fresh open at the Place, tapped once its Page is drawn, ~0.5 s apart
-  local out=$1 zone first=true
-  shift
+session() {  # name, offset, then zone and taps, …: a fresh open at offset, then one burst of taps once its Page is drawn
+  local name=$1 at=$2 burst="" zone count total=0 got _
+  shift 2
+  dev_start "$item" "$at" ${chars:+"$chars"}
   open_reader
   await 'shown reason=open ' 0.1 >/dev/null
-  for zone in "$@"; do
-    $first || sleep 0.5
-    first=false
-    tap "$zone"
+  while [ $# -gt 0 ]; do
+    zone=$1 count=$2
+    shift 2
+    for _ in $(seq 1 "$count"); do burst+="${burst:+; sleep 0.3; }input tap $zone"; done
+    total=$((total + count))
   done
-  sleep 1
-  a logcat -d -s ReaderPerf:I | grep -E ' (turn|shown|pass) ' >"$out" || true
+  reader_on_top || die "Reader is not the foreground app; not sending input"
+  a shell "$burst"
+  sleep 1.5
+  a logcat -d -v epoch -s ReaderPerf:I | grep -E ' (turn|shown|record) ' >"$work/$name" || true
+  grep ' record ' "$work/$name" >>"$records" || true
+  got=$(grep -c ' turn ' "$work/$name" || true)
+  if [ "$got" -lt "$total" ]; then
+    echo "perf: WARNING: the $name session logged $got turn lines for $total taps: taps were lost, or turned to no Page" >&2
+  fi
+  mem "after $name"
 }
-forward=()
-backward=()
-for _ in $(seq 1 "$runs"); do
-  forward+=("$next_zone")
-  backward+=("$back_zone")
-done
-turns "$work/turns" "${forward[@]}" "${backward[@]}"
-echo "perf: $runs turns forward, $runs back"
-turns "$work/back" "${backward[@]}"
-echo "perf: $runs turns back from the Place"
-mem "after turns"
+seam_end=""
+if [ -n "$seam_window" ]; then
+  seam_end=${window_ends[seam_window]}
+  session forward $((seam_end - 1500)) "$next_zone" "$taps" "$back_zone" "$taps"
+  echo "perf: forward session: $taps turns forward over the seam at $seam_end, $taps back"
+  session back "$seam_end" "$back_zone" "$taps"
+  echo "perf: back session: $taps turns back from the seam at $seam_end"
+else
+  echo "perf: Spine item $item has no window seam 2,100+ characters in (windows end at $ends); skipping the turn sessions" >&2
+fi
 
-row() {  # label, the field timed, mode (pass, turn, drawn, window), grep pattern, files -> one row; P90 is nearest-rank
-  local label=$1 key=$2 mode=$3 pattern=$4
-  shift 4
-  { grep -h -- "$pattern" "$@" || true; } | LC_ALL=C awk -v label="$label" -v key="$key" -v mode="$mode" -v seam="$seam" '
+row() {  # label, the field timed, mode (pass, turn, drawn, window, repack): one row from the lines on stdin; P90 is nearest-rank
+  local label=$1 key=$2 mode=$3
+  LC_ALL=C awk -v label="$label" -v key="$key" -v mode="$mode" -v seam="$seam" '
     function f(k,   i, s) { i = index($0, " " k "="); if (i == 0) return ""; s = substr($0, i + length(k) + 2); sub(/ .*/, "", s); return s }
     function sort(x, m,   i, j, v) { for (i = 2; i <= m; i++) { v = x[i]; for (j = i - 1; j > 0 && x[j] > v; j--) x[j + 1] = x[j]; x[j + 1] = v } }
     function pct(x, m, q,   k) { k = int(q * m + 0.9999); return x[k < 1 ? 1 : k] }
     function spread(x, m, fmt) { sort(x, m); return sprintf(fmt " " fmt " " fmt, pct(x, m, 0.5), pct(x, m, 0.9), x[m]) }
     function median(x, m) { sort(x, m); return pct(x, m, 0.5) }
+    f(key) == "" { next }
     {
       n++; t[n] = f(key) + 0
       w = f("syncWindows") + 0; d[w]++; if (w > sw) sw = w; if (w > 0) synced++
       if (f("raced") + 0 > 0) raced++
       if (f("sync") == "true") sync++
+      if (f("stateMs") != "") { ns++; st[ns] = f("stateMs") + 0 }
+      if (f("window") != "") { v = f("window") + 0; if (nw == 0 || v < wlo) wlo = v; if (nw == 0 || v > whi) whi = v; nw++ }
       c[f("chars")] = 1; ch[n] = f("chars") + 0
       if (f("parseMs") != "") { np++; pm[np] = f("parseMs") + 0; wm[np] = f("wordsMs") + 0; bm[np] = f("bookMs") + 0; sm[np] = f("passStartMs") + 0; fp[np] = f("firstPageMs") + 0 }
     }
@@ -326,10 +483,12 @@ row() {  # label, the field timed, mode (pass, turn, drawn, window), grep patter
         chars = ""; for (k in c) chars = chars (chars == "" ? "" : ",") k
         printf "firstPageMs; chars %s; syncWindows max %d", chars, sw
       } else if (mode == "turn") {
-        printf "to the Page in state; syncWindows>0 in %d (max %d), raced in %d", synced, sw, raced
+        printf "to the work done (P50 stateMs %.1f); syncWindows>0 in %d (max %d), raced in %d; windows %d-%d", median(st, ns), synced, sw, raced, wlo, whi
       } else if (mode == "drawn") {
         printf "to the first draw"
         if (np) printf "; P50 parseMs %.1f, wordsMs %.1f, bookMs %.1f, passStartMs %.1f, firstPageMs %.1f", median(pm, np), median(wm, np), median(bm, np), median(sm, np), median(fp, np)
+      } else if (mode == "repack") {
+        printf "repackMs, on the main thread as a background window lands"
       } else {
         printf "measureMs; sync %d; chars %s", sync, spread(ch, n, "%d")
       }
@@ -339,20 +498,52 @@ row() {  # label, the field timed, mode (pass, turn, drawn, window), grep patter
       }
     }'
 }
+turn_lines() {  # session, dir -> its turn lines within the Spine item
+  { grep -h " turn dir=$2 " "$work/$1" || true; } | { grep -F " item=$item " || true; }
+}
+spacing() {  # -> P50 ms between consecutive turn lines of the sessions, from logcat's epoch stamps
+  LC_ALL=C awk '
+    FNR == 1 { prev = "" }
+    / turn / { if (prev != "" && $1 > prev) { n++; g[n] = ($1 - prev) * 1000 } prev = $1 }
+    / shown reason=open / { prev = "" }
+    END {
+      if (n == 0) exit
+      for (i = 2; i <= n; i++) { v = g[i]; for (j = i - 1; j > 0 && g[j] > v; j--) g[j + 1] = g[j]; g[j + 1] = v }
+      k = int(0.5 * n + 0.9999); printf "%.0f", g[k < 1 ? 1 : k]
+    }' "$work/forward" "$work/back"
+}
 model=$(a shell getprop ro.product.model | tr -d '\r')
-compiled=$(a shell dumpsys package dexopt | tr -d '\r' | grep -A3 -F "[$pkg]" | grep -oE 'status=[^]]+' | head -1 || true)
+compiled=$(a shell dumpsys package dexopt | tr -d '\r' | grep -A6 -F "[$pkg]" | grep -oE 'status=[^]]+' | head -1 || true)
+warmth=""
+if $release && $warm; then
+  warmth=", baseline profile installed and compiled"
+elif $release; then
+  warmth=", as installed (-u)"
+fi
 echo
-echo "Reader on $model, $build build${compiled:+, $compiled}; ADR 0007 bar: firstPageMs 300 P90 warm, and turns do no layout work (syncWindows 0)"
-echo "Place: Spine item $item offset $offset$place_note; window size ${chars:-WINDOW_CHARS}; $runs runs, turns $runs each way"
+echo "Reader on $model, $build build$warmth${compiled:+, dexopt $compiled}; ADR 0007 bar: firstPageMs 300 P90 warm, and turns do no layout work (syncWindows 0)"
+echo "Place: Spine item $item offset $offset$place_note; window size ${chars:-WINDOW_CHARS}; $runs runs"
+if [ -n "$seam_end" ]; then
+  gap=$(spacing)
+  echo "Turns: $taps each way across the seam at $seam_end (end of window $seam_window): forward from offset $((seam_end - 1500)), back from $seam_end;"
+  echo "  taps ${gap:-?} ms apart (P50 between turn lines: one device-side burst, 0.3 s sleeps plus each \`input\` start-up), the first as the open's Page draws"
+  echo "  cross: turns into another Spine item start a fresh pass, measured on the main thread by design (prefetch covers only the shown pass)"
+fi
 echo "window n and sync are lower bounds: window lines are read 1 s after each pass, so later background measures are missed"
 printf "%-11s %3s  %7s %7s %7s  %s\n" "" "n" "P50" "P90" "max" "ms; P50/P90/max where three"
-row open firstPageMs pass 'pass reason=open ' "$samples"
-row font firstPageMs pass 'pass reason=font ' "$samples"
-row next ms turn ' turn dir=next ' "$work/turns"
-row retrace ms turn ' turn dir=back ' "$work/turns"
-row back ms turn ' turn dir=back ' "$work/back"
-row "drawn open" ms drawn 'shown reason=open ' "$drawn"
-row "drawn font" ms drawn 'shown reason=font ' "$drawn"
-row "drawn turn" ms drawn 'shown reason=turn ' "$work/turns" "$work/back"
-row window measureMs window ' window ' "$windows"
+grep -h 'pass reason=open ' "$samples" | row open firstPageMs pass || true
+grep -h 'pass reason=font ' "$samples" | row font firstPageMs pass || true
+if [ -n "$seam_end" ]; then
+  turn_lines forward next | row next ms turn
+  turn_lines forward back | row retrace ms turn
+  turn_lines back back | row back ms turn
+  { grep -h ' turn ' "$work/forward" "$work/back" || true; } | { grep -vF " item=$item " || true; } | row cross ms turn
+fi
+row repack repackMs repack <"$records"
+grep -h 'shown reason=open ' "$drawn" | row "drawn open" ms drawn || true
+grep -h 'shown reason=font ' "$drawn" | row "drawn font" ms drawn || true
+if [ -n "$seam_end" ]; then
+  { grep -h 'shown reason=turn ' "$work/forward" "$work/back" || true; } | row "drawn turn" ms drawn
+fi
+row window measureMs window <"$windows"
 cat "$memory"
