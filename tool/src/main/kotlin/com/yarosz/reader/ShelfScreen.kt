@@ -11,6 +11,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -54,7 +58,11 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
         val mode by viewModel.mode.collectAsState()
         val devStart by viewModel.devStart.collectAsState()
 
-        LaunchedEffect(devStart) {
+        // A dev-start session opens once the Shelf has drawn: LightActivity's splash cancels every draw, and Compose
+        // lays out new content in its draw, so an open started under the splash would wait for it in its timing.
+        var drawn by remember { mutableStateOf(false) }
+        LaunchedEffect(devStart, drawn) {
+            if (!drawn) return@LaunchedEffect
             val start = devStart ?: return@LaunchedEffect
             viewModel.devStart.value = null
             open(File(lightContext.filesDir, DEV_BOOK_FILE), start)
@@ -64,7 +72,12 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
         }
 
         LightTheme(colors = themeColors) {
-            Column(Modifier.fillMaxSize().background(LightThemeTokens.colors.background)) {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .background(LightThemeTokens.colors.background)
+                    .then(if (devStart != null && !drawn) Modifier.drawBehind { drawn = true } else Modifier)
+            ) {
                 val shown = rows
                 LightTopBar(
                     leftButton = if (shown.isNullOrEmpty()) null else LightBarButton.Text(
