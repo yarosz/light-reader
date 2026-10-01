@@ -42,7 +42,7 @@ description = "Local CI: tests, Light-builder simulation, emulator (+ LP3 if att
 run = "scripts/ci.sh"
 
 [tasks.perf]
-description = "Measure layout latency on a device (args: [-s serial] [-n runs] <epub path or URL>)"
+description = "Measure opens, font changes, page turns and memory on a device against ADR 0007 (args: [-s serial] [-n runs] [-r] [-i item] [-w | -o offset] [-c chars] <epub path or URL>)"
 run = "scripts/perf.sh"
 
 [tasks.domain-drift]

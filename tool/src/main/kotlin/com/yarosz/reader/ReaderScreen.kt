@@ -267,6 +267,7 @@ class ReaderScreen(
                     .semantics { contentDescription = shown.pass.spineItem.text.substring(shown.page.start, shown.page.end) }
             ) {
                 drawPage(shown, colors.content)
+                viewModel.drawn(shown)
             }
         }
     }

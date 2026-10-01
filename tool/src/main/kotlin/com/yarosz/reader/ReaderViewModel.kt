@@ -18,8 +18,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Logcat tag for layout timings; `scripts/perf.sh` parses these lines, so the key `chapters=` stays
- * as it is (it counts Spine items). `tocChapters=` counts the Book's Chapters.
+ * Logcat tag for layout timings; `scripts/perf.sh` parses these lines (book, windows, warmup, pass, window,
+ * turn, shown), so their keys stay as they are: `chapters=` counts Spine items, `tocChapters=` the Book's
+ * Chapters.
  */
 private const val PERF_TAG = "ReaderPerf"
 
@@ -27,6 +28,12 @@ private const val TAG = "Reader"
 
 /** A parsed Book, its word index and the time it took, and its stored Place with where [resolve] found it. */
 private data class Opened(val book: OpenBook, val words: WordIndex, val wordsNs: Long, val found: Pair<Place, SpinePoint?>?)
+
+/**
+ * A Page put in the frame and not yet drawn, for the `shown` perf line: the [reason] it showed, when that
+ * began ([System.nanoTime]), and [extra] fields for the line.
+ */
+private class Undrawn(val shown: Shown<WindowLayout>, val reason: String, val since: Long, val extra: String)
 
 /** How long page turns and font changes settle before the reading data is saved. */
 const val SAVE_DEBOUNCE_MS = 1_000L
@@ -208,6 +215,32 @@ class ReaderViewModel(
     private var syncWindows = 0
     private var windowChars = WINDOW_CHARS
 
+    /**
+     * Of [syncWindows], those a background measure ([prefetch]) was measuring at the time, for the `turn` line.
+     * A step never waits for one: it measures the window again on this thread, and the late copy is dropped.
+     */
+    private var raced = 0
+
+    /** The pass and window [prefetching] is measuring; null while it measures none. */
+    private var prefetchingWindow: Pair<Pass<WindowLayout>, Int>? = null
+
+    /**
+     * When [openBook] began ([System.nanoTime]), before the parse: the `shown` line's origin for an open, which
+     * also carries the parse's and the word index's ms as the `book` line logs them.
+     */
+    private var openBegan = 0L
+    private var openParseMs = ""
+    private var openWordsMs = ""
+
+    /** When the open put the Book in [book] ([System.nanoTime]), for the `shown` line. */
+    private var bookAt = 0L
+
+    /** When the last step put its Page in [frame] ([System.nanoTime]). */
+    private var framedAt = 0L
+
+    /** The Page [drawn] waits for; null once logged. */
+    private var undrawn: Undrawn? = null
+
     private var loading: Job? = null
 
     override fun onScreenShow(screen: SimpleLightScreen<Unit>) = shown()
@@ -223,6 +256,7 @@ class ReaderViewModel(
     /** Opens the Book once: a show while the first open is still running (a pause and resume) starts no second one. */
     internal fun openBook() {
         if (book.value != null || loading?.isActive == true) return
+        openBegan = System.nanoTime()
         loading = viewModelScope.launch {
             owner.awaitLoaded()
             val stored = saver.data
@@ -240,6 +274,8 @@ class ReaderViewModel(
             }
                 .onSuccess { (opened, index, wordsNs, found) ->
                     val parseMs = ms(System.nanoTime() - parseStart - wordsNs)
+                    openParseMs = parseMs
+                    openWordsMs = ms(wordsNs)
                     val largest = opened.spineItems.indices.maxByOrNull { opened.spineItems[it].text.length }
                     if (largest != null) {
                         Log.i(PERF_TAG, "book chapters=${opened.spineItems.size} tocChapters=${opened.chapters.size} largest=$largest " +
@@ -266,6 +302,7 @@ class ReaderViewModel(
                             saver.change { it.withPlace(opened.identifier, opened.placeAt(spinePoint.value, openedAt)) }
                         }
                     }
+                    bookAt = System.nanoTime()
                     book.value = opened
                     publishLines()
                 }
@@ -307,13 +344,14 @@ class ReaderViewModel(
     }
 
     fun changeFont(delta: Int) {
+        val begun = System.nanoTime()
         stayAwake()
         val step = (fontStep.value + delta).coerceIn(FONT_SIZES.indices)
         if (step == fontStep.value) return
         fontStep.value = step
         saver.change { it.copy(settings = it.settings.copy(fontSize = FONT_SIZES[step])) }
         timer.discard()
-        open("font")
+        open("font", begun)
     }
 
     /**
@@ -324,6 +362,7 @@ class ReaderViewModel(
      * The next Page is timed from when it shows, so its layout doesn't count as reading. Any turn hides the controls.
      */
     fun nextPage() {
+        val begun = System.nanoTime()
         hideControls()
         val shown = frame.value ?: return
         if (atEnd.value) return
@@ -337,7 +376,7 @@ class ReaderViewModel(
         }
         if (isLastPage(shown)) return
         timer.finish(now())
-        val next = turn(back = false) { it.next() } ?: return
+        val next = turn(back = false, begun) { it.next() } ?: return
         val words = words ?: return
         timer.start(now(), words.between(SpinePoint(next.pass.item, next.page.start), SpinePoint(next.pass.item, next.page.end)))
     }
@@ -348,6 +387,7 @@ class ReaderViewModel(
      * it; a back turn inside Back matter keeps Finished. Any turn hides the controls.
      */
     fun previousPage() {
+        val begun = System.nanoTime()
         hideControls()
         if (frame.value == null) return
         timer.discard()
@@ -358,7 +398,7 @@ class ReaderViewModel(
             publishHint()
             return
         }
-        turn(back = true) { it.previous() }
+        turn(back = true, begun) { it.previous() }
     }
 
     /** Opening Contents: drops the Page's timing, even when back then returns without a jump, and gives what Contents lists. */
@@ -375,6 +415,7 @@ class ReaderViewModel(
      * running timing is dropped and the landed Page is untimed, so it gives no sample.
      */
     fun jumpTo(start: SpinePoint) {
+        val begun = System.nanoTime()
         stayAwake()
         val opened = book.value ?: return
         val measurer = measurer ?: return
@@ -382,7 +423,7 @@ class ReaderViewModel(
         hideControls()
         atEnd.value = false
         publishHint()
-        val shown = show("jump") { it.jump(start.item, start.char, measurer.key(fontStep.value)) } ?: return
+        val shown = show("jump", begun) { it.jump(start.item, start.char, measurer.key(fontStep.value)) } ?: return
         spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
         val clears = start < opened.textEnd && saver.data.books[opened.identifier]?.finished == true
         stamp(finished = if (clears) false else null)
@@ -446,12 +487,13 @@ class ReaderViewModel(
     /**
      * A pass at the Place (a cached one when it holds the Place's Page) at the current font and column.
      * The end page stays only while the Page at the Place still reaches [OpenBook.textEnd]; otherwise
-     * that Page shows and Finished stays, so forward turns reach the end page again.
+     * that Page shows and Finished stays, so forward turns reach the end page again. [begun] is when the
+     * action asking for it began, for the `shown` line; an open goes from [openBook]'s start.
      */
-    private fun open(reason: String) {
+    private fun open(reason: String, begun: Long = if (reason == "open") openBegan else System.nanoTime()) {
         val measurer = measurer ?: return
         val (item, char) = spinePoint.value
-        val shown = show(reason) { it.open(item, char, measurer.key(fontStep.value)) } ?: return
+        val shown = show(reason, begun) { it.open(item, char, measurer.key(fontStep.value)) } ?: return
         if (atEnd.value && !reachesEnd(shown)) {
             atEnd.value = false
             publishLines()
@@ -475,11 +517,17 @@ class ReaderViewModel(
     /**
      * Shows the Page [step] finds and records it as the Place. A [back] turn clears Finished too when it
      * lands on a Page of the text ([inText]), re-stamping the Place even when [step] finds no Page (the
-     * first Page, which is text).
+     * first Page, which is text). A turn that shows a Page logs a `turn` line: the ms from [begun], when the
+     * turn reached the view model, to the Page being in [frame], and the windows it measured on this thread
+     * (ADR 0007: none), [raced] among them.
      */
-    private fun turn(back: Boolean, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
-        val shown = show("turn", step)
-        if (shown != null) spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
+    private fun turn(back: Boolean, begun: Long, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
+        val shown = show("turn", begun, step)
+        if (shown != null) {
+            spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
+            Log.i(PERF_TAG, "turn dir=${if (back) "back" else "next"} item=${shown.pass.item} ms=${ms(framedAt - begun)} " +
+                "syncWindows=$syncWindows raced=$raced")
+        }
         val clears = back && (shown == null || inText(shown)) && book.value?.let { saver.data.books[it.identifier]?.finished } == true
         if (shown != null || clears) stamp(finished = if (clears) false else null)
         return shown
@@ -538,25 +586,33 @@ class ReaderViewModel(
      * Runs one step of the session, publishes what it shows, logs the pass when the step started one
      * (re-entering a cached pass logs nothing), and keeps the neighbouring windows coming. firstPageMs
      * runs from the step's start to the Page being ready to draw: the windows' styled text, their
-     * measures and the packing, on this thread.
+     * measures and the packing, on this thread. [begun] is when the action behind the step began: the
+     * `shown` line runs from it to the Page's first draw ([drawn]).
      */
-    private fun show(reason: String, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
+    private fun show(reason: String, begun: Long, step: (Reading<WindowLayout>) -> Shown<WindowLayout>?): Shown<WindowLayout>? {
         val reading = reading ?: return null
         val before = frame.value?.pass
         val started = reading.passesStarted
         syncWindows = 0
+        raced = 0
         val start = System.nanoTime()
         val shown = step(reading) ?: return null
         val elapsed = System.nanoTime() - start
         frame.value = shown
+        framedAt = System.nanoTime()
         publishLines()
         publishHint()
         val pass = shown.pass
         if (pass !== before) prefetching?.cancel()
-        if (reading.passesStarted != started) {
+        val passStarted = reading.passesStarted != started
+        if (passStarted) {
             Log.i(PERF_TAG, "pass reason=$reason item=${pass.item} chars=${pass.length} font=${FONT_SIZES[pass.key.fontStep]} " +
                 "windows=${pass.windows.size} syncWindows=$syncWindows firstPageMs=${ms(elapsed)}")
         }
+        val opening = if (reason != "open") "" else
+            " parseMs=$openParseMs wordsMs=$openWordsMs bookMs=${ms(bookAt - begun)} passStartMs=${ms(start - begun)}"
+        val extra = opening + if (passStarted) " firstPageMs=${ms(elapsed)}" else ""
+        undrawn = frame.value?.let { Undrawn(it, reason, begun, extra) }
         prefetch()
         return shown
     }
@@ -571,11 +627,13 @@ class ReaderViewModel(
         if (prefetching != null) return
         val measurer = measurer ?: return
         val (pass, window) = reading?.prefetchTarget() ?: return
+        prefetchingWindow = pass to window
         prefetching = viewModelScope.launch {
             try {
                 val layout = withContext(Dispatchers.Default) { measure(measurer, pass, window, sync = false) }
                 if (frame.value?.pass === pass) pass.record(window, layout)
             } finally {
+                prefetchingWindow = null
                 prefetching = null
                 prefetch()
             }
@@ -585,10 +643,26 @@ class ReaderViewModel(
     private fun measure(measurer: WindowMeasurer, pass: Pass<WindowLayout>, window: Int, sync: Boolean): WindowLayout {
         val start = System.nanoTime()
         val layout = measurer.measure(pass.spineItem, pass.windows[window], pass.key.fontStep)
-        if (sync) syncWindows++
+        if (sync) {
+            syncWindows++
+            if (prefetchingWindow?.let { (p, w) -> p === pass && w == window } == true) raced++
+        }
         Log.i(PERF_TAG, "window pass=${pass.id} item=${pass.item} index=$window " +
             "chars=${pass.windows[window].let { it.end - it.start }} measureMs=${ms(System.nanoTime() - start)} sync=$sync")
         return layout
+    }
+
+    /**
+     * The view drew [shown]: logs the `shown` line once for the step that put it in [frame], with the ms from
+     * that step's start (for an open, [openBook]'s, before the parse) to this draw. Called from the draw
+     * phase, so it leaves out the render thread and the display. An open's line adds where the time went:
+     * parseMs and wordsMs; from the open's start, bookMs to the Book being in [book] and passStartMs to its
+     * layout pass's start (the view composing and binding its measurer); and the pass's firstPageMs.
+     */
+    fun drawn(shown: Shown<WindowLayout>) {
+        val step = undrawn?.takeIf { it.shown === shown } ?: return
+        undrawn = null
+        Log.i(PERF_TAG, "shown reason=${step.reason} ms=${ms(System.nanoTime() - step.since)}${step.extra}")
     }
 
     private fun ms(ns: Long) = "%.1f".format(Locale.ROOT, ns / 1e6)
