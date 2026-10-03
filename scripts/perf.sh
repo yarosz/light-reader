@@ -361,7 +361,9 @@ ends=$(field ends <<<"$cut")
 length=${ends##*,}
 spine_id=$(field spineId <<<"$cut")
 # The id goes into files/dev-start through `sh -c '…'`; one that can't (no XML id can) leaves the timed opens eager.
-if ! [[ $spine_id =~ ^[A-Za-z0-9._:-]+$ ]]; then
+if [ -z "$spine_id" ]; then
+  echo "perf: WARNING: no spineId in the windows line (an older build?); the timed opens parse the whole Book first" >&2
+elif ! [[ $spine_id =~ ^[A-Za-z0-9._:-]+$ ]]; then
   echo "perf: WARNING: Spine item $item's id '$spine_id' can't go in files/dev-start; the timed opens parse the whole Book first" >&2
   spine_id=""
 fi
