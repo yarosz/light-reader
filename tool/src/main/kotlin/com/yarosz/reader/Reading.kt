@@ -133,7 +133,7 @@ fun backwardLanding(cached: Pass<*>?, key: LayoutKey, length: Int): Landing {
  * and dropped on a key change or beyond [CACHED_PASSES]. A Page never spans [textEnd] ([OpenBook.textEnd]):
  * the last Page of the text ends there, and Back matter starts on a Page of its own. [chapterStarts] are
  * the Book's Chapters' starts, in order: a Page at the Place never starts above its Chapter ([pageFloor]).
- * A lazy open lays out a Book of one Spine item first, then takes the whole Book in its place ([rebase]).
+ * A lazy open lays out the Place's Spine item alone first, then takes the whole Book in ([rebase]).
  */
 class Reading<M>(
     private var spineItems: List<SpineItem>,
@@ -191,19 +191,19 @@ class Reading<M>(
     }
 
     /**
-     * Takes the whole Book in place of the Book of one Spine item a lazy open laid out first ([EpubOpening.placed]):
-     * its [spineItems], [textEnd] and [chapterStarts]. Each cached pass moves to the index [indexOf] gives its Spine
-     * item, its Pages standing, so the Page on screen doesn't move; it is dropped when [indexOf] gives null, or when
-     * the whole Book would lay it out otherwise: another page break, or, packed from a Place, another [pageFloor] (a
-     * Chapter the Spine item alone didn't show starting before it). False when the shown pass was dropped: the caller
-     * lays out afresh.
+     * Takes the whole Book in for the one Spine item a lazy open laid out first ([EpubOpening.placed]): its
+     * [spineItems], [textEnd] and [chapterStarts], that Spine item being [at] among them. Its cached pass moves to
+     * [at], its Pages standing, so the Page on screen doesn't move; it is dropped when [at] is null (the whole Book
+     * drops the Spine item, or opens elsewhere), or when the whole Book would lay it out otherwise: another page
+     * break, or, packed from a Place, another [pageFloor] (a Chapter the Spine item alone didn't show starting before
+     * it). False when the shown pass was dropped: the caller lays out afresh.
      */
-    fun rebase(spineItems: List<SpineItem>, textEnd: SpinePoint?, chapterStarts: List<SpinePoint>, indexOf: (Int) -> Int?): Boolean {
+    fun rebase(spineItems: List<SpineItem>, textEnd: SpinePoint?, chapterStarts: List<SpinePoint>, at: Int?): Boolean {
         this.spineItems = spineItems
         this.textEnd = textEnd
         this.chapterStarts = chapterStarts
         val kept = passes.values.mapNotNull { pass ->
-            val item = indexOf(pass.item) ?: return@mapNotNull null
+            val item = at ?: return@mapNotNull null
             val floor = if (pass.exact) pass.floor else pageFloor(chapterStarts, pass.spineItem, item, pass.anchor)
             pass.takeIf { pageBreakIn(item) == pass.pageBreak && floor == pass.floor }?.also { it.item = item }
         }

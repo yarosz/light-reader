@@ -29,13 +29,21 @@ private const val PERF_TAG = "ReaderPerf"
 private const val TAG = "Reader"
 
 /**
- * An open's first step: the Book it shows first, its stored Place with where [resolve] found it, the characters
- * parsed for it, and its word index with the time that took when it is the whole Book; null while a lazy open's
- * rest is still to come (ADR 0009).
+ * An open's first step: the [opening] it read, the Book it shows first, [whole] when that is the whole Book and not a
+ * lazy open's one Spine item (ADR 0009), its stored Place with where [resolve] found it, the characters parsed so far,
+ * and for the whole Book its word index; [wordsNs] is the ns the index took, 0 without one.
  */
-private class Opened(val book: OpenBook, val found: Pair<Place, SpinePoint?>?, val parsedChars: Long, val words: WordIndex?, val wordsNs: Long)
+private class Opened(
+    val opening: EpubOpening,
+    val book: OpenBook,
+    val whole: Boolean,
+    val found: Pair<Place, SpinePoint?>?,
+    val parsedChars: Long,
+    val words: WordIndex?,
+    val wordsNs: Long,
+)
 
-/** A lazy open's rest: the whole Book, its word index, and the ms the parse and the index took. */
+/** A lazy open's rest: the whole Book, its word index, and the ns the parse and the index took. */
 private class Rest(val book: OpenBook, val words: WordIndex, val parseNs: Long, val wordsNs: Long)
 
 /**
@@ -101,14 +109,18 @@ class ReaderViewModel(
      */
     val controls = MutableStateFlow(false)
 
+    /** Shows the controls. The reader's latest intent wins: turns still waiting for the whole Book are dropped ([queuedTurns]). */
     fun showControls() {
         stayAwake()
+        queuedTurns.clear()
         controls.value = true
         publishHint()
     }
 
+    /** Hides the controls, dropping a Contents still waiting for the whole Book ([contentsRequest]), as it was asked from them. */
     fun hideControls() {
         stayAwake()
+        contentsRequest = null
         controls.value = false
         publishHint()
     }
@@ -252,23 +264,52 @@ class ReaderViewModel(
     private var bookAt = 0L
 
     /**
-     * Whether [book] is the whole Book. A lazy open (ADR 0009) first shows a Book of only the Place's Spine item and
-     * parses the rest behind it; until it swaps the whole Book in ([swap]), what needs the whole Book waits in
-     * [afterLoad], in order: a turn off that Spine item or onto the end page, Contents, and Place writes.
+     * Whether [book] is the whole Book. A lazy open (ADR 0009) first shows the Place's Spine item alone and parses the
+     * rest behind it; until the whole Book is in ([swap]), what needs it waits: [queuedTurns], [contentsRequest], and
+     * the writes ([shelvedAt], [placeDirty]).
      */
     private var loaded = false
-    private val afterLoad = mutableListOf<() -> Unit>()
-
-    /** Whether a turn waits in [afterLoad]: every turn after it waits too, so taps keep their order. */
-    private var turnWaits = false
-
-    /** Whether Contents waits in [afterLoad], so a second tap on the list icon adds nothing. */
-    private var contentsWaits = false
 
     /**
-     * Whether a lazy open showed the Book's start for want of a stored Place found in its Spine item, and no turn
-     * has moved off it. The whole Book may start on another Spine item (a title page is dropped only from a Book
-     * that marks its body matter), so then the swap opens there, as a whole parse would have.
+     * Turns waiting for the whole Book, in order: one off the Spine item or onto the end page, and every turn after it,
+     * so taps keep their order. Showing the controls drops them, so a font change or Contents never overtakes them.
+     */
+    private val queuedTurns = mutableListOf<() -> Unit>()
+
+    /** Where Contents goes once the whole Book is in, if the controls still show; one tap's, so a second adds nothing. */
+    private var contentsRequest: ((Contents) -> Unit)? = null
+
+    /** When a lazy open opened the Book: its Shelf write (title, author, opened time) waits for the whole Book. */
+    private var shelvedAt: Long? = null
+
+    /**
+     * Whether a Place write waits for the whole Book, which its progress needs ([stamp]): one write, at [dirtyAt],
+     * setting Finished to [dirtyFinished] unless that is null. [backTurned]: a back turn moved the Place meanwhile, so
+     * the write clears Finished if the Place is in the text, which only the whole Book's text end tells.
+     */
+    private var placeDirty = false
+    private var dirtyAt = 0L
+    private var dirtyFinished: Boolean? = null
+    private var backTurned = false
+
+    /**
+     * Whether a lazy open's second step, the rest of the Book, failed. Showing again then doesn't retry, so a resume
+     * doesn't show the Page only to take it away again; reopening from the Shelf does. A first step that failed is
+     * retried.
+     */
+    private var failedLate = false
+
+    /**
+     * In a lazy dev-start session, the whole Book's index of the Spine item shown first: [start]'s, or null when its
+     * id named none with text and another was placed, whose index only the whole Book knows.
+     */
+    private var placedItem: Int? = null
+
+    /**
+     * Whether a lazy open showed the Book's start for want of a stored Place found in its Spine item, and no turn,
+     * not even one still waiting ([waitForBook]), has moved off it. The whole Book may start on another Spine item
+     * (a title page is dropped only from a Book that marks its body matter), so then the swap opens there, as a whole
+     * parse would have.
      */
     private var atOpeningStart = false
 
@@ -291,14 +332,13 @@ class ReaderViewModel(
     }
 
     /**
-     * Opens the Book once: a show while the first open is still running (a pause and resume) starts no second one,
-     * and neither does one after it failed. The open is lazy (ADR 0009): it parses the Place's Spine item and shows
-     * that alone ([EpubOpening.placed]), then parses the rest behind the first Page and swaps the whole Book in
-     * ([swap]). A dev-start session naming no Spine item id parses the whole Book first, as its index needs.
+     * Opens the Book once, lazily (ADR 0009): a show while an open runs starts no second one, nor one after a late
+     * failure ([failedLate]). A dev-start session naming no Spine item id parses the whole Book first.
      */
     internal fun openBook() {
-        if (book.value != null || loading?.isActive == true || status.value == READING_COULDNT_OPEN) return
+        if (book.value != null || loading?.isActive == true || failedLate) return
         openBegan = System.nanoTime()
+        status.value = READING_OPENING
         loading = viewModelScope.launch {
             owner.awaitLoaded()
             val stored = saver.data
@@ -315,55 +355,52 @@ class ReaderViewModel(
                         val index = if (placed == null) WordIndex(opened.spineItems) else null
                         val wordsNs = System.nanoTime() - wordsStart
                         // Re-finding a Place by its text scans its Spine item, so it runs here, off the main thread.
-                        Opened(opened, place?.let { it to opened.resolve(it) }, opening.parsedChars, index, wordsNs)
+                        val found = place?.let { it to opened.resolve(it) }
+                        Opened(opening, opened, whole = placed == null, found, opening.parsedChars, index, wordsNs)
                     }
                 } catch (e: Throwable) {
-                    return@launch couldntOpen(e)
+                    return@launch couldntOpen(e, late = false)
                 }
                 val placedNs = System.nanoTime() - parseStart - first.wordsNs
                 showFirst(first, placedNs)
-                val opening = epub ?: return@launch
-                if (loaded) return@launch
+                if (first.whole) return@launch
                 val rest = try {
                     withContext(io) {
                         val restStart = System.nanoTime()
-                        val whole = opening.whole()
+                        val whole = first.opening.whole()
                         val wordsStart = System.nanoTime()
                         Rest(whole, WordIndex(whole.spineItems), wordsStart - restStart, System.nanoTime() - wordsStart)
                     }
                 } catch (e: Throwable) {
-                    return@launch couldntOpen(e)
+                    return@launch couldntOpen(e, late = true)
                 }
                 swap(rest.book, rest.words)
                 logBook(rest.book, ms(placedNs + rest.parseNs), ms(rest.wordsNs),
                     " placedMs=${ms(placedNs)} restMs=${ms(rest.parseNs)} loadedMs=${ms(System.nanoTime() - openBegan)} parsedChars=${first.parsedChars}")
-                drainAfterLoad()
+                runWaiting()
             } finally {
                 epub?.close()
             }
         }
     }
 
-    /**
-     * Shows an open's first Book: the whole Book, or a lazy open's Book of one Spine item, whose Place writes wait
-     * for the whole Book ([stamp]). [parseNs] is the parse before it, for the perf lines.
-     */
+    /** Shows an open's first step, the whole Book or a lazy open's one Spine item (ADR 0009); [parseNs] is its parse. */
     private fun showFirst(first: Opened, parseNs: Long) {
         val opened = first.book
         openParseMs = ms(parseNs)
         openWordsMs = ms(first.wordsNs)
-        loaded = first.words != null
+        loaded = first.whole
         if (loaded) logBook(opened, openParseMs, openWordsMs)
         val openedAt = System.currentTimeMillis()
-        val title = saver.data.books[opened.identifier]?.title?.takeIf { it.isNotBlank() } ?: opened.title
-        shelfTitle = title
+        shelfTitle = saver.data.books[opened.identifier]?.title?.takeIf { it.isNotBlank() } ?: opened.title
         words = first.words
-        saver.change { it.shelve(opened.identifier, title, file.name, opened.author, now = openedAt) }
+        if (loaded) shelve(opened, openedAt) else shelvedAt = openedAt
         if (start == null) fontStep.value = nearestFontStep(saver.data.settings.fontSize)
         if (start == null && !saver.data.settings.readingHintDismissed) hintStep = HintStep.Next
         var unstarted = false
         if (start != null && opened.spineItems.isNotEmpty()) {
             val item = if (loaded) start.item.coerceIn(opened.spineItems.indices) else 0
+            if (!loaded) placedItem = start.item.takeIf { opened.spineItems[0].spineId == start.spineId }
             windowChars = start.windowChars ?: WINDOW_CHARS
             spinePoint.value = SpinePoint(item, start.char.coerceIn(0, opened.spineItems[item].text.length))
             val ends = windows(opened.spineItems[item], windowChars, opened.textEnd.takeIf { it.item == item }?.char).joinToString(",") { it.end.toString() }
@@ -383,16 +420,14 @@ class ReaderViewModel(
     }
 
     /**
-     * Puts the whole Book in place of the Book of one Spine item a lazy open showed first. The Place and the cached
-     * passes, the Page on screen among them, move to that Spine item's index in the whole Book, laying nothing out
-     * again ([Reading.rebase]). The Page lays out afresh at the Place when the whole Book would lay it out otherwise,
-     * and at the Book's start when the whole Book drops that Spine item or, no turn having moved, starts elsewhere
-     * ([atOpeningStart]). The running head and Progress line are published afresh; what waited runs next ([drainAfterLoad]).
+     * Puts the whole Book in for a lazy open's one Spine item, the Place and the Page on screen moving to its index
+     * ([Reading.rebase]), then makes the writes that waited (ADR 0009 "Rules that keep it exact").
      */
     private fun swap(whole: OpenBook, index: WordIndex) {
         val first = book.value?.spineItems?.singleOrNull()?.spineId
         val at = whole.spineItems.indexOfFirst { it.spineId == first }.takeIf { it >= 0 }
-        val toStart = at == null || (atOpeningStart && at != 0)
+        // The whole Book drops the Spine item, or, no turn having moved, starts on another ([atOpeningStart]).
+        val item = at.takeUnless { atOpeningStart && at != 0 }
         words = index
         loaded = true
         book.value = whole
@@ -400,33 +435,50 @@ class ReaderViewModel(
             reading = null
             frame.value = null
         } else {
-            spinePoint.value = if (at == null || toStart) SpinePoint(0, 0) else spinePoint.value.copy(item = at)
-            val kept = reading?.rebase(whole.spineItems, whole.textEnd, whole.chapters.map { it.start }) { at.takeUnless { toStart } } ?: true
+            spinePoint.value = item?.let { spinePoint.value.copy(item = it) } ?: SpinePoint(0, 0)
+            val kept = reading?.rebase(whole.spineItems, whole.textEnd, whole.chapters.map { it.start }, item) ?: true
             if (!kept) open("relayout")
         }
         publishLines()
         publishHint()
-    }
-
-    /** Runs, in order, what waited for the whole Book ([afterLoad]), once [swap] has put it in. */
-    private fun drainAfterLoad() {
-        turnWaits = false
-        val waiting = afterLoad.toList()
-        afterLoad.clear()
-        waiting.forEach { it() }
+        shelvedAt?.let { shelve(whole, it) }
+        shelvedAt = null
+        if (placeDirty) {
+            // A back turn clears Finished when it lands in the text, which the Spine item alone couldn't tell.
+            val clears = backTurned && item != null && spinePoint.value < whole.textEnd && saver.data.books[whole.identifier]?.finished == true
+            placeDirty = false
+            stamp(finished = if (clears) false else dirtyFinished, now = dirtyAt)
+        }
     }
 
     /**
-     * The Book couldn't be opened: before its first Page, or for a lazy open when a Spine item after it won't parse,
-     * when the Page goes. What waited for the whole Book is dropped. A cancel, as leaving the Reader mid-open is,
-     * isn't a Book that couldn't be opened, and passes on.
+     * Once [swap] has put the whole Book in: opens a waiting Contents if the reading view still shows, then turns the
+     * waiting turns in order. The two never wait together: showing the controls drops the turns, a turn the Contents.
      */
-    private fun couldntOpen(e: Throwable) {
+    private fun runWaiting() {
+        contentsRequest?.let { show ->
+            contentsRequest = null
+            if (showing) openContents()?.let(show)
+        }
+        val turns = queuedTurns.toList()
+        queuedTurns.clear()
+        turns.forEach { it() }
+    }
+
+    /**
+     * The Book couldn't be opened: before its first Page ([late] false, retried when the Reader shows again), or for
+     * a lazy open when a Spine item after it won't parse, when the Page goes. What waited for the whole Book is
+     * dropped, its writes too. A cancel, as leaving the Reader mid-open is, isn't a Book that couldn't be opened, and
+     * passes on.
+     */
+    private fun couldntOpen(e: Throwable, late: Boolean) {
         if (e is CancellationException) throw e
         Log.w(TAG, "couldn't open ${file.name}", e)
-        afterLoad.clear()
-        turnWaits = false
-        contentsWaits = false
+        failedLate = late
+        queuedTurns.clear()
+        contentsRequest = null
+        shelvedAt = null
+        placeDirty = false
         prefetching?.cancel()
         reading = null
         frame.value = null
@@ -435,9 +487,9 @@ class ReaderViewModel(
         publishHint()
     }
 
-    /** Runs [action] now when [book] is the whole Book, else once it is ([drainAfterLoad]). */
-    private fun whenLoaded(action: () -> Unit) {
-        if (loaded) action() else afterLoad += action
+    /** Puts [opened] on the Shelf, opened [at], with the title the Shelf shows and its author. */
+    private fun shelve(opened: OpenBook, at: Long) {
+        saver.change { it.shelve(opened.identifier, shelfTitle, file.name, opened.author, now = at) }
     }
 
     /** Logs the `book` line for [opened], the whole Book: its Spine items, Chapters and largest Spine item, the parse's and word index's ms, then [lazy]'s fields. */
@@ -459,7 +511,8 @@ class ReaderViewModel(
     /**
      * The view's column and measurer ([Typesetter]). A binding lays the book out afresh at the Place, unless
      * [measurer] lays out like the bound one, as when the Reader comes back from Contents: then the Pages
-     * shown and cached stand, so turning back shows the Pages just read.
+     * shown and cached stand, so turning back shows the Pages just read. A fresh layout drops turns waiting for the
+     * whole Book ([queuedTurns]).
      */
     fun bind(measurer: WindowMeasurer) {
         val spineItems = book.value?.spineItems ?: return
@@ -467,8 +520,10 @@ class ReaderViewModel(
         this.measurer = measurer
         prefetching?.cancel()
         timer.discard()
+        // The Page lays out afresh at the Place, so turns waiting for the whole Book from the Page that was go.
+        queuedTurns.clear()
         reading = Reading(
-            spineItems, measure = { pass, window -> measure(measurer, pass, window, sync = true) }, linesOf = { it.lines },
+            spineItems, measure = { pass, window -> measure(measurer, pass, window, sync = true, perfItem(pass.item)) }, linesOf = { it.lines },
             windowChars = windowChars, textEnd = book.value?.textEnd,
             chapterStarts = book.value?.chapters?.map { it.start }.orEmpty(),
         )
@@ -499,7 +554,7 @@ class ReaderViewModel(
         hideControls()
         val shown = frame.value ?: return
         if (atEnd.value) return
-        if (!loaded && (turnWaits || shown.page.end >= shown.pass.length || reachesEnd(shown))) return waitForBook(::nextPage)
+        if (!loaded && (queuedTurns.isNotEmpty() || shown.page.end >= shown.pass.length || reachesEnd(shown))) return waitForBook(::nextPage)
         if (reachesEnd(shown)) {
             timer.discard()
             atEnd.value = true
@@ -525,7 +580,7 @@ class ReaderViewModel(
         val begun = System.nanoTime()
         hideControls()
         val shown = frame.value ?: return
-        if (!loaded && (turnWaits || shown.page.start == 0)) return waitForBook(::previousPage)
+        if (!loaded && (queuedTurns.isNotEmpty() || shown.page.start == 0)) return waitForBook(::previousPage)
         timer.discard()
         if (atEnd.value) {
             atEnd.value = false
@@ -537,22 +592,21 @@ class ReaderViewModel(
         turn(back = true, begun) { it.previous() }
     }
 
-    /** Queues [turn] until the whole Book is in ([swap]), with every turn after it. */
+    /** Queues [turn] until the whole Book is in ([runWaiting]), with every turn after it; a queued turn moves the reader. */
     private fun waitForBook(turn: () -> Unit) {
-        turnWaits = true
-        afterLoad += turn
+        atOpeningStart = false
+        queuedTurns += turn
     }
 
     /**
-     * The list icon: [show]s Contents ([openContents]) now, or once a lazy open has the whole Book, if the reading
-     * view still shows then. A second tap while it waits adds nothing.
+     * The list icon: [show]s Contents ([openContents]) now, or once a lazy open has the whole Book if the controls still
+     * show then ([contentsRequest]). A second tap while it waits adds nothing.
      */
     fun requestContents(show: (Contents) -> Unit) {
-        if (contentsWaits) return
-        if (!loaded) contentsWaits = true
-        whenLoaded {
-            contentsWaits = false
-            if (showing) openContents()?.let(show)
+        if (!loaded) {
+            if (contentsRequest == null) contentsRequest = show
+        } else if (showing) {
+            openContents()?.let(show)
         }
     }
 
@@ -630,6 +684,7 @@ class ReaderViewModel(
 
     /** The reading view hiding, for Contents or on leaving: lets the screen go, takes the hint off, and saves. */
     internal fun hidden() {
+        contentsRequest = null
         sleep()
         saver.flush()
     }
@@ -684,8 +739,11 @@ class ReaderViewModel(
             spinePoint.value = SpinePoint(shown.pass.item, shown.page.start)
             atOpeningStart = false
         }
-        // Whether the Page is text is known once the whole Book is: a lazy open's Spine item may be Back matter.
-        whenLoaded {
+        if (!loaded) {
+            // Whether the Page is text is known once the whole Book is: a lazy open's Spine item may be Back matter ([swap]).
+            if (shown != null) stamp()
+            backTurned = backTurned || back
+        } else {
             val clears = back && (shown == null || inText(shown)) && book.value?.let { saver.data.books[it.identifier]?.finished } == true
             if (shown != null || clears) stamp(finished = if (clears) false else null)
         }
@@ -698,11 +756,16 @@ class ReaderViewModel(
     }
 
     /**
-     * Records the Place at [spinePoint], stamped [now], and [finished] when it isn't null ([withFinished]). A lazy
-     * open's waits for the whole Book, which its progress needs ([whenLoaded]).
+     * Records the Place at [spinePoint], stamped [now], and [finished] when it isn't null ([withFinished]). Before a
+     * lazy open has the whole Book, which its progress needs, it marks one write to make then ([placeDirty]).
      */
     private fun stamp(finished: Boolean? = null, now: Long = System.currentTimeMillis()) {
-        if (!loaded) return whenLoaded { stamp(finished, now) }
+        if (!loaded) {
+            placeDirty = true
+            dirtyAt = now
+            if (finished != null) dirtyFinished = finished
+            return
+        }
         val opened = book.value?.takeIf { it.spineItems.isNotEmpty() } ?: return
         val place = opened.placeAt(spinePoint.value, now)
         saver.change { data ->
@@ -801,9 +864,10 @@ class ReaderViewModel(
         val measurer = measurer ?: return
         val (pass, window) = reading?.prefetchTarget() ?: return
         if (perf) prefetchingWindow = pass to window
+        val item = perfItem(pass.item)
         prefetching = viewModelScope.launch {
             try {
-                val layout = withContext(Dispatchers.Default) { measure(measurer, pass, window, sync = false) }
+                val layout = withContext(Dispatchers.Default) { measure(measurer, pass, window, sync = false, item) }
                 if (frame.value?.pass === pass) record(pass, window, layout)
             } finally {
                 prefetchingWindow = null
@@ -825,14 +889,15 @@ class ReaderViewModel(
         Log.i(PERF_TAG, "record pass=${pass.id} item=${perfItem(pass.item)} window=$window repackMs=${ms(System.nanoTime() - start)}")
     }
 
-    private fun measure(measurer: WindowMeasurer, pass: Pass<WindowLayout>, window: Int, sync: Boolean): WindowLayout {
+    /** Measures [window] of [pass]; [item] names its Spine item for the `window` line, read on the main thread ([perfItem]). */
+    private fun measure(measurer: WindowMeasurer, pass: Pass<WindowLayout>, window: Int, sync: Boolean, item: String): WindowLayout {
         val start = System.nanoTime()
         val layout = measurer.measure(pass.spineItem, pass.windows[window], pass.key.fontStep)
         if (sync) {
             syncWindows++
             if (prefetchingWindow?.let { (p, w) -> p === pass && w == window } == true) raced++
         }
-        Log.i(PERF_TAG, "window pass=${pass.id} item=${perfItem(pass.item)} index=$window " +
+        Log.i(PERF_TAG, "window pass=${pass.id} item=$item index=$window " +
             "chars=${pass.windows[window].let { it.end - it.start }} measureMs=${ms(System.nanoTime() - start)} sync=$sync")
         return layout
     }
@@ -854,10 +919,10 @@ class ReaderViewModel(
     private fun ms(ns: Long) = "%.1f".format(Locale.ROOT, ns / 1e6)
 
     /**
-     * Spine item [item] as the perf lines name it: by its index in the whole Book, which a lazy dev-start session's
-     * Book of one Spine item knows from [start] until the whole Book is in.
+     * Spine item [item] as the perf lines name it, by its index in the whole Book: before a lazy dev-start session has
+     * the whole Book, the one it placed ([placedItem]), or "?" when that index isn't known yet. Main thread only.
      */
-    private fun perfItem(item: Int) = if (!loaded && start != null) start.item else item
+    private fun perfItem(item: Int): String = if (loaded || start == null) "$item" else placedItem?.toString() ?: "?"
 }
 
 /**

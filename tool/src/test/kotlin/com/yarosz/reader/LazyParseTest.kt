@@ -106,4 +106,20 @@ class LazyParseTest {
             assertEquals(emptyList(), opening.whole().spineItems)
         }
     }
+
+    @Test
+    fun `a Place's Spine item that keeps no text alone, marked body matter and as not reading matter, places the Book's start`() {
+        val file = epub("marked", tocEpubFiles(
+            listOf("""<section epub:type="titlepage"><h1>A Book</h1></section>""", "<h2>One</h2><p>The first.</p>"),
+            bodyAttributes = mapOf(0 to """epub:type="bodymatter"""", 1 to """epub:type="bodymatter""""),
+        ))
+        assertEquals(listOf("c1"), parseEpub(file).spineItems.map { it.spineId })
+        EpubOpening(file, "").use { assertEquals("c1", it.placed("c0")!!.spineItems.single().spineId) }
+    }
+
+    @Test
+    fun `scripts ci_sh opens Alice lazily, naming its Spine item 2 by the id it has`() {
+        val id = parseEpub(alice).spineItems[2].spineId
+        assertTrue("echo 2 spine=$id > files/dev-start" in File("../scripts/ci.sh").readText(), "ci.sh's dev-start names $id")
+    }
 }

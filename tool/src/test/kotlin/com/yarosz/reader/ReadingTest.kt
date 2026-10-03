@@ -60,7 +60,7 @@ class ReadingTest {
             val offset = rnd.nextInt(0, whole[1].text.length)
             val placed = Laid(fakes, items = listOf(whole[1]))
             val shown = placed.reading.open(0, offset, key)
-            assertTrue(placed.reading.rebase(whole, null, emptyList()) { if (it == 0) 1 else null }, "seed $seed")
+            assertTrue(placed.reading.rebase(whole, null, emptyList(), 1), "seed $seed")
             assertEquals(1, shown.pass.item)
             val measures = placed.measures
             assertEquals(Laid(fakes).reading.open(1, offset, key).page, shown.page, "seed $seed: the whole Book packs another Page")
@@ -78,11 +78,11 @@ class ReadingTest {
         val whole = listOf(other.spineItem, fake.spineItem)
         val chapter = SpinePoint(1, fake.spineItem.blockStarts[1])
         fun placed() = Laid(listOf(other, fake), items = listOf(fake.spineItem)).also { it.reading.open(0, 3_000, key) }
-        assertTrue(placed().reading.rebase(whole, SpinePoint(1, fake.length), emptyList()) { 1 }, "a text end at the Spine item's end breaks no Page")
-        assertTrue(placed().reading.rebase(whole, null, listOf(SpinePoint(0, 0))) { 1 }, "a Chapter in another Spine item sets no floor")
-        assertFalse(placed().reading.rebase(whole, null, listOf(chapter)) { 1 }, "a Chapter starting above the Place sets a floor")
-        assertFalse(placed().reading.rebase(whole, SpinePoint(1, fake.spineItem.blockStarts[2]), emptyList()) { 1 }, "a text end inside it breaks a Page")
-        assertFalse(placed().reading.rebase(whole, null, emptyList()) { null }, "the whole Book drops it")
+        assertTrue(placed().reading.rebase(whole, SpinePoint(1, fake.length), emptyList(), 1), "a text end at the Spine item's end breaks no Page")
+        assertTrue(placed().reading.rebase(whole, null, listOf(SpinePoint(0, 0)), 1), "a Chapter in another Spine item sets no floor")
+        assertFalse(placed().reading.rebase(whole, null, listOf(chapter), 1), "a Chapter starting above the Place sets a floor")
+        assertFalse(placed().reading.rebase(whole, SpinePoint(1, fake.spineItem.blockStarts[2]), emptyList(), 1), "a text end inside it breaks a Page")
+        assertFalse(placed().reading.rebase(whole, null, emptyList(), null), "the whole Book drops it")
     }
 
     @Test

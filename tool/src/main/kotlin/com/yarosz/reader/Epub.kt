@@ -96,7 +96,7 @@ fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): Op
 
 /**
  * A Book's file open for a lazy parse (ADR 0009): its package and tables of contents are read at once, and each
- * Spine document is parsed the first time it is needed, then kept. [placed] is a Book of only the Spine item a
+ * Spine document is parsed the first time it is needed, then kept. [placed] is an [OpenBook] of only the Spine item a
  * Place is in, enough to lay out the first Page; [whole] is the whole Book, exactly as [parseEpub] reads it,
  * parsing only what [placed] didn't. Throws as [parseEpub] does.
  */
@@ -133,17 +133,19 @@ class EpubOpening(file: File, fallbackTitle: String) : Closeable {
     }
 
     /**
-     * A Book of only the Spine item [spineId] names, or, when it is null or names none with text, of the first that
-     * could start the Book: the first with text and no type marking it as not reading matter ([NOT_READING]). Its
-     * Chapters are the ones its table of contents lists in that Spine item ([chaptersOf]'s partial), and its text ends
-     * at the Spine item's end, or at Project Gutenberg's license in it. Null when no Spine item has such text.
+     * An [OpenBook] of only the Spine item [spineId] names, or, when it is null or names none with text (one marked body
+     * matter and as not reading matter keeps none), of the first that could start the Book: the first with text and no
+     * type marking it as not reading matter ([NOT_READING]). Its Chapters are the ones its table of contents lists in
+     * that Spine item ([chaptersOf]'s partial), and its text ends at the Spine item's end, or at Project Gutenberg's
+     * license in it. Null when no Spine item has such text.
      */
     fun placed(spineId: String?): OpenBook? {
-        val at = documents.indices.firstOrNull { documents[it].idref == spineId && parsed(it).blocks.isNotEmpty() }
-            ?: documents.indices.firstOrNull { parsed(it).blocks.isNotEmpty() && parsed(it).types.none(NOT_READING::contains) }
-            ?: return null
-        return assemble(listOf(documents[at] to parsed(at)), partial = true)
+        documents.indices.firstOrNull { documents[it].idref == spineId && parsed(it).blocks.isNotEmpty() }
+            ?.let { placedAt(it) }?.takeIf { it.spineItems.isNotEmpty() }?.let { return it }
+        return documents.indices.firstOrNull { parsed(it).blocks.isNotEmpty() && parsed(it).types.none(NOT_READING::contains) }?.let(::placedAt)
     }
+
+    private fun placedAt(i: Int): OpenBook = assemble(listOf(documents[i] to parsed(i)), partial = true)
 
     fun whole(): OpenBook = assemble(documents.indices.map { documents[it] to parsed(it) }, partial = false)
 
