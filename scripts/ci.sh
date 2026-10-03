@@ -210,6 +210,13 @@ install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the 
     && "$adb" -s "$1" shell log -p i -t Reader "$open_mark" \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
+lazy_at() {  # serial: where this run's dev-start opened, from the `windows` line it logged after the launch marker
+  if "$adb" -s "$1" logcat -d -s ReaderPerf:I | sed -n "/$open_mark/,\$p" | grep -q ' windows .*spineId=chapter-1.xhtml'; then
+    echo "(at Chapter I)"
+  else
+    echo "(at the Book's start: the device's alice.epub isn't the fixture)"
+  fi
+}
 lazy_check() {  # serial: the dev-start open was lazy: since this run's launch marker, the Reader logged the
                 # `book` line a lazy open logs once the whole Book is in behind its first Page (loadedMs=)
   for _ in $(seq 1 15); do
@@ -297,7 +304,7 @@ else
   line=$(roundtrip "$emu") || fail_ctx emulator "font round trip: $line"
   note "emulator font round trip (identical Page): $line"
   why=$(lazy_check "$emu") || fail_ctx emulator "$why"
-  note "emulator: the open was lazy, and the whole Book came in behind the first Page"
+  note "emulator: the open was lazy, and the whole Book came in behind the first Page $(lazy_at "$emu")"
   why=$(leave_check "$emu") || fail_ctx emulator "$why"
   note "emulator: the controls open Contents, back returns to the Page with its controls, and their back leaves for the Shelf"
   why=$(shelf_check "$emu") || fail_ctx emulator "$why"
@@ -319,7 +326,7 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
   why=$(lazy_check "$lp3") || fail_ctx lp3 "$why"
-  note "LP3: the open was lazy, and the whole Book came in behind the first Page"
+  note "LP3: the open was lazy, and the whole Book came in behind the first Page $(lazy_at "$lp3")"
   why=$(leave_check "$lp3") || fail_ctx lp3 "$why"
   note "LP3: the controls open Contents, back returns to the Page with its controls, and their back leaves for the Shelf"
   why=$(shelf_check "$lp3") || fail_ctx lp3 "$why"

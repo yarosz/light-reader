@@ -1660,6 +1660,19 @@ class ReaderViewModelTest {
     }
 
     @Test
+    fun `Contents asked for before the whole Book is in is dropped when the app pauses, though the Reader shows again before the swap`() {
+        storePlace(3, offset = 2_000)
+        val vm = lazyReader()
+        var shown = false
+        vm.requestContents { shown = true }
+        vm.onAppPause()
+        vm.shown()
+        settle()
+        assertTrue(vm.book.value!!.spineItems.size > 1, "the whole Book came in")
+        assertFalse(shown)
+    }
+
+    @Test
     fun `a never-opened Book opens lazily at its start, and its first Place is written once the whole Book is in`() {
         val vm = reader()
         vm.shown()

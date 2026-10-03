@@ -283,13 +283,13 @@ class ReaderViewModel(
     private var shelvedAt: Long? = null
 
     /**
-     * Whether a Place write waits for the whole Book, which its progress needs ([stamp]): one write, at [dirtyAt],
-     * setting Finished to [dirtyFinished] unless that is null. [backTurned]: a back turn moved the Place meanwhile, so
-     * the write clears Finished if the Place is in the text, which only the whole Book's text end tells.
+     * Whether a Place write waits for the whole Book, which its progress needs ([stamp]): one write, at [dirtyAt]. It
+     * never sets Finished: the end page can't show before the swap, so no Finished change can wait. [backTurned]: a back
+     * turn moved the Place meanwhile, so the write clears Finished if the Place is in the text, which only the whole
+     * Book's text end tells.
      */
     private var placeDirty = false
     private var dirtyAt = 0L
-    private var dirtyFinished: Boolean? = null
     private var backTurned = false
 
     /**
@@ -447,7 +447,7 @@ class ReaderViewModel(
             // A back turn clears Finished when it lands in the text, which the Spine item alone couldn't tell.
             val clears = backTurned && item != null && spinePoint.value < whole.textEnd && saver.data.books[whole.identifier]?.finished == true
             placeDirty = false
-            stamp(finished = if (clears) false else dirtyFinished, now = dirtyAt)
+            stamp(finished = if (clears) false else null, now = dirtyAt)
         }
     }
 
@@ -757,13 +757,13 @@ class ReaderViewModel(
 
     /**
      * Records the Place at [spinePoint], stamped [now], and [finished] when it isn't null ([withFinished]). Before a
-     * lazy open has the whole Book, which its progress needs, it marks one write to make then ([placeDirty]).
+     * lazy open has the whole Book, which its progress needs, it marks one write to make then ([placeDirty]); only a
+     * Place waits, as the callers that set [finished] (the end page, a jump from Contents) can't run before then.
      */
     private fun stamp(finished: Boolean? = null, now: Long = System.currentTimeMillis()) {
         if (!loaded) {
             placeDirty = true
             dirtyAt = now
-            if (finished != null) dirtyFinished = finished
             return
         }
         val opened = book.value?.takeIf { it.spineItems.isNotEmpty() } ?: return

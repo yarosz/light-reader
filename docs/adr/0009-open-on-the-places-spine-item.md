@@ -26,7 +26,9 @@ Anything it can't know yet is blank, or waits:
   title, author and opened time, as an eager open wrote nothing before its parse was done. The turns taken
   meanwhile make one Place write at the swap. Leaving the Reader, or a kill, before the swap loses what waited:
   the turns still queued, the Place the turns already taken reached, and a never-opened Book's Shelf entry and
-  first Place. The Book opens again where it was.
+  first Place. The Book opens again where it was. Queued turns survive a pause and a resume, and replay at the swap
+  even if it lands while paused; the Place write after it is debounced, so a kill before it is flushed loses it, as
+  with any turn.
 - A later Spine item that won't parse takes the Page away for "Couldn't open this Book.". That is the outcome a
   whole parse gave, only later. Showing the Reader again (a resume) doesn't retry it, so it doesn't show the Page
   only to take it away again; reopening the Book from the Shelf does. A failure before the first Page is retried
