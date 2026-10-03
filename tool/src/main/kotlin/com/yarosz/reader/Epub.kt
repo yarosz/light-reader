@@ -1,6 +1,7 @@
 package com.yarosz.reader
 
 import java.io.ByteArrayOutputStream
+import java.io.Closeable
 import java.io.File
 import java.io.InputStream
 import java.security.MessageDigest
@@ -91,45 +92,98 @@ const val MAX_SPINE_ITEM_BYTES = 32L * 1024 * 1024
  * [fallbackTitle] titles a Book whose package has none: the title stored for it on the Shelf, such as
  * its Catalogue entry's, else the file name.
  */
-fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): OpenBook = ZipFile(file).use { zip ->
-    val pkg = readPackage(zip, fallbackTitle)
-    val tables = readTablesOfContents(zip, pkg)
-    val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
-    val listedPaths = tables.flatMap { entries -> entries.filterIndexed { i, entry -> !entries.nests(i) } }.mapNotNullTo(hashSetOf()) { it.path }
-    val docs = pkg.spine.filter { it.linear || it.path in listedPaths }.ifEmpty { pkg.spine }.map { item ->
-        item to XhtmlHandler(fragments).also { parseUntrusted(zip.open(item.path), it, MAX_SPINE_ITEM_BYTES) }
-    }
-    val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.types.none(NOT_READING::contains) } else docs
-    val notReading = (docs - kept.toSet()).mapTo(hashSetOf()) { it.first.path }
-    val body = kept.filter { it.second.blocks.isNotEmpty() }
-    val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
-    val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
-    val listed = tables.firstNotNullOfOrNull { entries ->
-        val resolved = mutableListOf<Chapter>()
-        val open = ArrayDeque<ListedPart>()
-        entries.forEachIndexed { i, entry ->
-            val start = entry.path?.let(indexOfPath::get)?.let { index ->
-                val char = entry.fragment?.let { fragment ->
-                    body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
-                } ?: 0
-                SpinePoint(index, char)
-            }
-            while (open.lastOrNull()?.let { it.depth >= entry.depth } == true) open.removeLast()
-            when {
-                entries.nests(i) -> {
-                    val isPart = entry.label.isNotEmpty() && entry.path !in notReading && !entry.label.sameTitle(pkg.title)
-                    val after = resolved.lastOrNull()?.start
-                    val heading = start?.takeIf { (entry.fragment == null || entry.fragment in body[it.item].second.anchors) && (after == null || it > after) }
-                    if (isPart && open.size < MAX_PART_DEPTH) open += ListedPart(entry.depth, entry.label, heading)
-                }
-                start != null -> resolved += Chapter(entry.label, start, open.map { it.over(start) })
-            }
+fun parseEpub(file: File, fallbackTitle: String = file.nameWithoutExtension): OpenBook = EpubOpening(file, fallbackTitle).use { it.whole() }
+
+/**
+ * A Book's file open for a lazy parse (ADR 0009): its package and tables of contents are read at once, and each
+ * Spine document is parsed the first time it is needed, then kept. [placed] is an [OpenBook] of only the Spine item a
+ * Place is in, enough to lay out the first Page; [whole] is the whole Book, exactly as [parseEpub] reads it,
+ * parsing only what [placed] didn't. Throws as [parseEpub] does.
+ */
+class EpubOpening(file: File, fallbackTitle: String) : Closeable {
+    private val zip = ZipFile(file)
+    val pkg: Package
+    private val tables: List<List<TableOfContentsEntry>>
+
+    init {
+        try {
+            pkg = readPackage(zip, fallbackTitle)
+            tables = readTablesOfContents(zip, pkg)
+        } catch (e: Throwable) {
+            zip.close()
+            throw e
         }
-        resolved.ifEmpty { null }
-    }.orEmpty()
-    val footer = body.withIndex().firstNotNullOfOrNull { (i, doc) -> doc.second.anchors[PG_FOOTER]?.let { SpinePoint(i, it) } }
-    val textEnd = textEndOf(spineItems, footer, backMatter = body.indexOfLast { !it.second.isBackMatter } + 1)
-    OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems, textEnd), textEnd)
+    }
+
+    private val fragments = tables.flatten().mapNotNullTo(hashSetOf(PG_FOOTER)) { it.fragment }
+    private val listedPaths = tables.flatMap { entries -> entries.filterIndexed { i, _ -> !entries.nests(i) } }.mapNotNullTo(hashSetOf()) { it.path }
+
+    /** The Spine documents the Book may show ([SpineRef.linear]), before those holding no reading matter are dropped. */
+    private val documents = pkg.spine.filter { it.linear || it.path in listedPaths }.ifEmpty { pkg.spine }
+    private val parsed = arrayOfNulls<XhtmlHandler>(documents.size)
+
+    /** The characters of text parsed so far, for the perf lines. */
+    var parsedChars = 0L
+        private set
+
+    private fun parsed(i: Int): XhtmlHandler = parsed[i] ?: XhtmlHandler(fragments).also { doc ->
+        parseUntrusted(zip.open(documents[i].path), doc, MAX_SPINE_ITEM_BYTES)
+        parsed[i] = doc
+        parsedChars += doc.blocks.sumOf { it.text.length.toLong() }
+    }
+
+    /**
+     * An [OpenBook] of only the Spine item [spineId] names, or, when it is null or names none with text (one marked body
+     * matter and as not reading matter keeps none), of the first that could start the Book: the first with text and no
+     * type marking it as not reading matter ([NOT_READING]). Its Chapters are the ones its table of contents lists in
+     * that Spine item ([chaptersOf]'s partial), and its text ends at the Spine item's end, or at Project Gutenberg's
+     * license in it. Null when no Spine item has such text.
+     */
+    fun placed(spineId: String?): OpenBook? {
+        documents.indices.firstOrNull { documents[it].idref == spineId && parsed(it).blocks.isNotEmpty() }
+            ?.let { placedAt(it) }?.takeIf { it.spineItems.isNotEmpty() }?.let { return it }
+        return documents.indices.firstOrNull { parsed(it).blocks.isNotEmpty() && parsed(it).types.none(NOT_READING::contains) }?.let(::placedAt)
+    }
+
+    private fun placedAt(i: Int): OpenBook = assemble(listOf(documents[i] to parsed(i)), partial = true)
+
+    fun whole(): OpenBook = assemble(documents.indices.map { documents[it] to parsed(it) }, partial = false)
+
+    override fun close() = zip.close()
+
+    private fun assemble(docs: List<Pair<SpineRef, XhtmlHandler>>, partial: Boolean): OpenBook {
+        val kept = if (docs.any { it.second.isBodyMatter }) docs.filter { it.second.types.none(NOT_READING::contains) } else docs
+        val notReading = (docs - kept.toSet()).mapTo(hashSetOf()) { it.first.path }
+        val body = kept.filter { it.second.blocks.isNotEmpty() }
+        val spineItems = body.map { (item, doc) -> SpineItem(item.idref, doc.blocks) }
+        val indexOfPath = HashMap<String, Int>().apply { body.forEachIndexed { i, (item, _) -> putIfAbsent(item.path, i) } }
+        val listed = tables.firstNotNullOfOrNull { entries ->
+            val resolved = mutableListOf<Chapter>()
+            val open = ArrayDeque<ListedPart>()
+            entries.forEachIndexed { i, entry ->
+                val start = entry.path?.let(indexOfPath::get)?.let { index ->
+                    val char = entry.fragment?.let { fragment ->
+                        body[index].second.anchors[fragment] ?: resolved.lastOrNull()?.start?.takeIf { it.item == index }?.char ?: 0
+                    } ?: 0
+                    SpinePoint(index, char)
+                }
+                while (open.lastOrNull()?.let { it.depth >= entry.depth } == true) open.removeLast()
+                when {
+                    entries.nests(i) -> {
+                        val isPart = entry.label.isNotEmpty() && entry.path !in notReading && !entry.label.sameTitle(pkg.title)
+                        val after = resolved.lastOrNull()?.start
+                        val heading = start?.takeIf { (entry.fragment == null || entry.fragment in body[it.item].second.anchors) && (after == null || it > after) }
+                        if (isPart && open.size < MAX_PART_DEPTH) open += ListedPart(entry.depth, entry.label, heading)
+                    }
+                    start != null -> resolved += Chapter(entry.label, start, open.map { it.over(start) })
+                }
+            }
+            resolved.ifEmpty { null }
+        }.orEmpty()
+        val footer = body.withIndex().firstNotNullOfOrNull { (i, doc) -> doc.second.anchors[PG_FOOTER]?.let { SpinePoint(i, it) } }
+        val textEnd = textEndOf(spineItems, footer, backMatter = body.indexOfLast { !it.second.isBackMatter } + 1)
+        return OpenBook(pkg.identifier, pkg.title, spineItems, pkg.author, chaptersOf(listed, spineItems, textEnd, partial), textEnd)
+    }
 }
 
 /** Whether entries are nested under the [i]th: the next is deeper. */

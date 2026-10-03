@@ -28,14 +28,23 @@ data class Part(val title: String, val start: SpinePoint)
  * whitespace-collapsed, ends with a space and then its first heading's text, whitespace-collapsed, the
  * Chapter's title is that heading's text. Case and punctuation are the Book's own. A Chapter keeps the Parts
  * [listed] gives it, save a Chapter of Back matter, which falls under none.
+ *
+ * A [partial] Book is one Spine item of a lazy open ([EpubOpening.placed]): it takes even one listed Chapter, as the
+ * whole table of contents may list more, and with none listed in reading order it has no Chapter but Back matter's,
+ * as the Chapter its text is in may start in an earlier Spine item.
  */
 fun chaptersOf(
     listed: List<Chapter>,
     spineItems: List<SpineItem>,
     textEnd: SpinePoint = SpinePoint(spineItems.lastIndex, spineItems.lastOrNull()?.text?.length ?: 0),
+    partial: Boolean = false,
 ): List<Chapter> {
-    val usable = listed.size > 1 && listed.zipWithNext().none { (a, b) -> b.start < a.start }
-    val found = if (usable) listed else spineItems.indices.map { Chapter("", SpinePoint(it, 0)) }
+    val usable = listed.size > (if (partial) 0 else 1) && listed.zipWithNext().none { (a, b) -> b.start < a.start }
+    val found = when {
+        usable -> listed
+        partial -> emptyList()
+        else -> spineItems.indices.map { Chapter("", SpinePoint(it, 0)) }
+    }
     fun normal(point: SpinePoint) =
         if (point.item < spineItems.lastIndex && point.char == spineItems[point.item].text.length) SpinePoint(point.item + 1, 0) else point
     val backMatter = normal(textEnd).takeIf { it.char < spineItems.getOrNull(it.item)?.text?.length ?: 0 }

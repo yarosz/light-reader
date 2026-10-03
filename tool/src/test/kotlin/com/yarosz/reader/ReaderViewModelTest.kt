@@ -1523,4 +1523,400 @@ class ReaderViewModelTest {
         assertEquals("One", vm.runningHead.value.title)
         assertEquals(1, vm.openContents()!!.current)
     }
+
+    /** Runs a lazy open's first step only: the Place's Spine item parsed and shown, the rest of the Book still waiting on IO. */
+    private fun firstStep() {
+        main.scheduler.advanceUntilIdle()
+        io.scheduler.advanceUntilIdle()
+        main.scheduler.advanceUntilIdle()
+    }
+
+    /** A reader opened as far as its first step, bound to [measurer]: a lazy open showing its one Spine item. */
+    private fun lazyReader(measurer: LineMeasurer = LineMeasurer(), start: DevStart? = null): ReaderViewModel {
+        val vm = reader(start)
+        vm.shown()
+        firstStep()
+        vm.bind(measurer)
+        main.scheduler.advanceUntilIdle()
+        return vm
+    }
+
+    /** Stores a Place at [offset] in the Book's Spine item [item], or [fromEnd] characters before its end; returns the Book and the offset. */
+    private fun storePlace(item: Int, offset: Int? = null, fromEnd: Int? = null): Pair<OpenBook, Int> {
+        val book = parseEpub(File(dir, "alice.epub"))
+        val spineItem = book.spineItems[item]
+        val at = offset ?: (spineItem.text.length - fromEnd!!)
+        ReadingStore(dir).save {
+            ReadingData().shelve(book.identifier, book.title, "alice.epub").withPlace(book.identifier, spineItem.placeOf(at, 1))
+        }
+        return book to at
+    }
+
+    /** A Reading of the whole Book in dir's alice.epub, as a whole parse lays it out with [measurer]: what a lazy open must match. */
+    private fun eagerReading(measurer: LineMeasurer = LineMeasurer()): Reading<WindowLayout> {
+        val book = parseEpub(File(dir, "alice.epub"))
+        return Reading(book.spineItems, measure = { pass, window -> measurer.measure(pass.spineItem, pass.windows[window], pass.key.fontStep) },
+            linesOf = { it.lines }, textEnd = book.textEnd, chapterStarts = book.chapters.map { it.start })
+    }
+
+    private val key = LineMeasurer().key(DEFAULT_FONT_STEP)
+
+    @Test
+    fun `a lazy open shows the Place's Spine item alone, then the whole Book comes in under the identical Page, Place and running head`() {
+        val (book, offset) = storePlace(3, offset = 2_000)
+        val vm = lazyReader()
+        assertEquals(listOf(book.spineItems[3]), vm.book.value!!.spineItems)
+        val page = vm.frame.value!!.page
+        val head = vm.runningHead.value
+        assertNull(vm.progressLine.value, "no Progress line before the whole Book is in")
+        settle()
+        assertEquals(book, vm.book.value)
+        assertEquals(SpinePoint(3, offset), vm.spinePoint.value)
+        assertEquals(3, vm.frame.value!!.pass.item)
+        assertSame(page, vm.frame.value!!.page)
+        assertEquals(eagerReading().open(3, offset, key).page, page)
+        assertEquals(head, vm.runningHead.value)
+        assertNotNull(vm.progressLine.value)
+    }
+
+    @Test
+    fun `before the whole Book is in, a turn off the Spine item waits, the turns after it queue in order, and they all turn once it is in`() {
+        val (_, offset) = storePlace(3, fromEnd = 10)
+        val vm = lazyReader()
+        val before = vm.frame.value
+        vm.nextPage()
+        vm.previousPage()
+        vm.previousPage()
+        assertSame(before, vm.frame.value, "nothing turned yet, not even the back turns within the Spine item")
+        settle()
+        val eager = eagerReading()
+        val last = eager.open(3, offset, key)
+        assertEquals(4, eager.next()!!.pass.item)
+        assertEquals(last.page, eager.previous()!!.page)
+        val expected = eager.previous()!!
+        assertEquals(SpinePoint(3, expected.page.start), vm.spinePoint.value)
+        assertEquals(3, vm.frame.value!!.pass.item)
+        assertEquals(expected.page, vm.frame.value!!.page)
+    }
+
+    @Test
+    fun `before the whole Book is in, turns and font changes within the Spine item work, and its Place is written only once the Book is in`() {
+        val (book, offset) = storePlace(3, offset = 2_000)
+        val storedPlace = ReadingStore(dir).load().books.getValue(book.identifier).place
+        val vm = lazyReader()
+        vm.nextPage()
+        val turned = vm.frame.value!!.page
+        assertTrue(turned.start > offset)
+        assertEquals(SpinePoint(0, turned.start), vm.spinePoint.value)
+        vm.changeFont(+1)
+        val resized = vm.frame.value!!
+        assertEquals(DEFAULT_FONT_STEP + 1, resized.pass.key.fontStep)
+        assertEquals(storedPlace, vm.saver.data.books.getValue(book.identifier).place, "the turn's Place waits for the whole Book")
+        settle()
+        assertSame(resized.page, vm.frame.value!!.page)
+        assertEquals(SpinePoint(3, turned.start), vm.spinePoint.value)
+        val place = stored(vm).place!!
+        assertEquals(book.placeAt(SpinePoint(3, turned.start), place.updatedAt), place)
+        assertEquals(book.progressAt(SpinePoint(3, turned.start)), place.progress)
+    }
+
+    @Test
+    fun `before the whole Book is in, the end page never shows, as the turn onto it waits, then shows it and sets Finished`() {
+        val footer = """<div id="pg-footer"><h2>${BackMatterTest.LICENSE_HEADING}</h2><p>${"terms ".repeat(2_000)}</p></div>"""
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf("<h2>I</h2><p>${"word ".repeat(3_000)}</p>", "<h2>II</h2><p>${"more ".repeat(3_000)}</p>$footer")))
+        val textEnd = parseEpub(File(dir, "alice.epub")).textEnd
+        assertEquals(1, textEnd.item)
+        storePlace(1, offset = textEnd.char - 10)
+        val vm = lazyReader()
+        assertTrue(vm.frame.value!!.page.end < vm.frame.value!!.pass.length, "the license follows on in the Spine item")
+        vm.nextPage()
+        assertFalse(vm.atEnd.value)
+        settle()
+        assertTrue(vm.atEnd.value)
+        assertTrue(stored(vm).finished)
+    }
+
+    @Test
+    fun `Contents asked for before the whole Book is in opens once it is in, once however many taps, and not once the reader has left`() {
+        storePlace(3, offset = 2_000)
+        val vm = lazyReader()
+        val opened = mutableListOf<Contents>()
+        vm.requestContents { opened += it }
+        vm.requestContents { opened += it }
+        assertEquals(emptyList(), opened)
+        settle()
+        assertEquals(listOf(vm.openContents()!!), opened)
+        assertEquals(opened.single().rows.indexOfFirst { it.title == vm.runningHead.value.title }, opened.single().current)
+
+        val left = lazyReader()
+        var shown = false
+        left.requestContents { shown = true }
+        left.hidden()
+        settle()
+        assertFalse(shown)
+        left.shown()
+        left.requestContents { shown = true }
+        assertTrue(shown, "once the Book is in, Contents opens at once")
+    }
+
+    @Test
+    fun `Contents asked for before the whole Book is in is dropped when the app pauses, though the Reader shows again before the swap`() {
+        storePlace(3, offset = 2_000)
+        val vm = lazyReader()
+        var shown = false
+        vm.requestContents { shown = true }
+        vm.onAppPause()
+        vm.shown()
+        settle()
+        assertTrue(vm.book.value!!.spineItems.size > 1, "the whole Book came in")
+        assertFalse(shown)
+    }
+
+    @Test
+    fun `a never-opened Book opens lazily at its start, and its first Place is written once the whole Book is in`() {
+        val vm = reader()
+        vm.shown()
+        firstStep()
+        assertEquals(1, vm.book.value!!.spineItems.size)
+        val identifier = vm.book.value!!.identifier
+        assertNull(vm.saver.data.books[identifier]?.place)
+        settle()
+        assertEquals(0.0, stored(vm).place!!.progress)
+        assertEquals(vm.book.value!!.placeAt(SpinePoint(0, 0), stored(vm).place!!.updatedAt), stored(vm).place)
+    }
+
+    /** A Book that marks no body matter, opening on a document typed as a title page, which the whole Book therefore keeps. */
+    private fun writeUnmarkedTitlePage() = File(dir, "alice.epub").writeEpub(tocEpubFiles(
+        listOf("""<section epub:type="titlepage"><h1>A Book</h1></section>""", "<h2>One</h2><p>${"word ".repeat(2_000)}</p>", "<h2>Two</h2><p>The end.</p>"),
+        ncx = ncx(navPoint("One", "text/c1.xhtml"), navPoint("Two", "text/c2.xhtml")),
+    ))
+
+    @Test
+    fun `a never-opened Book led by a title page it keeps opens past it first, then on it once the whole Book is in, as a whole parse opens`() {
+        writeUnmarkedTitlePage()
+        val vm = lazyReader()
+        assertEquals("c1", vm.book.value!!.spineItems.single().spineId)
+        settle()
+        assertEquals(SpinePoint(0, 0), vm.spinePoint.value)
+        assertEquals("c0", vm.book.value!!.spineItems[vm.frame.value!!.pass.item].spineId)
+        assertEquals(0, vm.frame.value!!.page.start)
+        assertEquals("c0", stored(vm).place!!.spineId)
+    }
+
+    @Test
+    fun `a never-opened Book led by a title page it keeps stays where a turn took the reader before the whole Book came in`() {
+        writeUnmarkedTitlePage()
+        val vm = lazyReader()
+        vm.nextPage()
+        val turned = vm.frame.value!!.page
+        settle()
+        assertEquals(SpinePoint(1, turned.start), vm.spinePoint.value)
+        assertSame(turned, vm.frame.value!!.page)
+        assertEquals("c1", stored(vm).place!!.spineId)
+    }
+
+    @Test
+    fun `a Place in a Spine item the whole Book drops shows that Spine item first, then the Book's start once the whole Book is in, as a whole parse opens`() {
+        val book = parseEpub(File(dir, "alice.epub"))
+        val imprint = EpubOpening(File(dir, "alice.epub"), "").use { it.placed("imprint.xhtml")!! }.spineItems.single()
+        assertTrue(book.spineItems.none { it.spineId == imprint.spineId })
+        val place = imprint.placeOf(10, 1)
+        ReadingStore(dir).save { ReadingData().shelve(book.identifier, book.title, "alice.epub").withPlace(book.identifier, place) }
+        val vm = lazyReader()
+        assertEquals(listOf(imprint), vm.book.value!!.spineItems)
+        settle()
+        assertEquals(SpinePoint(0, 0), vm.spinePoint.value)
+        assertEquals(0, vm.frame.value!!.pass.item)
+        assertEquals(eagerReading().open(0, 0, key).page, vm.frame.value!!.page)
+        assertEquals(place, stored(vm).place, "opening at a Place writes nothing")
+    }
+
+    @Test
+    fun `a Spine item after the first Page that won't parse takes the Page away for Couldn't open this Book, and showing again doesn't retry`() {
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf("<h2>One</h2><p>${"word ".repeat(200)}</p>", "<p>never closed")))
+        val vm = lazyReader()
+        assertNotNull(vm.frame.value)
+        settle()
+        assertNull(vm.book.value)
+        assertNull(vm.frame.value)
+        assertEquals(READING_COULDNT_OPEN, vm.status.value)
+        vm.hidden()
+        vm.shown()
+        settle()
+        assertNull(vm.book.value)
+        assertEquals(READING_COULDNT_OPEN, vm.status.value)
+    }
+
+    @Test
+    fun `a dev-start session naming its Spine item's id opens lazily there, and at that index in the whole Book once it is in`() {
+        val book = parseEpub(File(dir, "alice.epub"))
+        val vm = lazyReader(start = DevStart(3, 100, spineId = book.spineItems[3].spineId))
+        assertEquals(listOf(book.spineItems[3]), vm.book.value!!.spineItems)
+        assertEquals(SpinePoint(0, 100), vm.spinePoint.value)
+        settle()
+        assertEquals(SpinePoint(3, 100), vm.spinePoint.value)
+        assertEquals(3, vm.frame.value!!.pass.item)
+    }
+
+    @Test
+    fun `showing the controls drops a turn waiting for the whole Book, so none turns once it is in and the controls stay`() {
+        val (_, offset) = storePlace(3, fromEnd = 10)
+        val vm = lazyReader()
+        val before = vm.frame.value!!.page
+        vm.tapNext()
+        vm.tapMiddle()
+        assertTrue(vm.controls.value)
+        settle()
+        assertEquals(SpinePoint(3, offset), vm.spinePoint.value)
+        assertEquals(3, vm.frame.value!!.pass.item)
+        assertEquals(before, vm.frame.value!!.page)
+        assertTrue(vm.controls.value)
+    }
+
+    @Test
+    fun `a font change after a turn that waits, the controls shown between, lays out at the Place, and no turn follows once the Book is in`() {
+        val (_, offset) = storePlace(3, fromEnd = 10)
+        val vm = lazyReader()
+        vm.nextPage()
+        vm.tapMiddle()
+        vm.changeFont(+1)
+        assertEquals(DEFAULT_FONT_STEP + 1, vm.frame.value!!.pass.key.fontStep)
+        settle()
+        assertEquals(SpinePoint(3, offset), vm.spinePoint.value)
+        assertEquals(eagerReading().open(3, offset, LineMeasurer().key(DEFAULT_FONT_STEP + 1)).page, vm.frame.value!!.page)
+        assertTrue(vm.controls.value)
+    }
+
+    @Test
+    fun `a turn while Contents waits for the whole Book drops the Contents, and the turn turns once the Book is in`() {
+        storePlace(3, fromEnd = 10)
+        val vm = lazyReader()
+        vm.tapMiddle()
+        var opened = false
+        vm.requestContents { opened = true }
+        vm.press(KeyEvent.KEYCODE_VOLUME_DOWN)
+        assertFalse(vm.controls.value)
+        settle()
+        assertFalse(opened, "back from Contents would show another Page than it marked")
+        assertEquals(4, vm.frame.value!!.pass.item)
+    }
+
+    @Test
+    fun `a layout change while a turn waits for the whole Book drops the turn, and the Page stays at the Place`() {
+        val (_, offset) = storePlace(3, fromEnd = 10)
+        val vm = lazyReader()
+        vm.nextPage()
+        vm.bind(LineMeasurer(pageHeightPx = 600))
+        settle()
+        assertEquals(SpinePoint(3, offset), vm.spinePoint.value)
+        assertEquals(eagerReading(LineMeasurer(pageHeightPx = 600)).open(3, offset, LineMeasurer(pageHeightPx = 600).key(DEFAULT_FONT_STEP)).page, vm.frame.value!!.page)
+    }
+
+    /** A Gutenberg-shaped Book in Alice's file, its license 18 K characters into its last Spine item, Finished with its Place [intoLicense] characters into the license. */
+    private fun finishedInLicense(intoLicense: Int): OpenBook {
+        val footer = """<div id="pg-footer"><h2>${BackMatterTest.LICENSE_HEADING}</h2><p>${"terms ".repeat(3_000)}</p></div>"""
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf("<h2>I</h2><p>${"word ".repeat(3_000)}</p>", "<h2>II</h2><p>${"more ".repeat(3_000)}</p>$footer")))
+        val book = parseEpub(File(dir, "alice.epub"))
+        assertEquals(1, book.textEnd.item)
+        val place = book.placeAt(SpinePoint(1, book.textEnd.char + intoLicense), 1)
+        ReadingStore(dir).save { ReadingData().shelve(book.identifier, book.title, "alice.epub").withFinished(book.identifier, true, place) }
+        return book
+    }
+
+    @Test
+    fun `a back turn inside Back matter before the whole Book is in keeps Finished, a Spine item's index not being the whole Book's`() {
+        val book = finishedInLicense(12_000)
+        val vm = lazyReader()
+        vm.previousPage()
+        val landed = vm.frame.value!!.page
+        assertTrue(landed.start > book.textEnd.char, "the turn stays in the license")
+        settle()
+        val saved = stored(vm)
+        assertTrue(saved.finished)
+        assertEquals(book.placeAt(SpinePoint(1, landed.start), saved.place!!.updatedAt), saved.place)
+    }
+
+    @Test
+    fun `a back turn from Back matter onto the text before the whole Book is in clears Finished once it is in`() {
+        val book = finishedInLicense(10)
+        val vm = lazyReader()
+        assertEquals(book.textEnd.char, vm.frame.value!!.page.start)
+        vm.previousPage()
+        assertTrue(vm.frame.value!!.page.start < book.textEnd.char)
+        settle()
+        assertFalse(stored(vm).finished)
+    }
+
+    @Test
+    fun `a never-opened Book led by a title page it keeps stays where a waiting turn took the reader, that turn having moved off its start`() {
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(
+            listOf("""<section epub:type="titlepage"><h1>A Book</h1></section>""", "<h2>One</h2><p>Short.</p>", "<h2>Two</h2><p>The end.</p>"),
+            ncx = ncx(navPoint("One", "text/c1.xhtml"), navPoint("Two", "text/c2.xhtml")),
+        ))
+        val vm = lazyReader()
+        assertEquals("c1", vm.book.value!!.spineItems.single().spineId)
+        vm.nextPage()
+        settle()
+        assertEquals("c2", vm.book.value!!.spineItems[vm.frame.value!!.pass.item].spineId)
+        assertEquals("c2", stored(vm).place!!.spineId)
+    }
+
+    @Test
+    fun `the whole Book coming in lays the Page out afresh at the Place when it floors the Page otherwise, as a table of contents of one entry does`() {
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(
+            listOf("<h2>A</h2><p>${"word ".repeat(500)}</p>", """<p>${"lead ".repeat(1_000)}</p><h2 id="b">B</h2><p>${"more ".repeat(3_000)}</p>"""),
+            ncx = ncx(navPoint("B", "text/c1.xhtml#b")),
+        ))
+        assertEquals(listOf(SpinePoint(0, 0), SpinePoint(1, 0)), parseEpub(File(dir, "alice.epub")).chapters.map { it.start }, "one entry isn't usable")
+        val (_, offset) = storePlace(1, offset = 9_000)
+        val vm = lazyReader()
+        assertEquals(1, vm.book.value!!.chapters.size, "the Spine item alone takes its one entry")
+        val before = vm.frame.value!!
+        settle()
+        assertNotSame(before.pass, vm.frame.value!!.pass)
+        assertEquals(SpinePoint(1, offset), vm.spinePoint.value)
+        assertEquals(eagerReading().open(1, offset, key).page, vm.frame.value!!.page)
+    }
+
+    @Test
+    fun `a Book that couldn't be opened before its first Page is opened again when the Reader shows again`() {
+        val epub = File(dir, "alice.epub").readBytes()
+        File(dir, "alice.epub").writeText("not a zip")
+        val vm = reader()
+        vm.shown()
+        settle()
+        assertEquals(READING_COULDNT_OPEN, vm.status.value)
+        File(dir, "alice.epub").writeBytes(epub)
+        vm.hidden()
+        vm.shown()
+        settle()
+        assertNotNull(vm.book.value)
+    }
+
+    @Test
+    fun `a Spine item that won't parse after the first Page drops what waited, so Contents doesn't open, and neither the Shelf nor a Place is written`() {
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf("<h2>One</h2><p>${"word ".repeat(3_000)}</p>", "<p>never closed")))
+        val before = ReadingStore(dir).load()
+        val vm = lazyReader()
+        vm.nextPage()
+        vm.tapMiddle()
+        var opened = false
+        vm.requestContents { opened = true }
+        settle()
+        assertEquals(READING_COULDNT_OPEN, vm.status.value)
+        assertFalse(opened)
+        assertEquals(before, ReadingStore(dir).load())
+    }
+
+    @Test
+    fun `leaving the Reader while the rest of the Book is parsed shows no "Couldn't open", and writes neither the Shelf nor a Place`() {
+        val before = ReadingStore(dir).load()
+        val vm = lazyReader()
+        vm.nextPage()
+        vm.viewModelScope.cancel()
+        settle()
+        assertEquals(READING_OPENING, vm.status.value)
+        assertEquals(1, vm.book.value!!.spineItems.size)
+        assertEquals(before, ReadingStore(dir).load())
+    }
 }

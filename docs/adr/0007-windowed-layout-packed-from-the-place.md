@@ -18,7 +18,9 @@ per 1,000, in line with the per-window cost below), and dropping hyphenation sav
 misses the bar ADR 0004 set. This supersedes that bar, restated here: **the first Page at any Place, and
 any font change, in at most 300 ms P90 on the SM4450, warm; page turns do no layout work.** The bar
 covers building the styled text, measuring the window(s) and packing the Page, which the app logs as
-`firstPageMs`. It doesn't cover the EPUB parse, composition or the first frame.
+`firstPageMs`. It doesn't cover the EPUB parse, composition or the first frame. (ADR 0009 narrows this: it sets
+a bar for the drawn open, from the open's start to the first draw, parse included, when the Place's Spine item is
+at most 200 K characters.)
 
 The worst case is a Place within a Page of a window's end: both windows are laid out before the Page
 shows. At 10 K windows that's roughly 4–6% of Places (a Page holds ~400–600 characters of a ~9.5 K

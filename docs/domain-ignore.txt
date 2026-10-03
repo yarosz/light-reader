@@ -217,8 +217,15 @@ HTTP ${it.status}$at
 # Where a stored Place's snippet matches a Spine item's text, as resolve ranks the candidates.
 Match
 
-# What the Reader's open hands from the io thread to the main one (ReaderViewModel.openBook).
+# What the Reader's open hands from the io thread to the main one (ReaderViewModel.openBook), and a lazy
+# open's second step, the rest of the Book (ADR 0009).
 Opened
+Rest
+
+# A Book's file open for a lazy parse (ADR 0009), and DESIGN.md "Reading"'s heading for what shows while it
+# opens: implementation and UI behaviour, not glossary terms.
+EpubOpening
+Opening
 
 # N5: the controls' DESIGN.md "Reading" heading, and the controls' running head (DESIGN.md "Reading" >
 # "Controls"), UI vocabulary rather than a glossary term.

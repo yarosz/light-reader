@@ -145,7 +145,8 @@ roundtrip() {  # serial -> prints "before => after" line, returns 1 if not ident
 }
 leave_check() {  # serial: from a Page, the controls' list icon opens Contents, back returns to the Page with
                  # the controls still up, and their back leaves the Reader: a "shelf rows=" line logged after
-                 # this run's marker.
+                 # this run's marker. A Contents tap before the whole Book is in waits and opens once it is
+                 # (ADR 0009), well within the wait below, so it passes either way.
                  # The controls are shown first unless they already are (the round trip leaves them up;
                  # tapping "Show controls" under them would hide them). Contents is known by its title's text
                  # node; a Page's own text is a label, not a text node. The Shelf cleared dev-start when it
@@ -185,22 +186,45 @@ wake() {  # serial: the LP3 drops off USB while asleep; wake it, wait up to 30 s
 data_hash() {  # serial -> sha256 of files/reading-data.json, or "none" when there is no such file
   "$adb" -s "$1" shell run-as $pkg sh -c "'sha256sum files/reading-data.json 2>/dev/null || echo none'" | tr -d '\r' | awk '{print $1}'
 }
-install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at Chapter I (Spine
-                        # item 3, after the epigraph and frontispiece) and the default font, and saves
-                        # nothing, so A+ A+ A- A- always cycles and the device's
+install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at Chapter I (the whole
+                        # Book's Spine item 2, after the epigraph and frontispiece), named by its id too, so the
+                        # open is lazy as a reader's is (ADR 0009; LazyParseTest pins the id against the
+                        # fixture), and lazy_check sees the whole Book come in. On a device whose alice.epub isn't
+                        # the fixture the id names no Spine item, so it opens lazily at that Book's start
+                        # instead, which the round trip takes as well. It opens at the default font, and
+                        # saves nothing, so A+ A+ A- A- always cycles and the device's
                         # reading data is left as it was (data_before, checked by shelf_check). A device
                         # with no alice.epub gets the test fixture, removed again on exit. The fixture is
                         # pushed under a temp name and renamed, and the device recorded before the push,
                         # so a push cut short never leaves a partial alice.epub that a later run accepts.
+                        # A logcat marker just before the launch starts open_mark's window.
   dev_started="$dev_started $1"
+  open_mark="ci-open-$$-$RANDOM-$(date +%s)"
   "$adb" -s "$1" install -r "$2" >/dev/null && "$adb" -s "$1" shell am force-stop $pkg \
     && data_before=$(data_hash "$1") && [ -n "$data_before" ] \
-    && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 2 > files/dev-start'" \
+    && "$adb" -s "$1" shell run-as $pkg sh -c "'mkdir -p files && echo 2 spine=chapter-1.xhtml > files/dev-start'" \
     && { "$adb" -s "$1" shell run-as $pkg test -f files/alice.epub \
       || { pushed_alice="$pushed_alice $1" \
         && "$adb" -s "$1" shell run-as $pkg sh -c "'cat > files/alice.epub.ci && mv files/alice.epub.ci files/alice.epub'" \
           <tool/src/test/fixtures/alice.epub; }; } \
+    && "$adb" -s "$1" shell log -p i -t Reader "$open_mark" \
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
+}
+lazy_at() {  # serial: where this run's dev-start opened, from the `windows` line it logged after the launch marker
+  if "$adb" -s "$1" logcat -d -s Reader:I ReaderPerf:I | sed -n "/$open_mark/,\$p" | grep -q ' windows .*spineId=chapter-1.xhtml'; then
+    echo "(at Chapter I)"
+  else
+    echo "(at the Book's start: the device's alice.epub isn't the fixture)"
+  fi
+}
+lazy_check() {  # serial: the dev-start open was lazy: since this run's launch marker, the Reader logged the
+                # `book` line a lazy open logs once the whole Book is in behind its first Page (loadedMs=)
+  for _ in $(seq 1 15); do
+    "$adb" -s "$1" logcat -d -s Reader:I ReaderPerf:I | sed -n "/$open_mark/,\$p" | grep -q ' book .*loadedMs=' && return 0
+    sleep 1
+  done
+  echo "the open was not lazy, or the whole Book never came in (no book line with loadedMs=)"
+  return 1
 }
 shelf_check() {  # serial: after the round trip, the reading data must be byte-identical (the Reader
                  # flushed any save as leave_check left it; Home then pauses the Shelf), and a launch
@@ -236,6 +260,7 @@ clear_starts() {  # on any exit: a dev-start left behind would open every later 
 dev_started=""
 pushed_alice=""
 data_before=""
+open_mark=""
 trap clear_starts EXIT
 
 # Advisory (AGENTS.md "Domain language"): never fails the run.
@@ -278,6 +303,8 @@ else
   install_and_launch "$emu" tool/build/outputs/apk/debug/tool-debug.apk || fail_ctx emulator "install"
   line=$(roundtrip "$emu") || fail_ctx emulator "font round trip: $line"
   note "emulator font round trip (identical Page): $line"
+  why=$(lazy_check "$emu") || fail_ctx emulator "$why"
+  note "emulator: the open was lazy, and the whole Book came in behind the first Page $(lazy_at "$emu")"
   why=$(leave_check "$emu") || fail_ctx emulator "$why"
   note "emulator: the controls open Contents, back returns to the Page with its controls, and their back leaves for the Shelf"
   why=$(shelf_check "$emu") || fail_ctx emulator "$why"
@@ -298,6 +325,8 @@ if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   wake "$lp3" || fail_ctx lp3 "phone not reachable over adb"
   line=$(roundtrip "$lp3") || fail_ctx lp3 "font round trip: $line"
   note "LP3 (TLP301, Android $android, LightOS $lightos) font round trip (identical Page): $line"
+  why=$(lazy_check "$lp3") || fail_ctx lp3 "$why"
+  note "LP3: the open was lazy, and the whole Book came in behind the first Page $(lazy_at "$lp3")"
   why=$(leave_check "$lp3") || fail_ctx lp3 "$why"
   note "LP3: the controls open Contents, back returns to the Page with its controls, and their back leaves for the Shelf"
   why=$(shelf_check "$lp3") || fail_ctx lp3 "$why"
