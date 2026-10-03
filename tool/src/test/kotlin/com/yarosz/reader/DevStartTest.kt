@@ -18,8 +18,17 @@ class DevStartTest {
     }
 
     @Test
+    fun `a Spine item's id may follow, for a lazy open`() {
+        assertEquals(DevStart(7, 0, null, "chapter-7"), parseDevStart("7 spine=chapter-7"))
+        assertEquals(DevStart(7, 11_850, null, "c7"), parseDevStart("7 11850 spine=c7\n"))
+        assertEquals(DevStart(7, 0, 8_000, "c7"), parseDevStart("7 0 8000 spine=c7"))
+    }
+
+    @Test
     fun `garbage opens the book normally`() {
-        listOf("", " ", "x", "7x", "7 x", "-1", "7 -5", "7 0 0", "7 0 -1", "7 0 8000 1", "99999999999", "7.5")
-            .forEach { assertNull(parseDevStart(it), "'$it'") }
+        listOf(
+            "", " ", "x", "7x", "7 x", "-1", "7 -5", "7 0 0", "7 0 -1", "7 0 8000 1", "99999999999", "7.5",
+            "spine=c7", "7 spine=", "spine=c7 7", "7 spine=c7 0", "7 0 8000 1 spine=c7",
+        ).forEach { assertNull(parseDevStart(it), "'$it'") }
     }
 }
