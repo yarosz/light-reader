@@ -138,12 +138,24 @@ back", "Tap the middle for controls".
 ## Reading
 
 Product rulings from the advisor (N4 and N5, 2026-09-29); copy is verbatim, and `Progress.kt` holds it. A
-Book reads "Opening…" while it opens (a long one takes seconds). One that can't be opened reads "Couldn't
+Book reads "Opening…" while it opens. One that can't be opened reads "Couldn't
 open this Book." (the reason goes to the log), and one with no text reads "This Book has no text." Under
 each is "Back to Shelf", as on the end page. System back (the LP3's back gesture) leaves the Reader from
 anywhere, to the Shelf, which the Reader always opens over (see "Catalogues"), but a Tool can't show it,
 so every Reader state has a visible way to the Shelf: "Back to Shelf" where there is no Page, and on a
 Page the controls' back.
+
+**Opening.** A Book opens on its Place's Spine item, or, never opened, on the first that could start it: only
+that is read before the first Page shows, and the rest of the Book comes in behind it, well within a second on
+the LP3 (ADR 0009). Until then the Page, turns within that Spine item and font changes work as ever, and the
+running head names the Chapter its table of contents lists there (before the first one listed, the Book's
+title, as in Front matter). The Progress line is blank, as in Front matter. A turn past the Spine item's first
+or last Page waits, then turns, and every turn after it follows in order; a forward turn onto the end page
+waits too, so it never shows early. The list icon waits without a sign and opens Contents once the Book is in;
+a second tap adds nothing, and leaving the Reader drops the wait. The Place is saved once the Book is in. When
+it is, the Page stays as it is (it lays out afresh only where the whole Book sets it otherwise) and the
+Progress line fills in. A Spine item further on that can't be opened takes the Page away, and "Couldn't open
+this Book." shows.
 
 **Layout.** The Page alone: it fills the screen inside the margins, and nothing else shows while reading
 until a centre tap shows the controls, but for the first-run hint (below). The screen is three full-height
@@ -177,8 +189,8 @@ the Shelf shows it. At the smallest size "A−", and at the largest "A+", is dra
 ignores taps, and is a disabled button to a screen reader. The Progress line is one line, in Detail and
 secondary text, centred; when its full form, measured as drawn, doesn't fit between "A−" and "A+" (large
 system text), it shows its short form (below), ellipsised only if even that doesn't fit; with no line (in
-Front matter, on the end page, in Back matter, or in a Chapter that reads in under a minute) the space
-between "A−" and "A+" is blank. A tap anywhere else, the Page included, hides the controls without
+Front matter, on the end page, in Back matter, in a Chapter that reads in under a minute, or while the Book
+is opening behind its first Page) the space between "A−" and "A+" is blank. A tap anywhere else, the Page included, hides the controls without
 turning (to a screen reader, "Hide controls", the one button over the Page while they show); every turn
 hides them, so a volume key turns and hides them (on the end page volume down only hides them); a font
 change keeps them; opening Contents keeps them, so back from Contents returns to the Page as it was,
@@ -190,7 +202,8 @@ without them. Showing them keeps the Page's timing, the time they show counting 
 **Progress line.** The minutes left in the Chapter: the words from the point the Page goes by to the Chapter's
 end (the next Chapter's start, or the end of the Book's text if that comes first), divided by the
 reading speed. A word is a whitespace-separated run of text. The words are indexed once, off the main
-thread, when the Book opens, so a turn counts them without reading any text. On the raw minutes m:
+thread, behind the Book's first Page (see "Opening"), so a turn counts them without reading any text. On
+the raw minutes m:
 
 | m | Line | Short form |
 |---|---|---|
@@ -198,8 +211,9 @@ thread, when the Book opens, so a turn counts them without reading any text. On 
 | 1 to under 15 | "about ⌈m⌉ min left in this chapter" | "about ⌈m⌉ min left" |
 | 15 and over | "about ⌈m/5⌉×5 min left in this chapter" | "about ⌈m/5⌉×5 min left" |
 
-"chapter" stays lowercase (see "Copy"). There is no line in Front matter, on the end page, or in a
-Chapter whose whole text reads in under a minute at the current speed.
+"chapter" stays lowercase (see "Copy"). There is no line in Front matter, on the end page, in a Chapter
+whose whole text reads in under a minute at the current speed, or while the Book is opening behind its first
+Page.
 
 **Reading speed.** 230 words a minute until there are 5 samples, then the median of the newest 20 or
 fewer. A sample is the words on a Page divided by the time on it. It counts only when the Page was
@@ -335,7 +349,8 @@ opened, if its file names one: opening records the author from the Book's file (
 the Shelf never opens a file to find one. A running download
 wins over a Book's file, the file over a failed download (a Book that is here stays readable
 offline), and both over its reading state. Opening a Book counts as reading: it records the first
-Page's Place, so a Book opened but never paged reads as in progress, not "not started".
+Page's Place once the whole Book is in (see "Reading"), so a Book opened but never paged reads as in
+progress, not "not started".
 
 **Empty.** "Nothing on your Shelf yet." with a text button "Add a Book". Text labels, not glyphs.
 
