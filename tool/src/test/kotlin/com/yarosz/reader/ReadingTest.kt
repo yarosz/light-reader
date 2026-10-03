@@ -3,6 +3,7 @@ package com.yarosz.reader
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
@@ -33,6 +34,56 @@ class ReadingTest {
     }
 
     private fun windowOf(shown: Shown<*>) = windowIndexFor(shown.pass.windows, shown.page.start)
+
+    /**
+     * A Reading of [items], each laid out by its [FakeSpineItem]'s simulated layout (by Spine item, so a pass laid out
+     * before a [Reading.rebase] measures alike after it), counting measures in [measures].
+     */
+    private class Laid(val fakes: List<FakeSpineItem>, items: List<SpineItem> = fakes.map { it.spineItem }, textEnd: SpinePoint? = null, chapterStarts: List<SpinePoint> = emptyList()) {
+        var measures = 0
+        val reading = Reading<List<LineMetrics>>(items, measure = { pass, window -> measures++; linesOf(pass)[window] }, linesOf = { it }, windowChars = 3_000,
+            textEnd = textEnd, chapterStarts = chapterStarts)
+
+        private fun linesOf(pass: Pass<List<LineMetrics>>): List<List<LineMetrics>> {
+            val fake = fakes.first { it.spineItem === pass.spineItem }
+            val rnd = Random(fakes.indexOf(fake) * 31 + pass.key.fontStep)
+            return fake.cut(fake.layout(FONT_SIZES[pass.key.fontStep], rnd), pass.windows, rnd)
+        }
+    }
+
+    @Test
+    fun `a rebase onto the whole Book moves the pass of the one Spine item to its index, the Page on screen standing, and turns go on across Spine items`() {
+        repeat(100) { seed ->
+            val rnd = Random(seed)
+            val fakes = List(3) { FakeSpineItem.random(rnd) }
+            val whole = fakes.map { it.spineItem }
+            val offset = rnd.nextInt(0, whole[1].text.length)
+            val placed = Laid(fakes, items = listOf(whole[1]))
+            val shown = placed.reading.open(0, offset, key)
+            assertTrue(placed.reading.rebase(whole, null, emptyList()) { if (it == 0) 1 else null }, "seed $seed")
+            assertEquals(1, shown.pass.item)
+            val measures = placed.measures
+            assertEquals(Laid(fakes).reading.open(1, offset, key).page, shown.page, "seed $seed: the whole Book packs another Page")
+            val forward = generateSequence(shown) { placed.reading.next() }.last()
+            assertEquals(2, forward.pass.item)
+            assertEquals(whole[2].text.length, forward.page.end)
+            assertTrue(placed.measures > measures)
+        }
+    }
+
+    @Test
+    fun `a rebase drops a pass the whole Book would lay out otherwise, or that names a Spine item it drops, and says the shown one went`() {
+        val fake = FakeSpineItem(SpineItem("c1", List(3) { Block(BlockKind.Paragraph, "x".repeat(2_000)) }))
+        val other = FakeSpineItem(SpineItem("c0", listOf(Block(BlockKind.Paragraph, "y".repeat(500)))))
+        val whole = listOf(other.spineItem, fake.spineItem)
+        val chapter = SpinePoint(1, fake.spineItem.blockStarts[1])
+        fun placed() = Laid(listOf(other, fake), items = listOf(fake.spineItem)).also { it.reading.open(0, 3_000, key) }
+        assertTrue(placed().reading.rebase(whole, SpinePoint(1, fake.length), emptyList()) { 1 }, "a text end at the Spine item's end breaks no Page")
+        assertTrue(placed().reading.rebase(whole, null, listOf(SpinePoint(0, 0))) { 1 }, "a Chapter in another Spine item sets no floor")
+        assertFalse(placed().reading.rebase(whole, null, listOf(chapter)) { 1 }, "a Chapter starting above the Place sets a floor")
+        assertFalse(placed().reading.rebase(whole, SpinePoint(1, fake.spineItem.blockStarts[2]), emptyList()) { 1 }, "a text end inside it breaks a Page")
+        assertFalse(placed().reading.rebase(whole, null, emptyList()) { null }, "the whole Book drops it")
+    }
 
     @Test
     fun `opening shows the Page holding the Place after measuring a contiguous run from its window, at most one window past the Page`() {

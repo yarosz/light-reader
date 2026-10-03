@@ -15,23 +15,27 @@ data class LayoutKey(val fontStep: Int, val widthPx: Int, val pageHeightPx: Int)
  * for drawing and its lines for packing; the pass reads only the lines, through [linesOf]. A Page once
  * packed never changes (see [pack]), so turning back shows the Page just read. [id] is for logs: it
  * is unique within one [Reading] only, so compare passes by identity. [item] is [spineItem]'s index in
- * the Book's Spine items. A Page never spans [pageBreak] (see [pack]). With [exact], as for a Chapter
+ * the Book's Spine items, renumbered when a lazy open's whole Book comes in ([Reading.rebase]). A Page
+ * never spans [pageBreak] (see [pack]). With [exact], as for a Chapter
  * jump, the first Page starts on [anchor]'s own line, even one that starts mid-word ([pack]); without it,
  * no higher than [floor] ([pageFloor]). [anchor] is where the pass packs from: the Place on opening or a
  * font or layout change, a Chapter's start on a jump, or the Spine item's start or end when a turn crosses into it.
  */
 class Pass<M>(
     val id: Int,
-    val item: Int,
+    item: Int,
     val spineItem: SpineItem,
     val key: LayoutKey,
     val windows: List<Window>,
     val anchor: Int,
-    private val pageBreak: Int? = null,
-    private val exact: Boolean = false,
-    private val floor: Int = 0,
+    internal val pageBreak: Int? = null,
+    internal val exact: Boolean = false,
+    internal val floor: Int = 0,
     private val linesOf: (M) -> List<LineMetrics>,
 ) {
+    var item: Int = item
+        internal set
+
     private val measured = MutableList<M?>(windows.size) { null }
 
     val length: Int = spineItem.text.length
@@ -129,14 +133,15 @@ fun backwardLanding(cached: Pass<*>?, key: LayoutKey, length: Int): Landing {
  * and dropped on a key change or beyond [CACHED_PASSES]. A Page never spans [textEnd] ([OpenBook.textEnd]):
  * the last Page of the text ends there, and Back matter starts on a Page of its own. [chapterStarts] are
  * the Book's Chapters' starts, in order: a Page at the Place never starts above its Chapter ([pageFloor]).
+ * A lazy open lays out a Book of one Spine item first, then takes the whole Book in its place ([rebase]).
  */
 class Reading<M>(
-    private val spineItems: List<SpineItem>,
+    private var spineItems: List<SpineItem>,
     private val measure: (Pass<M>, Int) -> M,
     private val linesOf: (M) -> List<LineMetrics>,
     private val windowChars: Int = WINDOW_CHARS,
-    private val textEnd: SpinePoint? = null,
-    private val chapterStarts: List<SpinePoint> = emptyList(),
+    private var textEnd: SpinePoint? = null,
+    private var chapterStarts: List<SpinePoint> = emptyList(),
 ) {
     private val passes = LinkedHashMap<Int, Pass<M>>()
     /** Passes this Reading has started; also the next pass's id. */
@@ -185,6 +190,31 @@ class Reading<M>(
         }
     }
 
+    /**
+     * Takes the whole Book in place of the Book of one Spine item a lazy open laid out first ([EpubOpening.placed]):
+     * its [spineItems], [textEnd] and [chapterStarts]. Each cached pass moves to the index [indexOf] gives its Spine
+     * item, its Pages standing, so the Page on screen doesn't move; it is dropped when [indexOf] gives null, or when
+     * the whole Book would lay it out otherwise: another page break, or, packed from a Place, another [pageFloor] (a
+     * Chapter the Spine item alone didn't show starting before it). False when the shown pass was dropped: the caller
+     * lays out afresh.
+     */
+    fun rebase(spineItems: List<SpineItem>, textEnd: SpinePoint?, chapterStarts: List<SpinePoint>, indexOf: (Int) -> Int?): Boolean {
+        this.spineItems = spineItems
+        this.textEnd = textEnd
+        this.chapterStarts = chapterStarts
+        val kept = passes.values.mapNotNull { pass ->
+            val item = indexOf(pass.item) ?: return@mapNotNull null
+            val floor = if (pass.exact) pass.floor else pageFloor(chapterStarts, pass.spineItem, item, pass.anchor)
+            pass.takeIf { pageBreakIn(item) == pass.pageBreak && floor == pass.floor }?.also { it.item = item }
+        }
+        passes.clear()
+        kept.forEach { passes[it.item] = it }
+        val pass = shown?.pass ?: return true
+        if (passes[pass.item] === pass) return true
+        shown = null
+        return false
+    }
+
     /** The shown pass and the window to measure for it in the background; null when covered [PREFETCH_WINDOWS] deep. */
     fun prefetchTarget(): Pair<Pass<M>, Int>? {
         val (pass, page) = shown ?: return null
@@ -194,7 +224,7 @@ class Reading<M>(
     /** Shows the Page holding [offset], or with [exact] the Page whose first line holds it, from Spine item [item]'s cached pass when it has that Page, else a new pass anchored there. */
     private fun enter(item: Int, offset: Int, key: LayoutKey, exact: Boolean = false): Shown<M> {
         val spineItem = spineItems[item]
-        val pageBreak = textEnd?.takeIf { it.item == item }?.char
+        val pageBreak = pageBreakIn(item)
         val pass = passes.remove(item)?.takeIf { cached -> cached.pageAt(offset)?.let { !exact || offset < cached.firstLineEnd(it) } == true }
             ?: Pass(passesStarted++, item, spineItem, key, windows(spineItem, windowChars, pageBreak), offset, pageBreak, exact,
                 pageFloor(chapterStarts, spineItem, item, offset), linesOf)
@@ -202,6 +232,12 @@ class Reading<M>(
         while (passes.size > CACHED_PASSES) passes.remove(passes.keys.first())
         return turnTo(pass, offset)
     }
+
+    /**
+     * Where [textEnd] breaks Spine item [item]'s Pages: null outside it and at its end, where no Page goes on past
+     * it anyway, so a Book of that Spine item alone and the whole Book break it alike.
+     */
+    private fun pageBreakIn(item: Int): Int? = textEnd?.takeIf { it.item == item && it.char < spineItems[item].text.length }?.char
 
     /** Shows [pass]'s Page holding [offset], measuring windows synchronously until it is packed. */
     private fun turnTo(pass: Pass<M>, offset: Int): Shown<M> {
