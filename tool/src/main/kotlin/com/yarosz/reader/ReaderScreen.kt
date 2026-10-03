@@ -138,11 +138,11 @@ class ReaderScreen(
     }
 
     /**
-     * Opens Contents over the Reader; a Chapter or Part chosen there is jumped to, and back changes nothing.
+     * Opens Contents over the Reader, once the Book is in ([ReaderViewModel.requestContents]); a Chapter or Part
+     * chosen there is jumped to, and back changes nothing.
      */
     private fun openContents() {
-        val contents = viewModel.openContents() ?: return
-        navigateTo({ ContentsScreen(it, contents) }) { start -> viewModel.jumpTo(start) }
+        viewModel.requestContents { contents -> navigateTo({ ContentsScreen(it, contents) }) { start -> viewModel.jumpTo(start) } }
     }
 
     /**
