@@ -6,11 +6,12 @@ Books from Project Gutenberg and Standard Ebooks are built in, or add your own c
 Tap or press a volume key to turn the page. Your place is kept, at any font size.
 Works offline, with no account and nothing tracked. Copy-protected books from Kindle, Apple Books or Libby won't open.
 
-> **Status: early development (0.2.0).** Reader downloads books from catalogues onto a Shelf, turns
+> **Status: early development (0.3.0).** Reader downloads books from catalogues onto a Shelf, turns
 > pages by tap or volume key, keeps your place in each book at any of six font sizes, and lists each
 > book's chapters under their parts. The page fills the screen; a centre tap shows the reading controls,
 > and a first-run walkthrough shows the taps. "Reader" on the Shelf opens About, which lists where to
-> find books without copy protection. Next: measuring speed on the phone, then illustrations.
+> find books without copy protection. A book opens on its page in about a tenth of a second, even
+> War and Peace, while the rest of it loads behind the page. Next: illustrations.
 > Not yet signed or listed by Light. A Light Phone III tool built on [Light's SDK](https://github.com/lightphone/light-sdk).
 
 <p>

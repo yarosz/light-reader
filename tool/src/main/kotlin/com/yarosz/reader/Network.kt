@@ -141,7 +141,7 @@ class InsecureRedirectException(location: String) : IOException("redirected to $
  * the Tool can't read it at run time: PackageManager needs a Context, which a Light Tool can't hold,
  * and the tool module generates no BuildConfig.
  */
-const val VERSION_NAME = "0.2.0"
+const val VERSION_NAME = "0.3.0"
 
 /** Sent on every request, so a server's logs can tell the Tool apart and link to its code. */
 const val USER_AGENT = "Reader/$VERSION_NAME (+https://$REPO_URL)"
