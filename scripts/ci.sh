@@ -211,7 +211,7 @@ install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the 
     && "$adb" -s "$1" shell monkey -p $pkg 1 >/dev/null 2>&1
 }
 lazy_at() {  # serial: where this run's dev-start opened, from the `windows` line it logged after the launch marker
-  if "$adb" -s "$1" logcat -d -s ReaderPerf:I | sed -n "/$open_mark/,\$p" | grep -q ' windows .*spineId=chapter-1.xhtml'; then
+  if "$adb" -s "$1" logcat -d -s Reader:I ReaderPerf:I | sed -n "/$open_mark/,\$p" | grep -q ' windows .*spineId=chapter-1.xhtml'; then
     echo "(at Chapter I)"
   else
     echo "(at the Book's start: the device's alice.epub isn't the fixture)"
