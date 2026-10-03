@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 # Measure the Reader on a device against ADR 0007's bar (first Page at any Place, and any font change, <= 300 ms
-# P90 on the SM4450, warm; page turns do no layout work), from the "ReaderPerf" logcat lines a dev-start session
-# logs. At one Place (by default the start of the EPUB's largest Spine item) it times N opens (fresh process each:
+# P90 on the SM4450, warm; page turns do no layout work) and ADR 0009's (the drawn open <= 300 ms P90 when the
+# Place's Spine item is at most 200 K characters), from the "ReaderPerf" logcat lines a dev-start session logs. At
+# one Place (by default the start of the EPUB's largest Spine item) it times N opens (fresh process each:
 # force-stop + start) and N font changes; then two sessions of page turns across a window seam of that Spine item,
 # reading the app's memory after the font changes and after each session.
+#
+# Opens are lazy, as a reader's are (ADR 0009): the Place's Spine item is parsed and shown first, and the rest of
+# the Book behind it. A dev-start file names its Spine item by its index in the whole Book, which only a whole parse
+# knows, so the probe opens below (finding the largest Spine item, checking -i, cutting its windows) name no Spine
+# item id and parse the whole Book first. Their windows line gives the Spine item's id, and every timed open and
+# turn session names it ("spine=<id>" in files/dev-start), so those are lazy. Nothing else goes in the app's files.
 #
 #   scripts/perf.sh [-s serial] [-n runs] [-r [-u]] [-i item] [-w | -o offset] [-c chars] <epub path or URL>
 #
@@ -33,9 +40,16 @@
 #                   cross do. An open's runs from the view model's open start, before the EPUB parse: process start,
 #                   the activity and the Shelf aren't in it. Its parts' P50s are alongside: parseMs, wordsMs (the
 #                   word index), then from the open start bookMs (the Book parsed, indexed and its Place found) and
-#                   passStartMs (the view composed and bound: the layout pass starts), and firstPageMs. The open
-#                   starts once the Shelf has drawn, after LightActivity's splash (which cancels every draw, and
-#                   with it Compose's layout of new content), so it costs about what a tap on the Shelf does.
+#                   passStartMs (the view composed and bound: the layout pass starts), and firstPageMs. A lazy open's
+#                   parseMs is the parse before its first Page, the package, tables of contents and the Place's
+#                   Spine item, and its wordsMs is 0: the word index is built behind the Page. The open starts once
+#                   the Shelf has drawn, after LightActivity's splash (which cancels every draw, and with it
+#                   Compose's layout of new content), so it costs about what a tap on the Shelf does.
+#   loaded          each timed open's `book` line: loadedMs, from the open's start to the whole Book being in, which
+#                   is how long Contents, the Progress line, turns off the Place's Spine item and Place writes wait.
+#                   P50s alongside: placedMs (the parse before the first Page), restMs (the rest of the Book, parsed
+#                   behind it, sharing the CPU with the first layout and draw) and parsedChars (the characters parsed
+#                   before the first Page).
 #   window          each window measure logged within 1 s of an open or font pass.
 #   memory          dumpsys meminfo's App Summary, in MiB: total PSS, the Java and native heaps, and Graphics (GL and
 #                   gfx buffers). Since Android 8 decoded bitmaps live in the native heap, so images show in native
@@ -49,7 +63,8 @@
 # without one, the first end 2,100+ characters in, and the report says how many Pages the back session has before
 # it reaches the previous Spine item. A Spine item of one window has no seam, and the turn sessions are skipped.
 #
-# -i sets the Spine item (as the app counts them: its "book" line's chapters=), -o the character offset into it.
+# -i sets the Spine item (as the app counts them, in the whole Book: its "book" line's chapters=), -o the character
+# offset into it.
 # -w puts the Place near a window seam instead: 150 characters before the Spine item's first window end, as the
 # app cuts it, so the anchor Page straddles two windows and both are measured before it shows. The report then
 # adds how many passes measured 0, 1, 2… windows synchronously. -c sets the window size for the run in place of
@@ -344,6 +359,12 @@ fi
 cut=$(await ' windows ')
 ends=$(field ends <<<"$cut")
 length=${ends##*,}
+spine_id=$(field spineId <<<"$cut")
+# The id goes into files/dev-start through `sh -c '…'`; one that can't (no XML id can) leaves the timed opens eager.
+if ! [[ $spine_id =~ ^[A-Za-z0-9._:-]+$ ]]; then
+  echo "perf: WARNING: Spine item $item's id '$spine_id' can't go in files/dev-start; the timed opens parse the whole Book first" >&2
+  spine_id=""
+fi
 place_note=""
 if $seam; then
   [[ $ends == *,* ]] || die "Spine item $item is one window at $(field windowChars <<<"$cut") chars; no seam to measure"
@@ -377,22 +398,25 @@ if [ -z "$seam_window" ]; then
     echo "perf: $seam_note" >&2
   fi
 fi
-dev_start "$item" "$offset" ${chars:+"$chars"}
+dev_start "$item" "$offset" ${chars:+"$chars"} ${spine_id:+"spine=$spine_id"}
 
 samples=$work/samples
 windows=$work/windows
 records=$work/records
 drawn=$work/drawn
+books=$work/books
 memory=$work/memory
 : >"$samples"
 : >"$windows"
 : >"$records"
 : >"$drawn"
+: >"$books"
 : >"$memory"
-pass() {  # reason: record its pass and shown lines, then the window and record lines, which trail them by up to a second
+pass() {  # reason: record its pass and shown lines (and an open's book line, logged once the whole Book is in), then the window and record lines, which trail them by up to a second
   local lines
   await "pass reason=$1 " >>"$samples"
   await "shown reason=$1 " >>"$drawn"
+  if [ "$1" = open ]; then await ' book ' >>"$books"; fi
   sleep 1
   lines=$(a logcat -d -s ReaderPerf:I)
   grep ' window ' <<<"$lines" >>"$windows" || true
@@ -464,7 +488,7 @@ session() {  # name, offset, then zone and taps, …: a fresh open at offset, th
     for _ in $(seq 1 "$count"); do burst+="${burst:+; sleep 0.3; }input tap $zone"; done
     total=$((total + count))
   done
-  dev_start "$item" "$at" ${chars:+"$chars"}
+  dev_start "$item" "$at" ${chars:+"$chars"} ${spine_id:+"spine=$spine_id"}
   open_reader
   reader_on_top || die "Reader is not the foreground app; not sending input"
   await 'shown reason=open ' 0.1 >/dev/null
@@ -505,7 +529,7 @@ else
   echo "perf: Spine item $item has no window seam 2,100+ characters in (windows end at $ends); skipping the turn sessions" >&2
 fi
 
-row() {  # label, the field timed, mode (pass, turn, cross, drawn, window, repack): one row from the lines on stdin; P90 is nearest-rank
+row() {  # label, the field timed, mode (pass, turn, cross, drawn, loaded, window, repack): one row from the lines on stdin; P90 is nearest-rank
   local label=$1 key=$2 mode=$3
   LC_ALL=C awk -v label="$label" -v key="$key" -v mode="$mode" -v seam="$seam" '
     function f(k,   i, s) { i = index($0, " " k "="); if (i == 0) return ""; s = substr($0, i + length(k) + 2); sub(/ .*/, "", s); return s }
@@ -524,6 +548,7 @@ row() {  # label, the field timed, mode (pass, turn, cross, drawn, window, repac
       c[f("chars")] = 1; ch[n] = f("chars") + 0
       if (f("item") != "" && !(f("item") in it)) { it[f("item")] = 1; items = items (items == "" ? "" : ",") f("item") }
       if (f("parseMs") != "") { np++; pm[np] = f("parseMs") + 0; wm[np] = f("wordsMs") + 0; bm[np] = f("bookMs") + 0; sm[np] = f("passStartMs") + 0; fp[np] = f("firstPageMs") + 0 }
+      if (f("placedMs") != "") { nl++; pl[nl] = f("placedMs") + 0; rs[nl] = f("restMs") + 0; pc[nl] = f("parsedChars") + 0 }
     }
     END {
       if (n == 0) { printf "%-11s %3d\n", label, 0; exit }
@@ -538,6 +563,9 @@ row() {  # label, the field timed, mode (pass, turn, cross, drawn, window, repac
       } else if (mode == "drawn") {
         printf "to the first draw"
         if (np) printf "; P50 parseMs %.1f, wordsMs %.1f, bookMs %.1f, passStartMs %.1f, firstPageMs %.1f", median(pm, np), median(wm, np), median(bm, np), median(sm, np), median(fp, np)
+      } else if (mode == "loaded") {
+        printf "loadedMs, from the open start to the whole Book in"
+        if (nl) printf "; P50 placedMs %.1f, restMs %.1f, parsedChars %d", median(pl, nl), median(rs, nl), median(pc, nl)
       } else if (mode == "repack") {
         printf "repackMs, on the main thread as a background window lands"
       } else {
@@ -573,7 +601,10 @@ elif $release; then
 fi
 echo
 echo "Reader on $model, $build build$warmth${compiled:+, dexopt $compiled}; ADR 0007 bar: firstPageMs 300 P90 warm, and turns do no layout work (syncWindows 0)"
-echo "Place: Spine item $item offset $offset$place_note; window size ${chars:-WINDOW_CHARS}; $runs runs"
+echo "ADR 0009 bar: drawn open 300 P90 warm, when the Place's Spine item is at most 200 K chars (this one: $length)"
+opens="lazy (Spine item id $spine_id)"
+[ -n "$spine_id" ] || opens="eager (no Spine item id)"
+echo "Place: Spine item $item offset $offset$place_note; window size ${chars:-WINDOW_CHARS}; $runs runs; opens $opens"
 if [ -n "$seam_end" ]; then
   gap=$(spacing)
   past=$(grep -h ' turn ' "$work/forward" "$work/back" | grep -c ' class=past' || true)
@@ -595,6 +626,7 @@ if [ -n "$seam_end" ]; then
 fi
 row repack repackMs repack <"$records"
 grep -h 'shown reason=open ' "$drawn" | row "drawn open" ms drawn || true
+grep -h ' book ' "$books" | row loaded loadedMs loaded || true
 grep -h 'shown reason=font ' "$drawn" | row "drawn font" ms drawn || true
 if [ -n "$seam_end" ]; then
   { grep -h 'shown reason=turn ' "$work/forward" "$work/back" || true; } | { grep -F ' class=in' || true; } | row "drawn turn" ms drawn
