@@ -1,7 +1,7 @@
 # Ledger
 
-STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done, released as v0.1.0; N5 (Reading controls) done (#40–#46), released as v0.2.0; next is N6 (measurement), then images
-LAST SESSION: 2026-09-30
+STATUS: N1, the release path, P (Paginator v2), N2 (reading data store) and N3 (Shelf + Catalogues) done, the code renamed to the glossary, and N4 (Chapters + Progress) done, released as v0.1.0; N5 (Reading controls) done (#40–#46), released as v0.2.0; N6 (measurement) in review: `perf.sh` fixed and extended (#48), dev-start after the splash (#49), and the lazy open (ADR 0009, `feat/lazy-parse`); next is images, the drop caps' `<img>` inside a `<p>` first
+LAST SESSION: 2026-10-03
 
 ## v1 user flow
 
@@ -227,12 +227,17 @@ Ordered. Each item ends on its _done-when_.
   its QR scanner (DESIGN "Dependencies"): the release APK goes from 27.1 MB to 5.2 MB. For Light (the
   owner will raise it upstream): every Tool on `sdk:ui` ships ML Kit and Google's Data Transport, about
   20 MB of it native code, whether or not it scans a code.
-- **N6 · Performance bar (ADR 0007).** Next after N5 E, before images. Re-measure on the LP3 after N3–N5: first Page at any Place and
-  font change ≤ 300 ms P90 warm; page turns do no layout. Emulator = smoke test only.
-  Found in N3: opening a Book parses the whole Book first, and the bar doesn't cover that parse. On the
-  LP3 debug build Alice's `parseMs` was 926; Pride and Prejudice takes about 2.8 s on the emulator.
-  Not a regression. Measure a release build with `mise run perf` (it prints `parseMs`), then consider
-  a lazy per-Spine-item parse.
+- **N6 · Performance bar (ADRs 0007, 0009).** In review. `scripts/perf.sh` fixed and extended to release builds,
+  page turns, time to drawn and memory (#48); dev-start opens once the Shelf has drawn, after LightActivity's
+  splash (#49). An open parsed the whole Book before its first Page (80–90% of the open, the word index another
+  10–13%), so the lazy open (ADR 0009, `feat/lazy-parse`) parses only the Place's Spine item first and the rest
+  behind the Page, with a new bar: the drawn open ≤ 300 ms P90 warm on the LP3 when the Place's Spine item is at
+  most 200 K characters. Measured on the LP3, release, n = 10, drawn open P90 before → after: War and Peace
+  692 → 114 ms, King James Bible 730 → 113 ms, Alice 151 → 111 ms, Lady Chatterley's Lover (one 638 K-character
+  Spine item) 218 → 192 ms, a 1.43 M-character single-item EPUB 626 → 360 ms (outside the bar: its one Spine item
+  is parsed whole). The whole Book is in ~0.65–0.7 s after the open starts on the long Books. `mise run ci` now
+  opens lazily and checks the whole Book came in. _Done when:_ the lazy open merges with `signoff/lp3` green.
+  Left for later (ADR 0009): parsing only a prefix of a huge Spine item, if the one-item Books matter.
 - **N7 · Tool Manager node** (v1.x): upload your own EPUBs, download/upload `reading-data.json`; the
   change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
 

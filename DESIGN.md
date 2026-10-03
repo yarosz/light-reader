@@ -152,10 +152,11 @@ running head names the Chapter its table of contents lists there (before the fir
 title, as in Front matter). The Progress line is blank, as in Front matter. A turn past the Spine item's first
 or last Page waits, then turns, and every turn after it follows in order; a forward turn onto the end page
 waits too, so it never shows early. The list icon waits without a sign and opens Contents once the Book is in;
-a second tap adds nothing, and leaving the Reader drops the wait. The Place is saved once the Book is in. When
-it is, the Page stays as it is (it lays out afresh only where the whole Book sets it otherwise) and the
-Progress line fills in. A Spine item further on that can't be opened takes the Page away, and "Couldn't open
-this Book." shows.
+a second tap adds nothing. The latest tap wins: showing the controls drops the turns still waiting, and a turn,
+or anything else that hides the controls, drops a Contents still waiting. The Place, and a new Book's place on
+the Shelf, are saved once the Book is in. When it is, the Page stays as it is (it lays out afresh only where the
+whole Book sets it otherwise) and the Progress line fills in. A Spine item further on that can't be opened takes
+the Page away, and "Couldn't open this Book." shows; it stays until the Book is opened again from the Shelf.
 
 **Layout.** The Page alone: it fills the screen inside the margins, and nothing else shows while reading
 until a centre tap shows the controls, but for the first-run hint (below). The screen is three full-height

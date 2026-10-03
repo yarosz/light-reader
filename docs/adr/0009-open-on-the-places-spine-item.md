@@ -2,7 +2,7 @@
 
 Opening a Book parses only what its first Page needs: the package, the tables of contents and the Spine item
 the Place is in (`EpubOpening.placed`; a never-opened Book takes the first Spine item with text that no type
-marks as not reading matter). The first Page lays out from a Book of that one Spine item. The rest of the Book
+marks as not reading matter). The first Page lays out from that Spine item alone. The rest of the Book
 is parsed behind the Page in one background pass that reuses what was parsed, giving exactly the Book a whole
 parse gives (a test pins the equality), then its word index. One swap on the main thread then puts the whole
 Book in: the Place and the Page on screen move to the Spine item's index in the whole Book without laying
@@ -15,12 +15,22 @@ Anything it can't know yet is blank, or waits:
 - Turns within the Spine item and font changes work as ever. A turn past its first or last Page waits, and every
   turn after it queues behind it, so taps keep their order.
 - The end page never shows early: a forward turn onto it waits too.
-- The Progress line is blank, as in Front matter. Contents waits silently and opens once the Book is in. A second
-  tap adds nothing, and the wait is dropped if the reader has left the Reader.
-- Place writes wait for the swap, because `progress` needs every Spine item's length. The Shelf's title and author
-  are written at once. A kill in the first moment loses a never-opened Book's first Place.
+- The Progress line is blank, as in Front matter. Contents waits silently and opens once the Book is in, if the
+  controls still show. A second tap adds nothing.
+- The reader's latest intent wins. Showing the controls drops the turns still waiting, so a font change or Contents,
+  both asked from the controls, never overtakes them, and turns never run under Contents. A turn, or anything else
+  that hides the controls (leaving the Reader too), drops a waiting Contents, so back from Contents never shows a
+  Page other than the one it marked. A layout change (the system's text size) drops waiting turns too: the Page lays
+  out afresh at the Place.
+- Writes wait for the swap: the Place, because `progress` needs every Spine item's length, and with it the Shelf's
+  title, author and opened time, as an eager open wrote nothing before its parse was done. The turns taken
+  meanwhile make one Place write at the swap. Leaving the Reader, or a kill, before the swap loses what waited:
+  the turns still queued, the Place the turns already taken reached, and a never-opened Book's Shelf entry and
+  first Place. The Book opens again where it was.
 - A later Spine item that won't parse takes the Page away for "Couldn't open this Book.". That is the outcome a
-  whole parse gave, only later.
+  whole parse gave, only later. Showing the Reader again (a resume) doesn't retry it, so it doesn't show the Page
+  only to take it away again; reopening the Book from the Shelf does. A failure before the first Page is retried
+  on a resume, as before.
 
 Spine item indices are the structural reason for one swap. A Spine item is kept only if it has text, and a Book
 that marks its body matter drops its title page, imprint and table of contents. So the index of the Place's
@@ -67,13 +77,16 @@ first Page still waits for that item's whole parse; the last row is outside the 
 - When the open found no Place, and no turn has moved off it, the swap goes to the whole Book's start. A Book that
   marks no body matter keeps a first document typed as a title page, which the open skipped, as only the whole
   Book can tell whether its body matter is marked.
-- The one-item Book's Chapters are the entries its table of contents lists in that Spine item, even one, and none
-  when it lists none. Until the swap the running head can therefore differ from the whole Book's in three cases
+- Until the swap, the Chapters are the entries the table of contents lists in that Spine item, even one, and none
+  when it lists none. The running head can therefore differ from the whole Book's in four cases
   only. A Page before the Spine item's first listed Chapter shows the Book's title, as in Front matter, where the
   whole Book names a Chapter running on from an earlier Spine item. A Chapter with no title and no heading counts
   its "Chapter N" from that Spine item. A Book whose whole table of contents isn't usable names a listed Chapter
-  there. The controls are hidden at open, so the reader sees this only by showing them in that first moment, and
-  the swap publishes the whole Book's running head.
+  there. And of a Book's two tables of contents (the EPUB 3 nav and the EPUB 2 NCX), the Spine item alone takes the
+  first that lists an entry in its Spine item, the whole Book the first that lists one in any Spine item, so when
+  the nav lists nothing in that Spine item the Spine item alone names the NCX's Chapter. The controls are hidden at
+  open, so the reader sees this only by showing them in that first moment, and the swap publishes the whole Book's
+  running head.
 - A dev-start session names its Spine item by its index in the whole Book, which only a whole parse knows. With
   the Spine item's id too, it opens lazily. `scripts/perf.sh` reads the id from an eager probe open, so its timed
   opens are lazy.
