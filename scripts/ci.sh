@@ -189,7 +189,9 @@ data_hash() {  # serial -> sha256 of files/reading-data.json, or "none" when the
 install_and_launch() {  # serial apk; dev-start opens files/alice.epub past the Shelf, at Chapter I (the whole
                         # Book's Spine item 2, after the epigraph and frontispiece), named by its id too, so the
                         # open is lazy as a reader's is (ADR 0009; LazyParseTest pins the id against the
-                        # fixture), and lazy_check sees the whole Book come in. It opens at the default font, and
+                        # fixture), and lazy_check sees the whole Book come in. On a device whose alice.epub isn't
+                        # the fixture the id names no Spine item, so it opens lazily at that Book's start
+                        # instead, which the round trip takes as well. It opens at the default font, and
                         # saves nothing, so A+ A+ A- A- always cycles and the device's
                         # reading data is left as it was (data_before, checked by shelf_check). A device
                         # with no alice.epub gets the test fixture, removed again on exit. The fixture is
