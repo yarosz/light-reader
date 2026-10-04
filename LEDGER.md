@@ -238,6 +238,8 @@ Ordered. Each item ends on its _done-when_.
   is parsed whole). The whole Book is in ~0.65–0.7 s after the open starts on the long Books. `mise run ci` now
   opens lazily and checks the whole Book came in. _Done when:_ the lazy open merges with `signoff/lp3` green.
   Left for later (ADR 0009): parsing only a prefix of a huge Spine item, if the one-item Books matter.
+  A quick open no longer flashes "Opening…" for a frame or two: the copy waits 500 ms, then stays at least 500 ms,
+  holding the Page back (`feat/opening-delay`, DESIGN "Reading").
 - **N7 · Tool Manager node** (v1.x): upload your own EPUBs, download/upload `reading-data.json`; the
   change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
 

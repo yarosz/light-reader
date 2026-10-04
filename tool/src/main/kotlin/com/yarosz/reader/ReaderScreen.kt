@@ -96,6 +96,7 @@ class ReaderScreen(
         val frame by viewModel.frame.collectAsState()
         val keepAwake by viewModel.keepAwake.collectAsState()
         val hint by viewModel.readingHint.collectAsState()
+        val showsOpening by viewModel.showsOpening.collectAsState()
         val measurer = rememberTextMeasurer(cacheSize = 0)
         val source = MeasurerSource(LocalDensity.current, LocalFontFamilyResolver.current, LocalLayoutDirection.current)
         LaunchedEffect(measurer) { viewModel.warmUp(measurer) }
@@ -112,8 +113,10 @@ class ReaderScreen(
             ) {
                 if (reading && frame != null && !controls) TapZones(hint)
                 Box(Modifier.fillMaxSize().padding(horizontal = SIDE_MARGIN, vertical = TOP_BOTTOM_MARGIN)) {
+                    // Blank while an open waits to show "Opening…"; the Reader composes and binds once it goes.
                     when {
-                        opened == null -> NoPage(status)
+                        showsOpening -> NoPage(READING_OPENING)
+                        opened == null -> if (status != READING_OPENING) NoPage(status)
                         !reading -> NoPage(READING_NO_TEXT)
                         else -> Reader(measurer, source)
                     }

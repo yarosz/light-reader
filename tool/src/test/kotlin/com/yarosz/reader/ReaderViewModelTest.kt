@@ -1011,6 +1011,99 @@ class ReaderViewModelTest {
         settle()
         assertEquals(READING_OPENING, vm.status.value)
         assertNull(vm.book.value)
+        idleFor(OPENING_DELAY_MS + OPENING_MIN_SHOWN_MS)
+        assertFalse(vm.showsOpening.value, "nor \"Opening…\" later")
+    }
+
+    /** A reader whose open has just started, "Opening…" timed on [idle] from now; [settle] finishes the open. */
+    private fun opening(): ReaderViewModel = reader().also { it.openBook() }
+
+    @Test
+    fun `a quick open never shows "Opening…", only the blank reading view, then the Page`() {
+        val vm = opening()
+        idleFor(OPENING_DELAY_MS - 1)
+        assertFalse(vm.showsOpening.value)
+        settle()
+        assertNotNull(vm.book.value)
+        idleFor(OPENING_DELAY_MS + OPENING_MIN_SHOWN_MS)
+        assertFalse(vm.showsOpening.value)
+    }
+
+    @Test
+    fun `an open done at 550 ms shows "Opening…" from 500 ms and holds the Page back until 1,000 ms`() {
+        val vm = opening()
+        idleFor(OPENING_DELAY_MS - 1)
+        assertFalse(vm.showsOpening.value)
+        idleFor(1)
+        assertTrue(vm.showsOpening.value, "shows at 500 ms")
+        idleFor(50)
+        settle()
+        assertNotNull(vm.book.value)
+        assertTrue(vm.showsOpening.value, "the Book is in at 550 ms, and the copy stays")
+        idleFor(OPENING_DELAY_MS + OPENING_MIN_SHOWN_MS - 550 - 1)
+        assertTrue(vm.showsOpening.value)
+        idleFor(1)
+        assertFalse(vm.showsOpening.value, "the Page at 1,000 ms")
+        vm.bind(LineMeasurer())
+        settle()
+        assertNotNull(vm.frame.value)
+    }
+
+    @Test
+    fun `a slow open shows "Opening…" from 500 ms and the Page as soon as the Book is in`() {
+        val vm = opening()
+        idleFor(OPENING_DELAY_MS)
+        assertTrue(vm.showsOpening.value)
+        idleFor(2_000 - OPENING_DELAY_MS)
+        assertTrue(vm.showsOpening.value, "still opening at 2 s")
+        settle()
+        assertNotNull(vm.book.value)
+        assertFalse(vm.showsOpening.value)
+    }
+
+    @Test
+    fun `"Couldn't open this Book" replaces "Opening…" at once, and a quick failure shows no "Opening…" first`() {
+        File(dir, "alice.epub").writeText("not a zip")
+        val slow = opening()
+        idleFor(OPENING_DELAY_MS)
+        assertTrue(slow.showsOpening.value)
+        settle()
+        assertEquals(READING_COULDNT_OPEN, slow.status.value)
+        assertFalse(slow.showsOpening.value)
+        val quick = opening()
+        settle()
+        assertEquals(READING_COULDNT_OPEN, quick.status.value)
+        idleFor(OPENING_DELAY_MS + OPENING_MIN_SHOWN_MS)
+        assertFalse(quick.showsOpening.value)
+    }
+
+    @Test
+    fun `"This Book has no text" replaces "Opening…" at once`() {
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf("<p></p>")))
+        val vm = opening()
+        idleFor(OPENING_DELAY_MS)
+        assertTrue(vm.showsOpening.value)
+        settle()
+        assertEquals(emptyList(), vm.book.value!!.spineItems)
+        assertFalse(vm.showsOpening.value)
+    }
+
+    @Test
+    fun `pausing, hiding and showing again mid-open neither restart nor strand "Opening…"`() {
+        val vm = reader()
+        vm.shown()
+        idleFor(OPENING_DELAY_MS)
+        assertTrue(vm.showsOpening.value)
+        vm.onAppPause()
+        vm.hidden()
+        vm.shown()
+        assertTrue(vm.showsOpening.value, "showing again starts no second wait")
+        settle()
+        assertNotNull(vm.book.value)
+        idleFor(OPENING_MIN_SHOWN_MS - 1)
+        assertTrue(vm.showsOpening.value)
+        idleFor(1)
+        assertFalse(vm.showsOpening.value)
     }
 
     /**

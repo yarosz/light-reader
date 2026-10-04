@@ -59,8 +59,9 @@ const val SAVE_DEBOUNCE_MS = 1_000L
  * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font size
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
  * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened, [idle] where the keep-awake
- * times out ([keepAwake]) and the first-run hint waits out its delay ([readingHint]), and [now] is the monotonic
- * millis that time Pages for the reading speed; tests pass ones they control.
+ * times out ([keepAwake]), "Opening…" waits out its delay and least time ([showsOpening]) and the first-run hint its
+ * delay ([readingHint]), and [now] is the monotonic millis that time Pages for the reading speed; tests pass ones they
+ * control.
  */
 class ReaderViewModel(
     private val file: File,
@@ -78,6 +79,39 @@ class ReaderViewModel(
 
     val book = MutableStateFlow<OpenBook?>(null)
     val status = MutableStateFlow(READING_OPENING)
+
+    /**
+     * Whether the reading view shows "Opening…" (DESIGN.md "Reading"): only once an open has gone [OPENING_DELAY_MS]
+     * without its first Page's Book, blank until then, and from then at least [OPENING_MIN_SHOWN_MS], holding the Page
+     * back even once the Book is in, so it never flashes. "Couldn't open this Book." and "This Book has no text."
+     * replace it at once.
+     */
+    val showsOpening = MutableStateFlow(false)
+
+    /** An open's wait before "Opening…" shows, then its least time on screen ([showsOpening]), on [idle]. */
+    private var openingTimes: Job? = null
+
+    /** Starts an open's [openingTimes]: once its least time is up, "Opening…" goes if the Book is in, else when it is ([openingDone]). */
+    private fun timeOpening() {
+        openingTimes?.cancel()
+        showsOpening.value = false
+        openingTimes = viewModelScope.launch(idle) {
+            delay(OPENING_DELAY_MS)
+            showsOpening.value = true
+            delay(OPENING_MIN_SHOWN_MS)
+            if (book.value != null) showsOpening.value = false
+        }
+    }
+
+    /**
+     * An open's first step is done: "Opening…" not yet shown never shows, and one shown goes now when its least time is
+     * up or [atOnce] (a message replaces it), else once that time is ([timeOpening]).
+     */
+    private fun openingDone(atOnce: Boolean) {
+        if (!atOnce && showsOpening.value && openingTimes?.isActive == true) return
+        openingTimes?.cancel()
+        showsOpening.value = false
+    }
 
     /**
      * The Place: the top of the page being read, or, after a relayout, a few lines down it when its line
@@ -339,6 +373,7 @@ class ReaderViewModel(
         if (book.value != null || loading?.isActive == true || failedLate) return
         openBegan = System.nanoTime()
         status.value = READING_OPENING
+        timeOpening()
         loading = viewModelScope.launch {
             owner.awaitLoaded()
             val stored = saver.data
@@ -414,6 +449,7 @@ class ReaderViewModel(
             unstarted = place == null && opened.spineItems.isNotEmpty()
         }
         bookAt = System.nanoTime()
+        openingDone(atOnce = opened.spineItems.isEmpty())
         book.value = opened
         if (unstarted) stamp(now = openedAt)
         publishLines()
@@ -484,6 +520,7 @@ class ReaderViewModel(
         frame.value = null
         book.value = null
         status.value = READING_COULDNT_OPEN
+        openingDone(atOnce = true)
         publishHint()
     }
 
@@ -907,8 +944,8 @@ class ReaderViewModel(
      * [frame], with the ms from that step's start (for an open, [openBook]'s, before the parse) to this draw.
      * Called from the draw phase, so it leaves out the render thread and the display. An open's line adds where
      * the time went: parseMs and wordsMs; from the open's start, bookMs to the Book being in [book] and
-     * passStartMs to its layout pass's start (the view composing and binding its measurer); and the pass's
-     * firstPageMs.
+     * passStartMs to its layout pass's start (the view composing and binding its measurer, once "Opening…" has gone
+     * if it showed: [showsOpening]); and the pass's firstPageMs.
      */
     fun drawn(shown: Shown<WindowLayout>) {
         val step = undrawn?.takeIf { it.shown === shown } ?: return
