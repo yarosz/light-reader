@@ -1,8 +1,8 @@
 [tool]
 id = "com.yarosz.reader"
 label = "Reader"
-versionCode = 3
-versionName = "0.3.0"
+versionCode = 4
+versionName = "0.3.1"
 permissions = ["android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"]
 capabilities = []
 orientation = "portrait"
