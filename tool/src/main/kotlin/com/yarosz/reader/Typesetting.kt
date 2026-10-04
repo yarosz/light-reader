@@ -39,6 +39,12 @@ val TOP_BOTTOM_MARGIN = 14.dp
  */
 const val KEEP_AWAKE_MS = 10 * 60_000L
 
+/** How long an open shows a blank reading view before "Opening…" (DESIGN.md "Reading"), so a quick one cuts to the Page. */
+const val OPENING_DELAY_MS = 500L
+
+/** The least time "Opening…" stays once shown, the Page held back meanwhile, so it never flashes. */
+const val OPENING_MIN_SHOWN_MS = 500L
+
 /**
  * The first-run hint's guide (DESIGN.md "Reading"). It appears [HINT_DELAY_MS] after its step can show
  * ([ReaderViewModel.readingHint]): a touch dot
