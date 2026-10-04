@@ -59,9 +59,9 @@ const val SAVE_DEBOUNCE_MS = 1_000L
  * Reads the Book in [file], a view onto [owner] like the Shelf, so the Reader's Places and font size
  * reach the reading data the Shelf shows. [start] is a dev-start session's Place (see
  * [DEV_BOOK_FILE]), opened at the default font. [io] is where the Book is opened, [idle] where the keep-awake
- * times out ([keepAwake]), "Opening…" waits out its delay and least time ([showsOpening]) and the first-run hint its
- * delay ([readingHint]), and [now] is the monotonic millis that time Pages for the reading speed; tests pass ones they
- * control.
+ * times out ([keepAwake]), "Opening…" waits out its delay and minimum time ([showsOpening]) and the first-run hint
+ * its delay ([readingHint]), and [now] is the monotonic millis that time Pages for the reading speed; tests pass
+ * ones they control.
  */
 class ReaderViewModel(
     private val file: File,
@@ -82,16 +82,19 @@ class ReaderViewModel(
 
     /**
      * Whether the reading view shows "Opening…" (DESIGN.md "Reading"): only once an open has gone [OPENING_DELAY_MS]
-     * without its first Page's Book, blank until then, and from then at least [OPENING_MIN_SHOWN_MS], holding the Page
-     * back even once the Book is in, so it never flashes. "Couldn't open this Book." and "This Book has no text."
-     * replace it at once.
+     * without the Book being in, blank until then, and from then for at least [OPENING_MIN_SHOWN_MS], holding the
+     * Page back even once the Book is in, so it never flashes. "Couldn't open this Book." and "This Book has no
+     * text." replace it at once.
      */
     val showsOpening = MutableStateFlow(false)
 
-    /** An open's wait before "Opening…" shows, then its least time on screen ([showsOpening]), on [idle]. */
+    /** An open's wait before "Opening…" shows, then its minimum time on screen ([showsOpening]), on [idle]. */
     private var openingTimes: Job? = null
 
-    /** Starts an open's [openingTimes]: once its least time is up, "Opening…" goes if the Book is in, else when it is ([openingDone]). */
+    /**
+     * Starts an open's [openingTimes]: once its minimum time is up, "Opening…" goes if the Book is in, else when it is
+     * ([openingDone]).
+     */
     private fun timeOpening() {
         openingTimes?.cancel()
         showsOpening.value = false
@@ -104,7 +107,7 @@ class ReaderViewModel(
     }
 
     /**
-     * An open's first step is done: "Opening…" not yet shown never shows, and one shown goes now when its least time is
+     * An open's first step is done: "Opening…" not yet shown never shows, and one shown goes now when its minimum time is
      * up or [atOnce] (a message replaces it), else once that time is ([timeOpening]).
      */
     private fun openingDone(atOnce: Boolean) {

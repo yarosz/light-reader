@@ -44,7 +44,9 @@
 #                   parseMs is the parse before its first Page, the package, tables of contents and the Place's
 #                   Spine item, and its wordsMs is 0: the word index is built behind the Page. The open starts once
 #                   the Shelf has drawn, after LightActivity's splash (which cancels every draw, and with it
-#                   Compose's layout of new content), so it costs about what a tap on the Shelf does.
+#                   Compose's layout of new content), so it costs about what a tap on the Shelf does. A dev-start open whose first
+#                   step passes 500 ms includes the "Opening…" hold in its drawn open and passStartMs (bookMs stays the
+#                   clean measure); none of the measured LP3 opens reach it.
 #   loaded          each timed open's `book` line: loadedMs, from the open's start to the whole Book being in, which
 #                   is how long Contents, the Progress line, turns off the Place's Spine item and Place writes wait.
 #                   P50s alongside: placedMs (the parse before the first Page), restMs (the rest of the Book, parsed

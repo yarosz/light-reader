@@ -143,13 +143,14 @@ open this Book." (the reason goes to the log), and one with no text reads "This 
 each is "Back to Shelf", as on the end page. System back (the LP3's back gesture) leaves the Reader from
 anywhere, to the Shelf, which the Reader always opens over (see "Catalogues"), but a Tool can't show it,
 so every Reader state has a visible way to the Shelf: "Back to Shelf" where there is no Page, and on a
-Page the controls' back.
+Page the controls' back. The one exception is the blank first moment of an open, where only system back leaves.
 
 **Opening.** A Book opens on its Place's Spine item, or, never opened, on the first that could start it: only
 that is read before the first Page shows, and the rest of the Book comes in behind it, well within a second on
 the LP3 (ADR 0009). Before the first Page the reading view shows only its blank background: "Opening…" (with
-"Back to Shelf") shows once the open has taken 500 ms, and then stays at least 500 ms, the Page waiting behind
-it, so it never flashes; most Books open well within that. "Couldn't open this Book." and "This Book has no
+"Back to Shelf") shows once the open has taken 500 ms, and then stays at least 500 ms, so it never flashes; the
+Page is laid out once it goes, so a slow or held open shows "Opening…", then the Page after its layout. Most
+Books open within 500 ms and show no "Opening…". "Couldn't open this Book." and "This Book has no
 text." show at once. Until the whole Book is in, the Page, turns within that Spine item and font changes work
 as ever, and the running head names the Chapter its table of contents lists there (before the first one listed,
 the Book's title, as in Front matter). The Progress line is blank, as in Front matter. A turn past the Spine

@@ -1025,6 +1025,8 @@ class ReaderViewModelTest {
         assertFalse(vm.showsOpening.value)
         settle()
         assertNotNull(vm.book.value)
+        idleFor(1)
+        assertFalse(vm.showsOpening.value, "nothing shows at 500 ms, the Book being in")
         idleFor(OPENING_DELAY_MS + OPENING_MIN_SHOWN_MS)
         assertFalse(vm.showsOpening.value)
     }
@@ -1075,6 +1077,21 @@ class ReaderViewModelTest {
         assertEquals(READING_COULDNT_OPEN, quick.status.value)
         idleFor(OPENING_DELAY_MS + OPENING_MIN_SHOWN_MS)
         assertFalse(quick.showsOpening.value)
+    }
+
+    @Test
+    fun `a lazy open whose first step ends inside the hold and whose rest then fails shows "Couldn't open this Book" and no "Opening…" at once`() {
+        File(dir, "alice.epub").writeEpub(tocEpubFiles(listOf("<h2>One</h2><p>${"word ".repeat(200)}</p>", "<p>never closed")))
+        val vm = reader()
+        vm.shown()
+        idleFor(600)
+        assertTrue(vm.showsOpening.value)
+        firstStep()
+        assertNotNull(vm.book.value, "the first step is done")
+        assertTrue(vm.showsOpening.value, "and the copy holds at 600 ms")
+        settle()
+        assertEquals(READING_COULDNT_OPEN, vm.status.value)
+        assertFalse(vm.showsOpening.value)
     }
 
     @Test
@@ -1979,9 +1996,13 @@ class ReaderViewModelTest {
         vm.shown()
         settle()
         assertEquals(READING_COULDNT_OPEN, vm.status.value)
+        assertFalse(vm.showsOpening.value)
         File(dir, "alice.epub").writeBytes(epub)
         vm.hidden()
         vm.shown()
+        assertFalse(vm.showsOpening.value, "the retry's wait starts afresh")
+        idleFor(OPENING_DELAY_MS)
+        assertTrue(vm.showsOpening.value)
         settle()
         assertNotNull(vm.book.value)
     }
