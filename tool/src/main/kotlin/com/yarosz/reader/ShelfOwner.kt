@@ -118,9 +118,16 @@ class ShelfOwner(
     /** One import pass at a time, so a pass from LightOS and one from the Shelf never take the same file twice. */
     private val importing = Mutex()
 
+    /**
+     * Whether the reading data came from a saved file that parsed. Only then does an import pass
+     * [recover]: with none read (missing, unreadable or corrupt), every Book's file looks unnamed.
+     */
+    private var readSaved = false
+
     private val loaded = scope.async(start = CoroutineStart.LAZY) {
-        val (fromDisk, start, stored) = withContext(io) { Triple(store.load(), devStartFile(), noticeStore.load()) }
-        saver.loaded(fromDisk)
+        val (fromDisk, start, stored) = withContext(io) { Triple(store.loadSaved(), devStartFile(), noticeStore.load()) }
+        saver.loaded(fromDisk ?: ReadingData())
+        readSaved = fromDisk != null
         devStart.value = start
         notices = stored
     }
@@ -224,7 +231,7 @@ class ShelfOwner(
      * left for later. A Book the phone lacks room for, or that can't be moved, stays in the inbox with
      * a notice, and every pass tries it again. Files are checked as found and acted on only if nothing
      * wrote to them since ([isAsChecked]). A pass first moves back to the inbox any Book's file that no
-     * Book names ([recover]). It scans again after it has taken files, since LightOS drops its reports
+     * Book names ([recover]), once the reading data was read from a saved file. It scans again after it has taken files, since LightOS drops its reports
      * while a pass runs, waits [IMPORT_QUIET_MS] for files still arriving, up to [IMPORT_WAITS] times,
      * and before it ends lists the inbox once more, scanning again if a file came or changed. Passes
      * run one at a time; files are checked on [io] and moved on the main thread, as a download lands.
@@ -320,9 +327,11 @@ class ShelfOwner(
      * download's rename and its save leaves one; downloads in progress use temp names, and every
      * rename into a Book's name is saved in the same main-thread step, so a file found here is never
      * one still on its way. The file of a Book off the Shelf is left alone: a removal that couldn't
-     * delete it must not bring the Book back.
+     * delete it must not bring the Book back. Does nothing unless the reading data was read from a
+     * saved file ([readSaved]), so a lost or corrupt file never takes every Book off the Shelf.
      */
     private suspend fun recover() {
+        if (!readSaved) return
         val found = withContext(io) { filesDir.list().orEmpty().filter(::isBookFileName) }
         val named = saver.data.books.values.mapNotNull { it.file }.toSet()
         val removed = saver.data.books.filterValues { !it.onShelf }.keys.map(::bookFileName).toSet()

@@ -597,6 +597,39 @@ class ImportTest {
     }
 
     @Test
+    fun `a Book's file stays where it is when the reading data and its backup don't parse`() {
+        val book = File(dir, stormFile).apply { writeBytes(storm) }
+        File(dir, "reading-data.json").writeText("{ not json")
+        File(dir, "reading-data.json.bak").writeText("also not json")
+        import()
+        assertTrue(book.exists())
+        assertEquals(emptyList(), inboxFiles())
+        assertEquals(emptyList(), owner().rows())
+    }
+
+    @Test
+    fun `a Book's file stays where it is when there is no reading data at all`() {
+        val book = File(dir, stormFile).apply { writeBytes(storm) }
+        import()
+        assertTrue(book.exists())
+        assertEquals(emptyList(), inboxFiles())
+        assertEquals(emptyList(), owner().rows())
+    }
+
+    @Test
+    fun `a Book's file that no Book names is imported again when the reading data comes from its backup`() {
+        File(dir, stormFile).writeBytes(storm)
+        ReadingStore(dir).save { ReadingData() }
+        ReadingStore(dir).save { ReadingData() }
+        File(dir, "reading-data.json").writeText("{ not json")
+        val owner = owner()
+        import(owner)
+        assertEquals(listOf("Stormy Night"), owner.rows().map { it.title })
+        assertTrue(File(dir, stormFile).exists())
+        assertEquals(emptyList(), inboxFiles())
+    }
+
+    @Test
     fun `LightOS's report imports through the process's owner, and leaves the files for the Shelf when there is none`() {
         assertNull(ShelfOwner.ofProcess())
         upload("storm.epub", storm)

@@ -448,7 +448,9 @@ changed waits for the next look. Each file:
 - **Interrupted.** Moving a Book onto the Shelf is a rename, then a save of the reading data. A Book's
   file (a name made from its identifier) that no Book names, as a process killed between the two
   leaves, goes back into the folder at the start of each pass and is imported again; a download killed
-  the same way is healed too. Downloads in progress use temp names, the file of a Book taken off the
+  the same way is healed too. This happens only when the reading data was read from its file or its
+  backup: when neither exists or parses, every Book's file would look unnamed, so all stay where they
+  are. Downloads in progress use temp names, the file of a Book taken off the
   Shelf stays where it is (a removal that couldn't delete it must not bring the Book back), and other
   names, such as the dev file, are never touched. Recovering rather than saving before the move keeps
   the move a single rename that needs no undo when it fails.
