@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val TAG = "Reader"
@@ -40,9 +43,13 @@ sealed interface DownloadResult {
     data object Removed : DownloadResult
 }
 
+/** How many times an import pass waits [IMPORT_QUIET_MS] for files still arriving before leaving them to the next pass. */
+private const val IMPORT_WAITS = 3
+
 /**
  * The one owner of a files directory's Shelf in this process: the reading data and its [saver],
- * which Books' files exist, and the foreground downloads (no background service in v1). LightOS can
+ * which Books' files exist, the foreground downloads (no background service in v1), and the imports
+ * from the Tool Manager's inbox with their notices ([importBooks]). LightOS can
  * recreate the activity in the same process without clearing the old screens' view models, so no
  * view model can own these: two savers over one file interleave their writes, and a stale one puts
  * a removed Book back. [ShelfViewModel] and [ReaderViewModel] are views onto the owner that [of]
@@ -53,14 +60,15 @@ sealed interface DownloadResult {
  * that a download landed after it, and a download that lost its row never leaves a file behind.
  * Those are single renames and deletes; the downloads themselves run on [io]. A landing and a
  * removal also save the reading data at once rather than after the debounce: they are rare, and a
- * screen on top of the Shelf may never see the pause that would flush them. [transport] and [now]
- * exist for tests.
+ * screen on top of the Shelf may never see the pause that would flush them. An import lands the
+ * same way. [transport], [usableSpace] and [now] exist for tests.
  */
 class ShelfOwner(
     private val filesDir: File,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     private val transport: Transport = HttpsTransport(),
     private val logFailure: (String) -> Unit = ::logFeedFailure,
+    private val usableSpace: () -> Long = filesDir::getUsableSpace,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -92,10 +100,22 @@ class ShelfOwner(
 
     private class Running(val job: Job, val result: CompletableDeferred<DownloadResult>, val connected: () -> Boolean?)
 
+    private val inbox = importInbox(filesDir)
+    private val noticeStore = ImportNoticeStore(filesDir)
+
+    /** The files Reader didn't add, oldest first, one per file name; changed on the main thread. */
+    @Volatile
+    private var notices = emptyList<ImportNotice>()
+    private val noticeSaves = Any()
+
+    /** One import pass at a time, so a pass from LightOS and one from the Shelf never take the same file twice. */
+    private val importing = Mutex()
+
     private val loaded = scope.async(start = CoroutineStart.LAZY) {
-        val (fromDisk, start) = withContext(io) { store.load() to devStartFile() }
+        val (fromDisk, start, stored) = withContext(io) { Triple(store.load(), devStartFile(), noticeStore.load()) }
         saver.loaded(fromDisk)
         devStart.value = start
+        notices = stored
     }
 
     /** Suspends until the reading data is loaded, loading it on first use. */
@@ -156,6 +176,125 @@ class ShelfOwner(
         job.start()
         publish()
         return result
+    }
+
+    /**
+     * The Shelf is showing: notices it showed before go, which files exist is rechecked ([refresh]),
+     * and the inbox is imported ([importBooks]), since LightOS's report of an upload can be dropped
+     * or arrive before this process has an owner.
+     */
+    fun shelfShown() {
+        scope.launch {
+            loaded.await()
+            changeNotices { list -> list.filterNot { it.shown } }
+        }
+        refresh()
+        importBooks()
+    }
+
+    /** Marks every notice as shown, so the next time the Shelf shows they are gone. */
+    fun noticesShown() {
+        scope.launch {
+            loaded.await()
+            changeNotices { list -> list.map { it.copy(shown = true) } }
+        }
+    }
+
+    /** The reader tapped the notice: every notice goes. */
+    fun clearNotices() {
+        scope.launch {
+            loaded.await()
+            changeNotices { emptyList() }
+        }
+    }
+
+    /**
+     * Imports every file in the inbox, LightOS's folder for the Tool Manager's "Add Books" page: each
+     * Book that passes the checks a download passes ([examine]) moves out of the inbox under its
+     * identifier's file name ([bookFileName]) and goes on the Shelf with its own title and author and
+     * no new source, keeping a Place it had, even after a removal. A file that fails is deleted and
+     * leaves a notice for the Shelf; one written in the last [IMPORT_QUIET_MS] is left for later
+     * instead. A Book the phone lacks room for stays in the inbox, with a notice, and every pass tries
+     * it again. A pass scans again after it has taken files, since LightOS drops its reports while a
+     * pass runs, and waits for files still arriving, up to [IMPORT_WAITS] times. Passes run one at a
+     * time; files are checked on [io] and moved on the main thread, as a download lands.
+     */
+    fun importBooks(): Job = scope.launch {
+        loaded.await()
+        importing.withLock {
+            var waits = 0
+            while (true) {
+                val (taken, waiting) = importRound()
+                when {
+                    taken > 0 -> continue
+                    waiting && waits++ < IMPORT_WAITS -> delay(IMPORT_QUIET_MS)
+                    else -> break
+                }
+            }
+        }
+    }
+
+    /** One scan of the inbox: how many files left it, and whether any was left to settle. */
+    private suspend fun importRound(): Pair<Int, Boolean> {
+        val files = withContext(io) { inbox.mkdirs(); inbox.listFiles()?.sortedBy { it.lastModified() }.orEmpty() }
+        var added = 0
+        var refused = 0
+        var discarded = 0
+        var waiting = false
+        for (file in files) {
+            when (val arrival = withContext(io) { examine(file, now(), usableSpace) }) {
+                is Arrival.Accept -> when {
+                    // Written to again since the check: the next scan checks it afresh.
+                    file.length() != arrival.length || file.lastModified() != arrival.modified -> waiting = true
+                    land(file, arrival.checked) -> added++
+                    else -> notice(file.name, DiskError)
+                }
+                is Arrival.Reject -> {
+                    file.deleteOrLog()
+                    notice(file.name, arrival.reason)
+                    refused++
+                }
+                Arrival.NoRoom -> notice(file.name, DiskError)
+                Arrival.Waiting -> waiting = true
+                Arrival.Discard -> {
+                    file.deleteOrLog()
+                    discarded++
+                }
+                Arrival.Ignore -> Unit
+            }
+        }
+        if (added + refused > 0) Log.i(TAG, "import added=$added refused=$refused")
+        return (added + refused + discarded) to waiting
+    }
+
+    /** On the main thread: moves [file], a [checked] Book, out of the inbox and onto the Shelf. False when it can't be moved. */
+    private fun land(file: File, checked: Checked): Boolean {
+        val name = bookFileName(checked.identifier)
+        if (!file.renameTo(File(filesDir, name))) return false
+        saver.change { it.shelve(checked.identifier, checked.title, name, checked.author, source = null, now = now()) }
+        fileChanged(name, exists = true)
+        saver.flush()
+        changeNotices { list -> list.filterNot { it.name == file.name } }
+        publish()
+        return true
+    }
+
+    /** Adds the notice for the file [name], replacing an earlier one for that name. */
+    private fun notice(name: String, reason: DownloadFailure) =
+        changeNotices { list -> list.filterNot { it.name == name } + ImportNotice(name, reason) }
+
+    /** On the main thread: changes the notices, publishes them, and saves them on [io] when they changed. */
+    private fun changeNotices(transform: (List<ImportNotice>) -> List<ImportNotice>) {
+        val changed = transform(notices)
+        if (changed == notices) return
+        notices = changed
+        publish()
+        scope.launch(io) {
+            // Saves can run out of order, so each writes the latest list, read under the lock.
+            synchronized(noticeSaves) {
+                runCatching { noticeStore.save(notices) }.onFailure { Log.w(TAG, "import notices save failed", it) }
+            }
+        }
     }
 
     /** Fetches a Catalogue page on [io]; [search] marks a search's results or their "More" ([fetchPage]). */
@@ -259,7 +398,7 @@ class ShelfOwner(
 
     private fun publish() {
         if (!loaded.isCompleted) return
-        snapshots.value = ShelfSnapshot(saver.data, present, downloads.toMap())
+        snapshots.value = ShelfSnapshot(saver.data, present, downloads.toMap(), notices)
     }
 
     /**
@@ -278,6 +417,13 @@ class ShelfOwner(
         /** The process's owner of [filesDir], made by [create] the first time it is asked for. */
         fun of(filesDir: File, create: () -> ShelfOwner = { ShelfOwner(filesDir) }): ShelfOwner =
             synchronized(owners) { owners.getOrPut(filesDir.canonicalPath, create) }
+
+        /**
+         * The process's owner, once a screen has made one. LightOS reports an upload to a worker with
+         * no filesDir to hand (see [ReaderEntryPoint]); with no owner yet, the Shelf imports when it
+         * next shows.
+         */
+        fun ofProcess(): ShelfOwner? = synchronized(owners) { owners.values.singleOrNull() }
 
         /** For tests, whose directories don't outlive them: ends [filesDir]'s owner and forgets it and its save lock. */
         internal fun forget(filesDir: File) {

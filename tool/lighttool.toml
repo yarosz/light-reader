@@ -4,7 +4,7 @@ label = "Reader"
 versionCode = 5
 versionName = "0.3.2"
 permissions = ["android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"]
-capabilities = []
+capabilities = ["tool-manager-provider"]
 orientation = "portrait"
 # LightOS on a real Light Phone III. Light builds releases from this committed value, so it must stay
 # "com.lightos". Emulator builds substitute the emulator's package at build time (scripts/emulator-build.sh).

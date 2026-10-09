@@ -90,8 +90,12 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
                 )
                 when {
                     shown == null -> Unit
-                    shown.isEmpty() -> Empty()
+                    shown.isEmpty() -> {
+                        Notice(snapshot?.notices.orEmpty())
+                        Empty()
+                    }
                     else -> LightScrollView(Modifier.weight(1f).fillMaxWidth()) {
+                        Notice(snapshot?.notices.orEmpty())
                         shown.forEach { row -> ShelfRowView(row, mode) }
                     }
                 }
@@ -118,6 +122,15 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
             is RowTap.Open -> open(File(lightContext.filesDir, tap.file))
             is RowTap.Download -> viewModel.download(tap)
             RowTap.None -> Unit
+        }
+    }
+
+    /** The files Reader didn't add, a line each in secondary text ([noticeLines]); a tap clears them. */
+    @Composable
+    private fun Notice(notices: List<ImportNotice>) {
+        if (notices.isEmpty()) return
+        Column(Modifier.lightClickable(onClick = viewModel::clearNotices).then(rowPadding())) {
+            noticeLines(notices).forEach { SecondaryLine(it, maxLines = 2) }
         }
     }
 

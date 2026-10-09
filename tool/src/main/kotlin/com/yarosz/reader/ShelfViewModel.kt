@@ -13,17 +13,20 @@ import kotlinx.coroutines.launch
  * model holds only whether the screen is editing. [connected] is whether the phone reports a
  * connection, for a download that fails (see [ShelfOwner.download]). An emptied Shelf leaves Edit,
  * since Edit is hidden then, and a confirmation whose row is gone (a download that arrived under its
- * Book's identifier, or failed) is cleared.
+ * Book's identifier, or failed) is cleared. Import notices that reach the screen while it shows are
+ * marked shown, so they go the next time it shows ([ShelfOwner.shelfShown]).
  */
 class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -> Boolean? = { null }) : LightViewModel<Unit>() {
     /** What the Shelf knows; the screen shows its [ShelfSnapshot.rows]. Null until the reading data is loaded. */
     val snapshot: StateFlow<ShelfSnapshot?> = owner.snapshot
     val mode = MutableStateFlow<ShelfMode>(ShelfMode.Browsing)
     val devStart: MutableStateFlow<DevStart?> = owner.devStart
+    private var showing = false
 
     init {
         viewModelScope.launch {
             snapshot.collect { latest ->
+                if (showing && latest?.notices.orEmpty().any { !it.shown }) owner.noticesShown()
                 val editing = mode.value as? ShelfMode.Editing ?: return@collect
                 val shown = latest?.rows
                 when {
@@ -34,9 +37,19 @@ class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -
         }
     }
 
-    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = owner.refresh()
+    override fun onScreenShow(screen: SimpleLightScreen<Unit>) = shown()
+
+    /** The screen shows: see [ShelfOwner.shelfShown]. */
+    internal fun shown() {
+        showing = true
+        owner.shelfShown()
+        snapshot.value?.takeIf { latest -> latest.notices.any { !it.shown } }?.let { owner.noticesShown() }
+    }
 
     internal fun refresh() = owner.refresh()
+
+    /** A tap on the notice clears it. */
+    fun clearNotices() = owner.clearNotices()
 
     /** See [ShelfOwner.download]. */
     fun download(source: HttpsUrl, title: String, author: String?, replacing: String? = null): Deferred<DownloadResult> =
@@ -76,7 +89,12 @@ class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -
 
     override fun onAppPause() = owner.saver.flush()
 
-    override fun onScreenHide(screen: SimpleLightScreen<Unit>) = owner.saver.flush()
+    override fun onScreenHide(screen: SimpleLightScreen<Unit>) = hidden()
+
+    internal fun hidden() {
+        showing = false
+        owner.saver.flush()
+    }
 
     override fun onCleared() {
         owner.saver.flush()
