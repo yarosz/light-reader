@@ -270,3 +270,6 @@ Rejected
 Hidden
 Folders
 No room
+Interrupted
+Not saved
+ImportFailure
