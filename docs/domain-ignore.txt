@@ -252,3 +252,21 @@ Reader has no accounts, no service of its own and no tracking. It uses the netwo
 AndroidX, Jetpack Compose, Material Components, Kotlin, kotlinx.coroutines, kotlinx.serialization, Ktor, OkHttp, the UnifiedPush connector, Tink and Guava: Apache License 2.0.
 While you read, the screen stays on until 10 minutes pass without a tap or key press, then follows your phone’s own timeout.
 Reader/$VERSION_NAME (+https://$REPO_URL)
+
+# Tool Manager imports (DESIGN "Adding your own Books"): types, UI copy and DESIGN's bold lead-ins.
+# "file" in the page's copy is the file the reader picks, not a Book.
+Arrival
+ImportNotice
+ImportNoticeStore
+ReaderEntryPoint
+Choose EPUB files
+EPUB files without copy protection. Each one appears on Reader’s Shelf.
+Couldn’t add ${notice.name}: $why.
+and ${notices.size - NOTICE_MAX_LINES} more
+Adding your own Books
+Import notice
+Still arriving
+Rejected
+Hidden
+Folders
+No room

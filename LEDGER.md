@@ -241,7 +241,13 @@ Ordered. Each item ends on its _done-when_.
   A quick open no longer flashes "Opening…" for a frame or two: the copy waits 500 ms, then stays at least 500 ms,
   holding the Page back (`feat/opening-delay`, DESIGN "Reading").
 - **N7 · Tool Manager node** (v1.x): upload your own EPUBs, download/upload `reading-data.json`; the
-  change hook merges. Build it, but advertise it only once confirmed live on retail LightOS.
+  change hook merges. Build it, but advertise it only once confirmed live on retail LightOS. The upload
+  half is built (`feat/add-books`, on Light SDK v0.2.0): a one-way "Add Books" page, imports checked as
+  downloads are, rejected files explained by a notice atop the Shelf (DESIGN "Adding your own Books");
+  not advertised. Left: the reading-data half (download/upload `reading-data.json`, the merge), and
+  trying the page on a phone whose LightOS reaches SDK Tools' providers (retail 582 can't). For Light
+  (to raise upstream): `onToolManagerDataUpdate()` gets no context, so a Tool whose process has no
+  screen can't reach its files from it; Reader imports when the Shelf next shows instead.
 
 **v1** = N1–N6. **v1.x:** images first (the drop caps' `<img>` inside a `<p>` fixed, then
 `PREFER_IMAGES_EDITION` flipped, with inverted line art), N7, the Standard Ebooks full catalogue if

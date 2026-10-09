@@ -395,8 +395,66 @@ downloads it again from the Book's source, keeping its Place. If the download de
 date added and title move to the new identifier, and the Place resolves as well as the new Edition
 allows. If a Book with the new identifier is already on the Shelf, the two rows become that one: it
 keeps its own title and date added, takes whichever Place is newer, and the old row leaves the
-Shelf. A Book with no known source (a future
-N7 import) reads "file missing" and can only be removed.
+Shelf. A Book with no known source (one imported through the Tool Manager, below) reads "file
+missing" and can only be removed.
+
+**Adding your own Books.** Owner's rulings (2026-10-08); copy is verbatim, and `Shelf.kt` holds it.
+LightOS's Tool Manager (the phone's page in a computer's browser) lists Reader as "Reader", with one
+page, "Add Books": an upload page whose header reads "EPUB files without copy protection. Each one
+appears on Reader’s Shelf." and whose button reads "Choose EPUB files". It takes several files at
+once. The page is one-way: Reader moves each Book it accepts out of the shared folder into its own
+storage, so nothing stays there and no Book is stored twice, and the browser never lists what was
+uploaded. Removing a Book stays a phone action (Edit, then Remove). Nothing in the Tool mentions the
+page yet (not About, the README or the empty Shelf): it is advertised only once it is confirmed to
+work on retail LightOS (LEDGER N7).
+
+An uploaded file is imported, not downloaded, but it passes the checks a download passes (a zip, not
+copy-protected, a package Reader can read, at most 300 MB) and gets the download's file name, so a
+Book is the same Book whichever way it came. It goes on the Shelf with its `dc:title` (else its file
+name) and `dc:creator`, as a never-opened Book added now, with no source. A Book whose identifier is
+already stored keeps its row and its Place, even after a removal; its file is replaced, and its title
+becomes the file's. One that came from a Catalogue keeps its source, so a missing file can still be
+downloaded again.
+
+Reader imports whenever LightOS reports an upload (about 3 s after a file's last write) and whenever
+the Shelf shows, each time scanning the whole folder, one pass at a time. LightOS sends its report to
+Reader's process even with no screen open, but gives it no way to reach Reader's files, so the report
+imports only once a screen has opened in that process; otherwise the files wait for the Shelf. LightOS
+drops a report that comes while a pass runs, so a pass that took files scans again. Each file:
+
+- **Still arriving.** A file still being written is never rejected: one that fails a check within
+  10 s of its last write is left for a later pass, and a pass that leaves one waits 10 s and looks
+  again, up to three times; after that, the next report or Shelf showing takes it. A zero-byte file
+  counts as just created until then, and as not an EPUB after.
+- **Rejected.** A file that fails is deleted, and the Shelf says why (below).
+- **Hidden.** A name starting with "." (macOS's `._` files, another program's partial file) is
+  deleted without a notice once it has been quiet for 10 s, and never imported.
+- **Folders.** Left alone: the page can't make one.
+- **No room.** A Book needs 16 MB free beside it, as a download leaves (moving it costs no space, but
+  the reading data must still save). Short of that, the file stays in the folder rather than being
+  deleted, the Shelf says so, and every pass tries it again, so it is added once there is room. Until
+  then its line comes back each time the Shelf shows.
+
+**Import notice.** The browser says "uploaded" whatever Reader does with a file, so the next time the
+Shelf shows, its list starts with a line for each file Reader didn't add, above the rows or above
+"Nothing on your Shelf yet.": secondary text, like the Catalogue list's offline line, oldest first,
+each wrapping to at most two lines so its reason shows. After three files, one more line counts the
+rest: "and 2 more". A line is "Couldn’t add <file name>: <reason>.", such as "Couldn’t add notes.pdf:
+it isn’t an EPUB.", and the reasons reuse the failed-download copy:
+
+| Failure | Reason |
+|---|---|
+| NotAnEpub (not a zip, a package Reader can't read, or over 300 MB) | "it isn’t an EPUB" |
+| CopyProtected | "it’s copy-protected" |
+| No room (DiskError) | "there isn’t enough space on your phone" |
+
+The notice goes once read: a tap on it clears every line, and so does the next time the Shelf shows
+after showing it (back from a Book or the Catalogues, or Reader reopened). A line that arrives while
+the Shelf is showing counts as shown. The lines are kept in `import-notices.json` beside the reading
+data, which they leave unchanged (schemaVersion stays 1), so a report handled with no screen open
+still shows at the next Shelf. A later line for the same file name replaces the earlier one, and adding
+the file clears its line. The log says only how many files were added and refused, never a file's
+name or a Book's title.
 
 ## Catalogues
 
