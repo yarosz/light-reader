@@ -26,8 +26,8 @@ run = [
 description = "Build (for LightOS), install, and launch on the Light Phone III, over USB or wireless debugging"
 run = '''
 s=$(adb devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/{print $1}' | while read -r d; do
-  [ "$(adb -s "$d" shell getprop ro.product.model | tr -d '\r')" = TLP301 ] && echo "$d"; done | head -1)
-[ -n "$s" ] || { echo "no Light Phone III attached: plug it in, or turn on Developer options > Wireless debugging" >&2; exit 1; }
+  [ "$(adb -s "$d" shell getprop ro.product.model </dev/null | tr -d '\r')" = TLP301 ] && echo "$d"; done | head -1)
+[ -n "$s" ] || { echo "no Light Phone III attached: plug it in, or pair it over Developer options > Wireless debugging" >&2; exit 1; }
 ./gradlew :tool:assembleDebug
 adb -s "$s" install -r tool/build/outputs/apk/debug/tool-debug.apk
 adb -s "$s" shell monkey -p com.yarosz.reader 1
