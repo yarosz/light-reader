@@ -1,7 +1,12 @@
 package com.yarosz.reader
 
-/** What the Shelf knows: the reading data, which Books' files exist, and the downloads by source. */
-data class ShelfSnapshot(val data: ReadingData, val present: Set<String>, val downloads: Map<HttpsUrl, Download>) {
+/** What the Shelf knows: the reading data, which Books' files exist, the downloads by source, and the import notices. */
+data class ShelfSnapshot(
+    val data: ReadingData,
+    val present: Set<String>,
+    val downloads: Map<HttpsUrl, Download>,
+    val notices: List<ImportNotice> = emptyList(),
+) {
     /** The Shelf's rows (see [shelfRows]), made once per snapshot, when first read. */
     val rows: List<ShelfRow> by lazy { shelfRows(data, present, downloads) }
 }

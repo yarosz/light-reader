@@ -39,7 +39,10 @@ class ReadingStore(
     private val lock: Any = saveLocks.computeIfAbsent(dir.canonicalPath) { Any() }
 
     /** The main file, else the backup, else empty data. Never throws: an unreadable file counts as missing. */
-    fun load(): ReadingData = read(main) ?: read(backup) ?: ReadingData()
+    fun load(): ReadingData = loadSaved() ?: ReadingData()
+
+    /** The main file, else the backup; null when neither exists and parses. Never throws. */
+    fun loadSaved(): ReadingData? = read(main) ?: read(backup)
 
     /**
      * Merges [mine]'s data into the file on disk. [mine] runs under the directory's lock, right before

@@ -24,6 +24,39 @@ const val ROW_CANT_DOWNLOAD_NOT_AN_EPUB = "can't download again · not an EPUB"
 const val ROW_CANT_DOWNLOAD_NO_HTTPS = "can't download again · needs https"
 const val ROW_CANT_DOWNLOAD_NEEDS_LOGIN = "can't download again · needs a login"
 
+/** The Tool Manager's "Add Books" page, verbatim from DESIGN.md "Adding your own Books". */
+const val TOOL_MANAGER_TITLE = "Reader"
+const val ADD_BOOKS_LABEL = "Add Books"
+const val ADD_BOOKS_HEADER = "EPUB files without copy protection. Each one appears on Reader’s Shelf."
+const val ADD_BOOKS_BUTTON = "Choose EPUB files"
+
+/** The import notice's lines, verbatim from DESIGN.md "Adding your own Books". */
+const val NOTICE_NOT_AN_EPUB = "it isn’t an EPUB"
+const val NOTICE_COPY_PROTECTED = "it’s copy-protected"
+const val NOTICE_TOO_LARGE = "it’s too large"
+const val NOTICE_NO_ROOM = "there isn’t enough space on your phone"
+const val NOTICE_NOT_SAVED = "it couldn’t be saved on your phone"
+
+/** How many files the Shelf's notice names before "and N more". */
+const val NOTICE_MAX_LINES = 3
+
+/** One import notice's line: "Couldn’t add notes.pdf: it isn’t an EPUB." */
+fun noticeLine(notice: ImportNotice): String {
+    val why = when (notice.reason) {
+        ImportFailure.NotAnEpub -> NOTICE_NOT_AN_EPUB
+        ImportFailure.CopyProtected -> NOTICE_COPY_PROTECTED
+        ImportFailure.TooLarge -> NOTICE_TOO_LARGE
+        ImportFailure.NoRoom -> NOTICE_NO_ROOM
+        ImportFailure.NotSaved -> NOTICE_NOT_SAVED
+    }
+    return "Couldn’t add ${notice.name}: $why."
+}
+
+/** The Shelf's notice: a line per file, oldest first, at most [NOTICE_MAX_LINES], then "and N more" for the rest. */
+fun noticeLines(notices: List<ImportNotice>): List<String> =
+    if (notices.size <= NOTICE_MAX_LINES) notices.map(::noticeLine)
+    else notices.take(NOTICE_MAX_LINES).map(::noticeLine) + "and ${notices.size - NOTICE_MAX_LINES} more"
+
 /** A row's identity: a Book on the Shelf, or a download of a Book the Shelf doesn't have yet. */
 sealed interface RowKey {
     data class Shelved(val identifier: String) : RowKey

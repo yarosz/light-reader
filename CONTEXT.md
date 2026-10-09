@@ -57,7 +57,8 @@ _Avoid_: origin, URL
 **Download**:
 The Tool fetching a Book's file, from a Catalogue entry or from the Book's source. It belongs to the
 Shelf, not to the Catalogue page that started it, and a Book it brings back keeps its Place. A Book added
-from a file already on the phone is imported, not downloaded.
+from a file already on the phone, such as one uploaded through LightOS's Tool Manager, is imported, not
+downloaded.
 _Avoid_: transfer
 
 ## Structure of a Book

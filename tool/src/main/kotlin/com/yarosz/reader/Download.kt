@@ -70,8 +70,9 @@ sealed interface DownloadState {
 sealed interface Fetch
 
 /**
- * A downloaded Book that passed every check, still in its temp file inside the Downloader's
- * directory. [Downloader.keep] renames it into place; [discard] deletes it.
+ * A Book that passed every check ([checkEpub]), still in [temp]: a download's temp file inside the
+ * Downloader's directory, which [Downloader.keep] renames into place, or an imported file. [discard]
+ * deletes it.
  */
 class Checked(val temp: File, val identifier: String, val title: String, val author: String?) : Fetch {
     fun discard() = temp.deleteOrLog()
@@ -198,30 +199,38 @@ class Downloader(
     }
 
     /**
-     * Checks that [temp] is a readable EPUB that isn't copy-protected. A file that starts as a zip but
-     * has no central directory was cut short; with no declared length that is the only sign of a
-     * dropped connection.
+     * [checkEpub] on [temp]. A file that starts as a zip but has no central directory was cut short;
+     * with no declared length that is the only sign of a dropped connection.
      */
-    private fun inspect(temp: File, fallbackTitle: String, lengthKnown: Boolean): Fetch {
-        val opened = try {
-            ZipFile(temp)
-        } catch (e: ZipException) {
-            return DownloadState.Failed(if (!lengthKnown && startsLikeZip(temp)) Unreachable else NotAnEpub)
-        } catch (e: IOException) {
-            return DownloadState.Failed(NotAnEpub)
-        }
-        val pkg = try {
-            opened.use { zip ->
-                if (isCopyProtected(zip)) return DownloadState.Failed(CopyProtected)
-                readPackage(zip, fallbackTitle)
-            }
-        } catch (e: Exception) {
-            // Broad on purpose: the file is untrusted. Logged so a parser bug is diagnosable.
-            Log.w(TAG, "download is not a readable EPUB", e)
-            return DownloadState.Failed(NotAnEpub)
-        }
-        return Checked(temp, pkg.identifier, pkg.title, pkg.author)
+    private fun inspect(temp: File, fallbackTitle: String, lengthKnown: Boolean): Fetch =
+        checkEpub(temp, fallbackTitle) { if (!lengthKnown && startsLikeZip(temp)) Unreachable else NotAnEpub }
+}
+
+/**
+ * Checks that [file] is a readable EPUB that isn't copy-protected: a [Checked] Book in it, or why
+ * not. A file that isn't a zip fails as [unzippable] says, NotAnEpub unless the caller knows better;
+ * a copy-protected one as CopyProtected, and one whose package can't be read as NotAnEpub. The
+ * Shelf's downloads and imports both check a Book this way.
+ */
+fun checkEpub(file: File, fallbackTitle: String, unzippable: () -> DownloadFailure = { NotAnEpub }): Fetch {
+    val opened = try {
+        ZipFile(file)
+    } catch (e: ZipException) {
+        return DownloadState.Failed(unzippable())
+    } catch (e: IOException) {
+        return DownloadState.Failed(NotAnEpub)
     }
+    val pkg = try {
+        opened.use { zip ->
+            if (isCopyProtected(zip)) return DownloadState.Failed(CopyProtected)
+            readPackage(zip, fallbackTitle)
+        }
+    } catch (e: Exception) {
+        // Broad on purpose: the file is untrusted. Logged so a parser bug is diagnosable.
+        Log.w(TAG, "file is not a readable EPUB", e)
+        return DownloadState.Failed(NotAnEpub)
+    }
+    return Checked(file, pkg.identifier, pkg.title, pkg.author)
 }
 
 private fun startsLikeZip(file: File): Boolean {
