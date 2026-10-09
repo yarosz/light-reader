@@ -13,6 +13,6 @@ group = "com.thelightphone"
 // Mirrors light-sdk/build.gradle.kts: the SDK modules read these from the root project.
 ext["compileSdk"] = 36
 ext["minSdk"] = 34
-ext["targetSdk"] = 36
+ext["targetSdk"] = 34
 ext["jvmTarget"] = "17"
 ext["lintVersion"] = "31.12.3"

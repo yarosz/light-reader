@@ -313,7 +313,7 @@ fi
 
 # --- signoff/lp3 (only when a Light Phone III is attached)
 lp3=$("$adb" devices | awk 'NR>1 && $2=="device" && $1 !~ /^emulator-/{print $1}' | while read -r s; do
-  [ "$("$adb" -s "$s" shell getprop ro.product.model | tr -d '\r')" = TLP301 ] && echo "$s"; done | head -1)
+  [ "$("$adb" -s "$s" shell getprop ro.product.model </dev/null | tr -d '\r')" = TLP301 ] && echo "$s"; done | head -1)
 lp3_ran=0
 if [ -n "$lp3" ] && [ "$docs_only" = 0 ]; then
   lightos=$("$adb" -s "$lp3" shell dumpsys package com.lightos | grep -m1 -oE 'versionName=[^ ]+' | cut -d= -f2)
