@@ -247,7 +247,10 @@ Ordered. Each item ends on its _done-when_.
   not advertised. Left: the reading-data half (download/upload `reading-data.json`, the merge), and
   trying the page on a phone whose LightOS reaches SDK Tools' providers (retail 582 can't). For Light
   (to raise upstream): `onToolManagerDataUpdate()` gets no context, so a Tool whose process has no
-  screen can't reach its files from it; Reader imports when the Shelf next shows instead.
+  screen can't reach its files from it; Reader imports when the Shelf next shows instead. And
+  `LightActivity.onPause` calls only `onAppPause` while `onResume` calls `onScreenShow`, so a screen
+  is never told it is hidden by the phone's screen turning off; Reader counts a pause as the end of
+  showing.
 
 **v1** = N1–N6. **v1.x:** images first (the drop caps' `<img>` inside a `<p>` fixed, then
 `PREFER_IMAGES_EDITION` flipped, with inverted line art), N7, the Standard Ebooks full catalogue if

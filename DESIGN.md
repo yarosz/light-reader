@@ -413,27 +413,45 @@ copy-protected, a package Reader can read, at most 300 MB) and gets the download
 Book is the same Book whichever way it came. It goes on the Shelf with its `dc:title` (else its file
 name) and `dc:creator`, as a never-opened Book added now, with no source. A Book whose identifier is
 already stored keeps its row and its Place, even after a removal; its file is replaced, and its title
-becomes the file's. One that came from a Catalogue keeps its source, so a missing file can still be
-downloaded again.
+becomes the file's. That holds for a different file that declares the same identifier too: it is the
+same Book (CONTEXT "Book"), so it replaces the stored one's file and keeps its Place. A file stored
+under an older name (one opened before files were named by identifier) is deleted then, unless
+another Book names it. One that came from a Catalogue keeps its source, so a missing file can still
+be downloaded again.
 
 Reader imports whenever LightOS reports an upload (about 3 s after a file's last write) and whenever
 the Shelf shows, each time scanning the whole folder, one pass at a time. LightOS sends its report to
 Reader's process even with no screen open, but gives it no way to reach Reader's files, so the report
 imports only once a screen has opened in that process; otherwise the files wait for the Shelf. LightOS
-drops a report that comes while a pass runs, so a pass that took files scans again. Each file:
+drops a report that comes while a pass runs, so a pass that took files scans again, and before it
+ends it lists the folder once more and scans again if a file came or changed since its last look.
+Each file is checked as found, and moved or deleted only if nothing has written to it since; one that
+changed waits for the next look. Each file:
 
-- **Still arriving.** A file still being written is never rejected: one that fails a check within
-  10 s of its last write is left for a later pass, and a pass that leaves one waits 10 s and looks
-  again, up to three times; after that, the next report or Shelf showing takes it. A zero-byte file
-  counts as just created until then, and as not an EPUB after.
-- **Rejected.** A file that fails is deleted, and the Shelf says why (below).
-- **Hidden.** A name starting with "." (macOS's `._` files, another program's partial file) is
-  deleted without a notice once it has been quiet for 10 s, and never imported.
+- **Still arriving.** LightOS writes an upload in place under its own name, so a partial file sits in
+  the folder while it arrives, and stays open if the browser stalls. Such a file is never rejected:
+  one that fails a check within a minute of its last write is left for later. A pass that leaves one
+  looks again every 10 s, up to six times (the minute); after that, the next report or Shelf showing
+  takes it. A file that passes is taken at once, since a partial zip never passes. A zero-byte file
+  counts as just created for that minute, and as not an EPUB after.
+- **Rejected.** A file that fails is deleted, and the Shelf says why (below). One that can't be
+  deleted stays, with its line, and is checked again by later passes, never in a loop.
+- **Hidden.** A name starting with "." is checked like any other: imported if it is a Book, and
+  otherwise rejected with a line (macOS's `._` files among them).
 - **Folders.** Left alone: the page can't make one.
 - **No room.** A Book needs 16 MB free beside it, as a download leaves (moving it costs no space, but
   the reading data must still save). Short of that, the file stays in the folder rather than being
   deleted, the Shelf says so, and every pass tries it again, so it is added once there is room. Until
   then its line comes back each time the Shelf shows.
+- **Not saved.** A Book whose move out of the folder fails with room to spare stays too, with its own
+  line, and every pass tries it again. A move that fails short of room reads as no room.
+- **Interrupted.** Moving a Book onto the Shelf is a rename, then a save of the reading data. A Book's
+  file (a name made from its identifier) that no Book names, as a process killed between the two
+  leaves, goes back into the folder at the start of each pass and is imported again; a download killed
+  the same way is healed too. Downloads in progress use temp names, the file of a Book taken off the
+  Shelf stays where it is (a removal that couldn't delete it must not bring the Book back), and other
+  names, such as the dev file, are never touched. Recovering rather than saving before the move keeps
+  the move a single rename that needs no undo when it fails.
 
 **Import notice.** The browser says "uploaded" whatever Reader does with a file, so the next time the
 Shelf shows, its list starts with a line for each file Reader didn't add, above the rows or above
@@ -444,17 +462,23 @@ it isn’t an EPUB.", and the reasons reuse the failed-download copy:
 
 | Failure | Reason |
 |---|---|
-| NotAnEpub (not a zip, a package Reader can't read, or over 300 MB) | "it isn’t an EPUB" |
-| CopyProtected | "it’s copy-protected" |
-| No room (DiskError) | "there isn’t enough space on your phone" |
+| Not an EPUB (not a zip, or a package Reader can't read) | "it isn’t an EPUB" |
+| Copy-protected | "it’s copy-protected" |
+| Too large (over 300 MB) | "it’s too large" |
+| No room | "there isn’t enough space on your phone" |
+| Not saved (the move failed with room to spare) | "it couldn’t be saved on your phone" |
 
 The notice goes once read: a tap on it clears every line, and so does the next time the Shelf shows
-after showing it (back from a Book or the Catalogues, or Reader reopened). A line that arrives while
-the Shelf is showing counts as shown. The lines are kept in `import-notices.json` beside the reading
-data, which they leave unchanged (schemaVersion stays 1), so a report handled with no screen open
-still shows at the next Shelf. A later line for the same file name replaces the earlier one, and adding
-the file clears its line. The log says only how many files were added and refused, never a file's
-name or a Book's title.
+after showing it (back from a Book or the Catalogues, the screen turned back on, or Reader reopened).
+A line counts as shown once the Shelf has drawn it while showing, from the SDK's show to its pause or
+hide. The SDK pauses a screen when the phone's screen turns off or Reader goes to the background, and
+never hides it then, so a line that arrives meanwhile (the usual upload: Shelf open, the reader at the
+computer) is still there when Reader comes back, and goes at the show after that. The lines are kept
+in `import-notices.json` beside the reading data, which they leave unchanged (schemaVersion stays 1),
+so a report handled with no screen open still shows at the next Shelf. A later line for the same file
+name with another reason replaces the earlier one; the same line again leaves it as and where it was,
+and adding the file clears its line. The log says only how many files were added, refused,
+recovered or left undeletable, never a file's name or a Book's title.
 
 ## Catalogues
 

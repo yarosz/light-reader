@@ -33,7 +33,9 @@ const val ADD_BOOKS_BUTTON = "Choose EPUB files"
 /** The import notice's lines, verbatim from DESIGN.md "Adding your own Books". */
 const val NOTICE_NOT_AN_EPUB = "it isn’t an EPUB"
 const val NOTICE_COPY_PROTECTED = "it’s copy-protected"
+const val NOTICE_TOO_LARGE = "it’s too large"
 const val NOTICE_NO_ROOM = "there isn’t enough space on your phone"
+const val NOTICE_NOT_SAVED = "it couldn’t be saved on your phone"
 
 /** How many files the Shelf's notice names before "and N more". */
 const val NOTICE_MAX_LINES = 3
@@ -41,9 +43,11 @@ const val NOTICE_MAX_LINES = 3
 /** One import notice's line: "Couldn’t add notes.pdf: it isn’t an EPUB." */
 fun noticeLine(notice: ImportNotice): String {
     val why = when (notice.reason) {
-        CopyProtected -> NOTICE_COPY_PROTECTED
-        DiskError -> NOTICE_NO_ROOM
-        else -> NOTICE_NOT_AN_EPUB
+        ImportFailure.NotAnEpub -> NOTICE_NOT_AN_EPUB
+        ImportFailure.CopyProtected -> NOTICE_COPY_PROTECTED
+        ImportFailure.TooLarge -> NOTICE_TOO_LARGE
+        ImportFailure.NoRoom -> NOTICE_NO_ROOM
+        ImportFailure.NotSaved -> NOTICE_NOT_SAVED
     }
     return "Couldn’t add ${notice.name}: $why."
 }

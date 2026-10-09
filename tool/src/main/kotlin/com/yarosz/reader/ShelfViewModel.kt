@@ -13,8 +13,11 @@ import kotlinx.coroutines.launch
  * model holds only whether the screen is editing. [connected] is whether the phone reports a
  * connection, for a download that fails (see [ShelfOwner.download]). An emptied Shelf leaves Edit,
  * since Edit is hidden then, and a confirmation whose row is gone (a download that arrived under its
- * Book's identifier, or failed) is cleared. Import notices that reach the screen while it shows are
- * marked shown, so they go the next time it shows ([ShelfOwner.shelfShown]).
+ * Book's identifier, or failed) is cleared. Import notices the screen draws ([rendered]) while it is
+ * showing are marked shown, so they go the next time it shows ([ShelfOwner.shelfShown]). Showing
+ * runs from [onScreenShow] to [onScreenHide] or [onAppPause]: the SDK resumes a screen with
+ * [onScreenShow] but pauses it (the screen turned off, or Reader left) with [onAppPause] alone, and a
+ * view model left behind by a recreated activity is paused first, so neither marks a notice nobody saw.
  */
 class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -> Boolean? = { null }) : LightViewModel<Unit>() {
     /** What the Shelf knows; the screen shows its [ShelfSnapshot.rows]. Null until the reading data is loaded. */
@@ -22,11 +25,11 @@ class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -
     val mode = MutableStateFlow<ShelfMode>(ShelfMode.Browsing)
     val devStart: MutableStateFlow<DevStart?> = owner.devStart
     private var showing = false
+    private var rendered = emptyList<ImportNotice>()
 
     init {
         viewModelScope.launch {
             snapshot.collect { latest ->
-                if (showing && latest?.notices.orEmpty().any { !it.shown }) owner.noticesShown()
                 val editing = mode.value as? ShelfMode.Editing ?: return@collect
                 val shown = latest?.rows
                 when {
@@ -43,7 +46,17 @@ class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -
     internal fun shown() {
         showing = true
         owner.shelfShown()
-        snapshot.value?.takeIf { latest -> latest.notices.any { !it.shown } }?.let { owner.noticesShown() }
+        markShown()
+    }
+
+    /** The screen drew [notices] at the top of the Shelf (none when it has none). */
+    fun rendered(notices: List<ImportNotice>) {
+        rendered = notices
+        markShown()
+    }
+
+    private fun markShown() {
+        if (showing && rendered.any { !it.shown }) owner.noticesShown(rendered)
     }
 
     internal fun refresh() = owner.refresh()
@@ -87,16 +100,23 @@ class ShelfViewModel(internal val owner: ShelfOwner, private val connected: () -
         cancelRemove()
     }
 
-    override fun onAppPause() = owner.saver.flush()
-
-    override fun onScreenHide(screen: SimpleLightScreen<Unit>) = hidden()
-
-    internal fun hidden() {
+    override fun onAppPause() {
         showing = false
         owner.saver.flush()
     }
 
+    override fun onScreenHide(screen: SimpleLightScreen<Unit>) = hidden()
+
+    /** Another screen covers the Shelf, whose notice is then no longer drawn. */
+    internal fun hidden() {
+        showing = false
+        rendered = emptyList()
+        owner.saver.flush()
+    }
+
     override fun onCleared() {
+        showing = false
+        rendered = emptyList()
         owner.saver.flush()
         super.onCleared()
     }

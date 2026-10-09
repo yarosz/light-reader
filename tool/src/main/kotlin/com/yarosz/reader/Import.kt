@@ -17,38 +17,62 @@ private const val TAG = "Reader"
 const val ADD_BOOKS_PATH = "add-books"
 
 /**
- * How recently a file must have been written for a failed check to leave it in the inbox for a later
- * pass instead of rejecting it: it may still be arriving. LightOS reports an upload about 3 s after
- * its last write, so a finished upload is usually checked once and settled.
+ * How long an import pass waits before looking again at files still arriving. LightOS reports an
+ * upload about 3 s after its last write, so a finished upload is usually checked once and settled.
  */
 const val IMPORT_QUIET_MS = 10_000L
+
+/**
+ * How long a file that fails a check must have gone unwritten before it is rejected and deleted.
+ * LightOS writes an upload in place under its final name, so a browser that stalls mid-upload leaves
+ * a partial file that fails while its writer still holds it open; a minute without a write means the
+ * upload has ended. A file that passes is taken at once: a partial zip never passes.
+ */
+const val IMPORT_GIVE_UP_MS = 60_000L
 
 /** The inbox: where LightOS puts the files the reader uploads to "Add Books". */
 fun importInbox(filesDir: File) = File(filesDir, "${LightFileProvider.SHARED_DIR}/$ADD_BOOKS_PATH")
 
+/** Whether [name] is one [bookFileName] makes: the name of every file an import or a download keeps. */
+fun isBookFileName(name: String) = BOOK_FILE_NAME.matches(name)
+
+private val BOOK_FILE_NAME = Regex("[0-9a-f]{16}\\.epub")
+
+/** Why Reader didn't add a file from the inbox, as the Shelf's notice says it ([noticeLine]). */
+enum class ImportFailure {
+    NotAnEpub,
+    CopyProtected,
+
+    /** Bigger than [MAX_BOOK_BYTES]. */
+    TooLarge,
+
+    /** The phone is short of room: the file stays in the inbox, and every pass tries it again. */
+    NoRoom,
+
+    /** Moving it out of the inbox failed with room to spare: the file stays, and every pass tries it again. */
+    NotSaved,
+}
+
 /**
  * A file in the inbox that Reader didn't add, as the Shelf's notice says it: the file's [name] and
- * why ([reason]: NotAnEpub, CopyProtected, or DiskError for a file left for want of room). [shown] is
- * whether a Shelf has shown it; the next time the Shelf shows, it is gone.
+ * why ([reason]). [shown] is whether a visible Shelf has drawn it; the next time the Shelf shows, it
+ * is gone.
  */
-data class ImportNotice(val name: String, val reason: DownloadFailure, val shown: Boolean = false)
+data class ImportNotice(val name: String, val reason: ImportFailure, val shown: Boolean = false)
 
 /** What an import pass does with one file in the inbox, decided by [examine]. */
 sealed interface Arrival {
     /** Passed every check: the Book goes on the Shelf, if the file is still as [checked] found it. */
     data class Accept(val checked: Checked, val length: Long, val modified: Long) : Arrival
 
-    /** Failed a check: the file is deleted and the Shelf says why. */
-    data class Reject(val reason: DownloadFailure) : Arrival
+    /** Failed a check and quiet for [IMPORT_GIVE_UP_MS]: the file is deleted, if still as checked, and the Shelf says why. */
+    data class Reject(val reason: ImportFailure, val length: Long, val modified: Long) : Arrival
 
     /** A Book, but the phone is short of room: the file stays, and the Shelf says so. */
     data object NoRoom : Arrival
 
-    /** Recently written and not yet a Book, or a hidden name not yet quiet: left for a later pass. */
+    /** Failed a check but written in the last [IMPORT_GIVE_UP_MS]: left for a later look. */
     data object Waiting : Arrival
-
-    /** A hidden name (a leading "."), quiet for [IMPORT_QUIET_MS]: deleted, with no notice. */
-    data object Discard : Arrival
 
     /** A directory, which an upload never makes: left alone. */
     data object Ignore : Arrival
@@ -56,23 +80,29 @@ sealed interface Arrival {
 
 /**
  * Checks one inbox [file] as a download is checked ([checkEpub], and no bigger than
- * [MAX_BOOK_BYTES]), at [now] in epoch millis. A file that fails a check while it was written in the
- * last [IMPORT_QUIET_MS] (a zero-byte file just created among them) is [Arrival.Waiting], never
- * rejected. A Book needs [MIN_FREE_BYTES] of [usableSpace] left, as a download does; moving it costs
- * no space, but the reading data must still be saveable. Blocks; run it off the main thread.
+ * [MAX_BOOK_BYTES]), at [now] in epoch millis. Every file is checked, a hidden name (a leading ".")
+ * too. A file that fails while it was written in the last [IMPORT_GIVE_UP_MS] (a zero-byte file just
+ * created among them) is [Arrival.Waiting], never rejected. A Book needs [MIN_FREE_BYTES] of
+ * [usableSpace] left, as a download does; moving it costs no space, but the reading data must still
+ * be saveable. Blocks; run it off the main thread.
  */
 fun examine(file: File, now: Long, usableSpace: () -> Long): Arrival {
     if (file.isDirectory) return Arrival.Ignore
     val length = file.length()
     val modified = file.lastModified()
-    val recent = modified > now - IMPORT_QUIET_MS
-    if (file.name.startsWith(".")) return if (recent) Arrival.Waiting else Arrival.Discard
-    val checked = if (length > MAX_BOOK_BYTES) DownloadState.Failed(NotAnEpub) else checkEpub(file, file.nameWithoutExtension)
-    return when (checked) {
-        is Checked -> if (usableSpace() < MIN_FREE_BYTES) Arrival.NoRoom else Arrival.Accept(checked, length, modified)
-        is DownloadState.Failed -> if (recent) Arrival.Waiting else Arrival.Reject(checked.reason)
+    val checked = if (length > MAX_BOOK_BYTES) null else checkEpub(file, file.nameWithoutExtension)
+    if (checked is Checked) return if (usableSpace() < MIN_FREE_BYTES) Arrival.NoRoom else Arrival.Accept(checked, length, modified)
+    if (modified > now - IMPORT_GIVE_UP_MS) return Arrival.Waiting
+    val reason = when ((checked as DownloadState.Failed?)?.reason) {
+        null -> ImportFailure.TooLarge
+        CopyProtected -> ImportFailure.CopyProtected
+        else -> ImportFailure.NotAnEpub
     }
+    return Arrival.Reject(reason, length, modified)
 }
+
+/** Whether this file still has the [length] and [modified] time a check found: nothing wrote to it since. */
+fun File.isAsChecked(length: Long, modified: Long) = exists() && length() == length && lastModified() == modified
 
 /**
  * The import notices in [dir]'s `import-notices.json`, kept apart from the reading data so its
@@ -114,16 +144,13 @@ class ImportNoticeStore(dir: File) {
         if (!temp.renameTo(file)) throw IOException("couldn't rename ${temp.name} to ${file.name}")
     }
 
-    private fun keyOf(reason: DownloadFailure) = when (reason) {
-        CopyProtected -> "copy-protected"
-        DiskError -> "no-room"
-        else -> "not-an-epub"
+    private fun keyOf(reason: ImportFailure) = when (reason) {
+        ImportFailure.NotAnEpub -> "not-an-epub"
+        ImportFailure.CopyProtected -> "copy-protected"
+        ImportFailure.TooLarge -> "too-large"
+        ImportFailure.NoRoom -> "no-room"
+        ImportFailure.NotSaved -> "not-saved"
     }
 
-    private fun reasonOf(key: String): DownloadFailure? = when (key) {
-        "copy-protected" -> CopyProtected
-        "no-room" -> DiskError
-        "not-an-epub" -> NotAnEpub
-        else -> null
-    }
+    private fun reasonOf(key: String): ImportFailure? = ImportFailure.entries.firstOrNull { keyOf(it) == key }
 }

@@ -125,9 +125,13 @@ class ShelfScreen(sealedActivity: SealedLightActivity) : LightScreen<Unit, Shelf
         }
     }
 
-    /** The files Reader didn't add, a line each in secondary text ([noticeLines]); a tap clears them. */
+    /**
+     * The files Reader didn't add, a line each in secondary text ([noticeLines]); a tap clears them.
+     * Tells the view model what it drew, which marks those notices shown ([ShelfViewModel.rendered]).
+     */
     @Composable
     private fun Notice(notices: List<ImportNotice>) {
+        LaunchedEffect(notices) { viewModel.rendered(notices) }
         if (notices.isEmpty()) return
         Column(Modifier.lightClickable(onClick = viewModel::clearNotices).then(rowPadding())) {
             noticeLines(notices).forEach { SecondaryLine(it, maxLines = 2) }

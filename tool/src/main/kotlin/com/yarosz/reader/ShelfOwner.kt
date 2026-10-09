@@ -43,8 +43,12 @@ sealed interface DownloadResult {
     data object Removed : DownloadResult
 }
 
-/** How many times an import pass waits [IMPORT_QUIET_MS] for files still arriving before leaving them to the next pass. */
-private const val IMPORT_WAITS = 3
+/**
+ * How many times an import pass waits [IMPORT_QUIET_MS] for files still arriving before leaving them
+ * to the next pass: enough for a file whose upload stalled as the pass began to reach
+ * [IMPORT_GIVE_UP_MS] and be rejected by the same pass.
+ */
+const val IMPORT_WAITS = 6
 
 /**
  * The one owner of a files directory's Shelf in this process: the reading data and its [saver],
@@ -61,7 +65,8 @@ private const val IMPORT_WAITS = 3
  * Those are single renames and deletes; the downloads themselves run on [io]. A landing and a
  * removal also save the reading data at once rather than after the debounce: they are rare, and a
  * screen on top of the Shelf may never see the pause that would flush them. An import lands the
- * same way. [transport], [usableSpace] and [now] exist for tests.
+ * same way. [transport], [usableSpace], [rename], [delete] and [now] exist for tests; [rename] and
+ * [delete] are an import's moves and deletions of uploaded files.
  */
 class ShelfOwner(
     private val filesDir: File,
@@ -69,6 +74,8 @@ class ShelfOwner(
     private val transport: Transport = HttpsTransport(),
     private val logFailure: (String) -> Unit = ::logFeedFailure,
     private val usableSpace: () -> Long = filesDir::getUsableSpace,
+    private val rename: (File, File) -> Boolean = File::renameTo,
+    private val delete: (File) -> Boolean = File::delete,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -192,11 +199,11 @@ class ShelfOwner(
         importBooks()
     }
 
-    /** Marks every notice as shown, so the next time the Shelf shows they are gone. */
-    fun noticesShown() {
+    /** Marks the notices a visible Shelf drew, [seen], as shown, so the next time the Shelf shows they are gone. */
+    fun noticesShown(seen: List<ImportNotice>) {
         scope.launch {
             loaded.await()
-            changeNotices { list -> list.map { it.copy(shown = true) } }
+            changeNotices { list -> list.map { notice -> if (seen.any { it.name == notice.name && it.reason == notice.reason }) notice.copy(shown = true) else notice } }
         }
     }
 
@@ -213,65 +220,93 @@ class ShelfOwner(
      * Book that passes the checks a download passes ([examine]) moves out of the inbox under its
      * identifier's file name ([bookFileName]) and goes on the Shelf with its own title and author and
      * no new source, keeping a Place it had, even after a removal. A file that fails is deleted and
-     * leaves a notice for the Shelf; one written in the last [IMPORT_QUIET_MS] is left for later
-     * instead. A Book the phone lacks room for stays in the inbox, with a notice, and every pass tries
-     * it again. A pass scans again after it has taken files, since LightOS drops its reports while a
-     * pass runs, and waits for files still arriving, up to [IMPORT_WAITS] times. Passes run one at a
-     * time; files are checked on [io] and moved on the main thread, as a download lands.
+     * leaves a notice for the Shelf once it has gone [IMPORT_GIVE_UP_MS] unwritten; until then it is
+     * left for later. A Book the phone lacks room for, or that can't be moved, stays in the inbox with
+     * a notice, and every pass tries it again. Files are checked as found and acted on only if nothing
+     * wrote to them since ([isAsChecked]). A pass first moves back to the inbox any Book's file that no
+     * Book names ([recover]). It scans again after it has taken files, since LightOS drops its reports
+     * while a pass runs, waits [IMPORT_QUIET_MS] for files still arriving, up to [IMPORT_WAITS] times,
+     * and before it ends lists the inbox once more, scanning again if a file came or changed. Passes
+     * run one at a time; files are checked on [io] and moved on the main thread, as a download lands.
      */
     fun importBooks(): Job = scope.launch {
         loaded.await()
         importing.withLock {
+            recover()
             var waits = 0
+            var relisted = false
             while (true) {
-                val (taken, waiting) = importRound()
+                val round = importRound()
                 when {
-                    taken > 0 -> continue
-                    waiting && waits++ < IMPORT_WAITS -> delay(IMPORT_QUIET_MS)
+                    round.taken > 0 -> continue
+                    round.waiting && waits < IMPORT_WAITS -> {
+                        waits++
+                        delay(IMPORT_QUIET_MS)
+                    }
+                    !relisted && withContext(io) { listInbox() } != round.left -> relisted = true
                     else -> break
                 }
             }
         }
     }
 
-    /** One scan of the inbox: how many files left it, and whether any was left to settle. */
-    private suspend fun importRound(): Pair<Int, Boolean> {
-        val files = withContext(io) { inbox.mkdirs(); inbox.listFiles()?.sortedBy { it.lastModified() }.orEmpty() }
-        var added = 0
+    /** One scan of the inbox: how many files left it, whether any was left to settle, and the listing it leaves behind. */
+    private class Round(val taken: Int, val waiting: Boolean, val left: Map<String, Long>)
+
+    /** The inbox's files by name, with when each was last written. Blocks. */
+    private fun listInbox(): Map<String, Long> = inbox.listFiles().orEmpty().associate { it.name to it.lastModified() }
+
+    private suspend fun importRound(): Round {
+        val (listing, examined) = withContext(io) {
+            inbox.mkdirs()
+            val files = inbox.listFiles().orEmpty().map { it to it.lastModified() }.sortedBy { it.second }
+            files.associate { (file, modified) -> file.name to modified } to files.map { (file) -> file to examine(file, now(), usableSpace) }
+        }
+        val gone = mutableSetOf<String>()
         var refused = 0
-        var discarded = 0
+        var stuck = 0
         var waiting = false
-        for (file in files) {
-            when (val arrival = withContext(io) { examine(file, now(), usableSpace) }) {
+        for ((file, arrival) in examined) {
+            when (arrival) {
                 is Arrival.Accept -> when {
                     // Written to again since the check: the next scan checks it afresh.
-                    file.length() != arrival.length || file.lastModified() != arrival.modified -> waiting = true
-                    land(file, arrival.checked) -> added++
-                    else -> notice(file.name, DiskError)
+                    !file.isAsChecked(arrival.length, arrival.modified) -> waiting = true
+                    land(file, arrival.checked) -> gone += file.name
+                    else -> notice(file.name, if (usableSpace() < MIN_FREE_BYTES) ImportFailure.NoRoom else ImportFailure.NotSaved)
                 }
-                is Arrival.Reject -> {
-                    file.deleteOrLog()
-                    notice(file.name, arrival.reason)
-                    refused++
+                is Arrival.Reject -> when {
+                    !file.isAsChecked(arrival.length, arrival.modified) -> waiting = true
+                    else -> {
+                        notice(file.name, arrival.reason)
+                        if (delete(file) || !file.exists()) {
+                            gone += file.name
+                            refused++
+                        } else {
+                            stuck++
+                        }
+                    }
                 }
-                Arrival.NoRoom -> notice(file.name, DiskError)
+                Arrival.NoRoom -> notice(file.name, ImportFailure.NoRoom)
                 Arrival.Waiting -> waiting = true
-                Arrival.Discard -> {
-                    file.deleteOrLog()
-                    discarded++
-                }
                 Arrival.Ignore -> Unit
             }
         }
-        if (added + refused > 0) Log.i(TAG, "import added=$added refused=$refused")
-        return (added + refused + discarded) to waiting
+        if (gone.isNotEmpty() || stuck > 0) Log.i(TAG, "import added=${gone.size - refused} refused=$refused undeletable=$stuck")
+        return Round(gone.size, waiting, listing - gone)
     }
 
     /** On the main thread: moves [file], a [checked] Book, out of the inbox and onto the Shelf. False when it can't be moved. */
     private fun land(file: File, checked: Checked): Boolean {
         val name = bookFileName(checked.identifier)
-        if (!file.renameTo(File(filesDir, name))) return false
+        val replaced = saver.data.books[checked.identifier]?.file
+        if (!rename(file, File(filesDir, name))) return false
         saver.change { it.shelve(checked.identifier, checked.title, name, checked.author, source = null, now = now()) }
+        // A Book stored under another file name (one opened before files were named by identifier) leaves no orphan behind.
+        if (replaced != null && replaced != name && saver.data.books.values.none { it.file == replaced }) {
+            val old = File(filesDir, replaced)
+            if (!delete(old) && old.exists()) Log.w(TAG, "import couldn't delete a replaced file")
+            fileChanged(replaced, exists = false)
+        }
         fileChanged(name, exists = true)
         saver.flush()
         changeNotices { list -> list.filterNot { it.name == file.name } }
@@ -279,9 +314,32 @@ class ShelfOwner(
         return true
     }
 
-    /** Adds the notice for the file [name], replacing an earlier one for that name. */
-    private fun notice(name: String, reason: DownloadFailure) =
-        changeNotices { list -> list.filterNot { it.name == name } + ImportNotice(name, reason) }
+    /**
+     * On the main thread: moves each Book's file (a [bookFileName] in filesDir) that no Book names back
+     * into the inbox, so this pass imports it again. A process killed between an import's or a
+     * download's rename and its save leaves one; downloads in progress use temp names, and every
+     * rename into a Book's name is saved in the same main-thread step, so a file found here is never
+     * one still on its way. The file of a Book off the Shelf is left alone: a removal that couldn't
+     * delete it must not bring the Book back.
+     */
+    private suspend fun recover() {
+        val found = withContext(io) { filesDir.list().orEmpty().filter(::isBookFileName) }
+        val named = saver.data.books.values.mapNotNull { it.file }.toSet()
+        val removed = saver.data.books.filterValues { !it.onShelf }.keys.map(::bookFileName).toSet()
+        val orphans = found.filter { it !in named && it !in removed }
+        if (orphans.isEmpty()) return
+        withContext(io) { inbox.mkdirs() }
+        val moved = orphans.count { name ->
+            val target = File(inbox, name)
+            (!target.exists() && rename(File(filesDir, name), target)).also { if (it) fileChanged(name, exists = false) }
+        }
+        Log.i(TAG, "import recovered=$moved of ${orphans.size}")
+    }
+
+    /** Adds the notice for the file [name], replacing an earlier one for that name with another reason; the same one stays as it is. */
+    private fun notice(name: String, reason: ImportFailure) = changeNotices { list ->
+        if (list.any { it.name == name && it.reason == reason }) list else list.filterNot { it.name == name } + ImportNotice(name, reason)
+    }
 
     /** On the main thread: changes the notices, publishes them, and saves them on [io] when they changed. */
     private fun changeNotices(transform: (List<ImportNotice>) -> List<ImportNotice>) {
